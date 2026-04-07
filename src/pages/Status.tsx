@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, ArrowRight, Droplets, Footprints, HeartPulse, ShieldAlert, Weight } from "lucide-react";
+import { Activity, ArrowRight, Droplets, Footprints, HeartPulse, ShieldAlert, Sparkles, Weight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { usePetStore } from "@/stores/petStore";
 import { subscribeLogsRange } from "@/data/logs";
@@ -12,6 +12,7 @@ import type { GpsPoint, HealthEvent, PetLog, PetMedication, PetTask, PetVaccine 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { computeLongevitySnapshot } from "@/lib/longevity";
 
 type PetTraffic = "green" | "yellow" | "red";
 
@@ -26,9 +27,9 @@ function trafficLabel(t: PetTraffic) {
 }
 
 function trafficClass(t: PetTraffic) {
-  if (t === "green") return "border-emerald-300/30 bg-emerald-300/10 text-emerald-100";
-  if (t === "yellow") return "border-amber-300/30 bg-amber-300/10 text-amber-100";
-  return "border-rose-400/30 bg-rose-500/10 text-rose-100";
+  if (t === "green") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-800";
+  if (t === "yellow") return "border-amber-400/30 bg-amber-400/10 text-amber-900";
+  return "border-rose-400/30 bg-rose-500/10 text-rose-900";
 }
 
 function ymd(d: Date) {
@@ -178,6 +179,11 @@ export default function Status() {
     };
   }, [healthEvents, logs30d, range.from24h, range.from72h, range.from7d, tasks]);
 
+  const longevity = useMemo(() => {
+    if (!activePet) return null;
+    return computeLongevitySnapshot({ pet: activePet, logs30d, tasks, nowMs: Date.now() });
+  }, [activePet, logs30d, tasks]);
+
   const nextVaccine = useMemo(() => vaccines[0] ?? null, [vaccines]);
   const activeMeds = useMemo(() => meds.filter((m) => m.enabled).length, [meds]);
 
@@ -189,7 +195,7 @@ export default function Status() {
         actions={
           <Link
             to="/app/health"
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm hover:bg-slate-900"
+            className="lp-btn-secondary"
           >
             Apri Salute
             <ArrowRight className="w-4 h-4" />
@@ -204,7 +210,7 @@ export default function Status() {
           action={
             <Link
               to="/app/pets"
-              className="inline-flex items-center justify-center rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900"
+              className="lp-btn-secondary"
             >
               Vai al profilo pet
             </Link>
@@ -216,9 +222,9 @@ export default function Status() {
             <CardContent className="p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm text-slate-400">Pet</div>
+                <div className="text-sm text-slate-600">Pet</div>
                 <div className="text-lg font-semibold">{activePet?.name ?? "—"}</div>
-                <div className="text-xs text-slate-500">{activePet?.species ?? "—"}{activePet?.breed ? ` · ${activePet.breed}` : ""}</div>
+                <div className="text-xs text-slate-600">{activePet?.species ?? "—"}{activePet?.breed ? ` · ${activePet.breed}` : ""}</div>
               </div>
               <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${trafficClass(computed.traffic)}`}>
                 <span className="h-2.5 w-2.5 rounded-full bg-current opacity-80" />
@@ -227,98 +233,123 @@ export default function Status() {
             </div>
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4">
-              <div className="md:col-span-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="md:col-span-4 lp-surface p-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-500">Indice salute (0–100)</div>
-                  <HeartPulse className="w-4 h-4 text-slate-400" />
+                  <div className="text-xs text-slate-600">Indice salute (0–100)</div>
+                  <HeartPulse className="w-4 h-4 text-slate-600" />
                 </div>
                 <div className="mt-2 text-3xl font-semibold">{computed.score}</div>
-                <div className="mt-3 h-2 rounded-full bg-slate-900">
+                <div className="mt-3 h-2 rounded-full bg-slate-200">
                   <div
-                    className="h-2 rounded-full bg-emerald-300/90"
+                    className="h-2 rounded-full bg-fuchsia-600"
                     style={{ width: `${computed.score}%` }}
                   />
                 </div>
               </div>
 
-              <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+              <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-xs text-slate-500">Idratazione (24h)</div>
-                    <Droplets className="w-4 h-4 text-slate-400" />
+                    <div className="text-xs text-slate-600">Idratazione (24h)</div>
+                    <Droplets className="w-4 h-4 text-slate-600" />
                   </div>
                   <div className="mt-1 text-sm font-medium">{computed.metrics.water24h > 0 ? "OK" : "Mancante"}</div>
                   {computed.charts.waterSpark ? (
                     <svg width={computed.charts.waterSpark.w} height={computed.charts.waterSpark.h} className="mt-2">
-                      <path d={computed.charts.waterSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-emerald-300/80" />
+                      <path d={computed.charts.waterSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
                     </svg>
                   ) : null}
                 </div>
 
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-xs text-slate-500">Attività (7d)</div>
-                    <Footprints className="w-4 h-4 text-slate-400" />
+                    <div className="text-xs text-slate-600">Attività (7d)</div>
+                    <Footprints className="w-4 h-4 text-slate-600" />
                   </div>
                   <div className="mt-1 text-sm font-medium">{computed.metrics.activity7d} log</div>
                   {computed.charts.activitySpark ? (
                     <svg width={computed.charts.activitySpark.w} height={computed.charts.activitySpark.h} className="mt-2">
-                      <path d={computed.charts.activitySpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-emerald-300/80" />
+                      <path d={computed.charts.activitySpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
                     </svg>
                   ) : null}
                 </div>
 
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-xs text-slate-500">Peso (30d)</div>
-                    <Weight className="w-4 h-4 text-slate-400" />
+                    <div className="text-xs text-slate-600">Peso (30d)</div>
+                    <Weight className="w-4 h-4 text-slate-600" />
                   </div>
                   <div className="mt-1 text-sm font-medium">{computed.metrics.weight30d} log</div>
                   {computed.charts.weightSpark ? (
                     <svg width={computed.charts.weightSpark.w} height={computed.charts.weightSpark.h} className="mt-2">
-                      <path d={computed.charts.weightSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-emerald-300/80" />
+                      <path d={computed.charts.weightSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
                     </svg>
                   ) : null}
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-slate-600">Longevità</div>
+                    <Sparkles className="w-4 h-4 text-slate-600" />
+                  </div>
+                  {longevity ? (
+                    <>
+                      <div className="mt-1 text-sm font-semibold">{longevity.longevityScore}/100</div>
+                      <div className="mt-1 text-xs text-slate-600">
+                        {longevity.remainingYears === null
+                          ? `Aspettativa ~${longevity.expectancyYears.toFixed(1)} anni`
+                          : `Residuo ~${longevity.remainingYears.toFixed(1)} anni`}
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-slate-200 overflow-hidden">
+                        <div className="h-2 bg-fuchsia-600" style={{ width: `${longevity.longevityScore}%` }} />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mt-1 text-sm font-medium">Aggiungi data nascita</div>
+                      <div className="mt-1 text-xs text-slate-600">Per stimare età e aspettativa.</div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="mt-4 lp-surface p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="font-semibold">Suggerimenti</div>
-                <div className="inline-flex items-center gap-2 text-xs text-slate-500">
+                <div className="inline-flex items-center gap-2 text-xs text-slate-600">
                   <Activity className="w-4 h-4" />
                   Ultimi 30 giorni
                 </div>
               </div>
               <div className="mt-2 space-y-2">
                 {computed.suggestions.map((s) => (
-                  <div key={s} className="text-sm text-slate-200">• {s}</div>
+                  <div key={s} className="text-sm text-slate-800">• {s}</div>
                 ))}
               </div>
             </div>
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="lp-surface p-4">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold">Rischi recenti</div>
-                  <ShieldAlert className="w-4 h-4 text-slate-400" />
+                  <ShieldAlert className="w-4 h-4 text-slate-600" />
                 </div>
-                <div className="mt-2 text-sm text-slate-300">Sintomi (30d): {computed.metrics.symptom30d}</div>
-                <div className="text-sm text-slate-300">Task dovuti (7d): {computed.metrics.due7d}</div>
-                <div className="text-sm text-slate-300">Task completati (7d): {computed.metrics.done7d}</div>
-                <div className="text-sm text-slate-300">Terapie attive: {activeMeds}</div>
-                <div className="text-sm text-slate-300">Prossimo vaccino: {nextVaccine ? new Date(nextVaccine.nextDueAt).toLocaleDateString() : "—"}</div>
+                <div className="mt-2 text-sm text-slate-700">Sintomi (30d): {computed.metrics.symptom30d}</div>
+                <div className="text-sm text-slate-700">Task dovuti (7d): {computed.metrics.due7d}</div>
+                <div className="text-sm text-slate-700">Task completati (7d): {computed.metrics.done7d}</div>
+                <div className="text-sm text-slate-700">Terapie attive: {activeMeds}</div>
+                <div className="text-sm text-slate-700">Prossimo vaccino: {nextVaccine ? new Date(nextVaccine.nextDueAt).toLocaleDateString() : "—"}</div>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="lp-surface p-4">
                 <div className="font-semibold">GPS ultimo punto</div>
                 {gpsLatest ? (
-                  <div className="mt-2 text-sm text-slate-300">
+                  <div className="mt-2 text-sm text-slate-700">
                     {gpsLatest.lat.toFixed(5)}, {gpsLatest.lng.toFixed(5)} · ±{gpsLatest.accuracyM}m
-                    <div className="text-xs text-slate-500 mt-1">{new Date(gpsLatest.recordedAt).toLocaleString()}</div>
+                    <div className="text-xs text-slate-600 mt-1">{new Date(gpsLatest.recordedAt).toLocaleString()}</div>
                   </div>
                 ) : (
-                  <div className="mt-2 text-sm text-slate-400">Nessun punto GPS.</div>
+                  <div className="mt-2 text-sm text-slate-600">Nessun punto GPS.</div>
                 )}
               </div>
             </div>

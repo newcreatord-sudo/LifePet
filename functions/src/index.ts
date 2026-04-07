@@ -50,6 +50,15 @@ type AgendaEventDoc = {
   reminderSentAt?: unknown;
 };
 
+type TaskDoc = {
+  petId?: unknown;
+  title?: unknown;
+  dueAt?: unknown;
+  status?: unknown;
+  reminderSentAt?: unknown;
+  source?: unknown;
+};
+
 function parsePlan(v: unknown): "free" | "pro" {
   return v === "pro" ? "pro" : "free";
 }
@@ -733,6 +742,49 @@ export const agendaReminderSweep = onSchedule("every 5 minutes", async () => {
         title: `${agendaKindLabel(kindStr)} tra ${reminderMinutesBefore} min`,
         body: `${titleStr} · ${new Date(dueAt).toLocaleString()}`,
         severity: "info",
+      });
+
+      await d.ref.set({ reminderSentAt: now }, { merge: true });
+    })
+  );
+});
+
+export const taskReminderSweep = onSchedule("every 10 minutes", async () => {
+  const now = Date.now();
+  const windowAheadMs = 60 * 60 * 1000;
+  const windowPastMs = 10 * 60 * 1000;
+
+  const snap = await db
+    .collectionGroup("tasks")
+    .where("status", "==", "due")
+    .where("dueAt", ">=", now - windowPastMs)
+    .where("dueAt", "<=", now + windowAheadMs)
+    .limit(400)
+    .get();
+
+  await Promise.all(
+    snap.docs.map(async (d) => {
+      const data = d.data() as TaskDoc;
+      const petId = typeof data.petId === "string" ? data.petId : null;
+      const dueAt = typeof data.dueAt === "number" ? data.dueAt : null;
+      const status = typeof data.status === "string" ? data.status : "";
+      const reminderSentAt = typeof data.reminderSentAt === "number" ? data.reminderSentAt : null;
+      if (!petId || !dueAt) return;
+      if (status !== "due") return;
+      if (reminderSentAt) return;
+
+      const diffMin = Math.round((dueAt - now) / (60 * 1000));
+      const when = new Date(dueAt).toLocaleString();
+      const titleStr = typeof data.title === "string" ? data.title : "Task";
+
+      const severity = diffMin <= 0 ? "warning" : "info";
+      const prefix = diffMin <= 0 ? "Task scaduto" : diffMin <= 15 ? "Task imminente" : "Promemoria task";
+
+      await createPetNotification(petId, {
+        type: `task_due:${d.id}`,
+        title: `${prefix}`,
+        body: `${titleStr} · ${when}`,
+        severity,
       });
 
       await d.ref.set({ reminderSentAt: now }, { merge: true });

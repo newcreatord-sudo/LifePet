@@ -85,7 +85,7 @@ export default function Agenda() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
             <label className="block">
@@ -95,7 +95,7 @@ export default function Agenda() {
                 onChange={(e) => setDueAt(e.target.value)}
                 type="datetime-local"
                 required
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
             <label className="block">
@@ -103,7 +103,7 @@ export default function Agenda() {
               <select
                 value={kind}
                 onChange={(e) => setKind(e.target.value as AgendaEvent["kind"])}
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-select"
               >
                 <option value="vet">Veterinario</option>
                 <option value="grooming">Toelettatura</option>
@@ -119,7 +119,7 @@ export default function Agenda() {
                 <select
                   value={reminder}
                   onChange={(e) => setReminder(e.target.value)}
-                  className="w-full pl-9 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="w-full pl-9 lp-select"
                 >
                   <option value="0">Nessuno</option>
                   <option value="15">15 min prima</option>
@@ -131,7 +131,7 @@ export default function Agenda() {
             </label>
             <button
               disabled={saving}
-              className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+              className="lp-btn-primary"
               type="submit"
             >
               {saving ? "…" : "Aggiungi"}
@@ -154,7 +154,7 @@ export default function Agenda() {
         ) : (
           <div className="space-y-2">
             {events.map((ev) => (
-              <div key={ev.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+              <div key={ev.id} className="lp-panel px-3 py-2">
                 {editingId === ev.id ? (
                   <form
                     onSubmit={async (e) => {
@@ -179,15 +179,15 @@ export default function Agenda() {
                   >
                     <label className="block">
                       <div className="text-xs text-slate-400 mb-1">Titolo</div>
-                      <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                      <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="lp-input" />
                     </label>
                     <label className="block">
                       <div className="text-xs text-slate-400 mb-1">Data e ora</div>
-                      <input value={editDueAt} onChange={(e) => setEditDueAt(e.target.value)} type="datetime-local" className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                      <input value={editDueAt} onChange={(e) => setEditDueAt(e.target.value)} type="datetime-local" className="lp-input" />
                     </label>
                     <label className="block">
                       <div className="text-xs text-slate-400 mb-1">Tipo</div>
-                      <select value={editKind} onChange={(e) => setEditKind(e.target.value as AgendaEvent["kind"])} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm">
+                      <select value={editKind} onChange={(e) => setEditKind(e.target.value as AgendaEvent["kind"])} className="lp-select">
                         <option value="vet">Veterinario</option>
                         <option value="grooming">Toelettatura</option>
                         <option value="training">Training</option>
@@ -197,7 +197,7 @@ export default function Agenda() {
                     </label>
                     <label className="block">
                       <div className="text-xs text-slate-400 mb-1">Promemoria</div>
-                      <select value={editReminder} onChange={(e) => setEditReminder(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm">
+                      <select value={editReminder} onChange={(e) => setEditReminder(e.target.value)} className="lp-select">
                         <option value="0">Nessuno</option>
                         <option value="15">15 min</option>
                         <option value="60">1 ora</option>
@@ -206,10 +206,10 @@ export default function Agenda() {
                       </select>
                     </label>
                     <div className="md:col-span-4 flex items-center gap-2 justify-end">
-                      <button type="button" onClick={() => setEditingId(null)} className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                      <button type="button" onClick={() => setEditingId(null)} className="lp-btn-secondary">
                         Annulla
                       </button>
-                      <button disabled={savingEdit} type="submit" className="rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-emerald-300 disabled:opacity-60">
+                      <button disabled={savingEdit} type="submit" className="lp-btn-primary">
                         {savingEdit ? "Salvataggio…" : "Salva"}
                       </button>
                     </div>
@@ -230,7 +230,7 @@ export default function Agenda() {
                           setEditKind(ev.kind);
                           setEditReminder(String(ev.reminderMinutesBefore ?? 0));
                         }}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="lp-btn-icon"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -240,7 +240,7 @@ export default function Agenda() {
                           if (!confirm("Eliminare questo evento?")) return;
                           await deleteAgendaEvent(activePetId, ev.id);
                         }}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="lp-btn-icon"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

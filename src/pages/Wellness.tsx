@@ -131,7 +131,7 @@ export default function Wellness() {
               <button
                 onClick={saveSnapshot}
                 disabled={saving}
-                className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs hover:bg-slate-900 disabled:opacity-60"
+                className="lp-btn-secondary"
               >
                 {saving ? "Salvataggio…" : "Salva snapshot"}
               </button>
@@ -139,41 +139,41 @@ export default function Wellness() {
             </CardHeader>
             <CardContent>
 
-            <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="mt-4 lp-surface p-4">
               <div className="text-4xl font-semibold">{computed.score}</div>
-              <div className="text-sm text-slate-300 mt-1">
+              <div className="text-sm text-slate-700 mt-1">
                 Stato: {computed.status === "green" ? "Sano" : computed.status === "yellow" ? "Attenzione" : "Rischio"}
               </div>
-              <div className="mt-3 h-2 rounded-full bg-slate-800 overflow-hidden">
+              <div className="mt-3 h-2 rounded-full bg-slate-200 overflow-hidden">
                 <div
                   className={
                     computed.status === "green"
-                      ? "h-full bg-emerald-300"
+                      ? "h-full bg-fuchsia-600"
                       : computed.status === "yellow"
-                        ? "h-full bg-amber-300"
-                        : "h-full bg-rose-400"
+                        ? "h-full bg-amber-400"
+                        : "h-full bg-rose-500"
                   }
                   style={{ width: `${computed.score}%` }}
                 />
               </div>
-              <div className="mt-3 text-xs text-slate-500">Non è un parere medico. Usalo come segnale orientativo.</div>
+              <div className="mt-3 text-xs text-slate-600">Non è un parere medico. Usalo come segnale orientativo.</div>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                <div className="text-xs text-slate-500">Sintomi (30g)</div>
+              <div className="lp-panel p-3">
+                <div className="text-xs text-slate-600">Sintomi (30g)</div>
                 <div className="text-sm font-medium">{computed.inputs.symptomCount30d}</div>
               </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                <div className="text-xs text-slate-500">Log peso (30g)</div>
+              <div className="lp-panel p-3">
+                <div className="text-xs text-slate-600">Log peso (30g)</div>
                 <div className="text-sm font-medium">{computed.inputs.weightLogs30d}</div>
               </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                <div className="text-xs text-slate-500">Task dovuti (7g)</div>
+              <div className="lp-panel p-3">
+                <div className="text-xs text-slate-600">Task dovuti (7g)</div>
                 <div className="text-sm font-medium">{computed.inputs.dueTasks7d}</div>
               </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                <div className="text-xs text-slate-500">Completati (7g)</div>
+              <div className="lp-panel p-3">
+                <div className="text-xs text-slate-600">Completati (7g)</div>
                 <div className="text-sm font-medium">{computed.inputs.completedTasks7d}</div>
               </div>
             </div>
@@ -188,10 +188,10 @@ export default function Wellness() {
                   <CardDescription>Azioni pratiche per la prossima settimana.</CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link to="/app/insights" className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                  <Link to="/app/insights" className="lp-btn-icon">
                     Insights
                   </Link>
-                  <Link to="/app/status" className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                  <Link to="/app/status" className="lp-btn-icon">
                     Status
                   </Link>
                 </div>
@@ -200,12 +200,12 @@ export default function Wellness() {
             <CardContent>
             <div className="space-y-2">
               {computed.suggestions.map((s, idx) => (
-                <div key={idx} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-200">
+                <div key={idx} className="lp-panel px-3 py-2 text-sm text-slate-800">
                   {s}
                 </div>
               ))}
             </div>
-            <div className="mt-4 text-sm text-slate-400">
+            <div className="mt-4 text-sm text-slate-700">
               Per un piano più dettagliato, apri Insights e chiedi una routine settimana per settimana.
             </div>
             </CardContent>
