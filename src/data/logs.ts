@@ -1,6 +1,8 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   onSnapshot,
   orderBy,
   query,
@@ -72,4 +74,13 @@ export async function createLog(petId: string, input: Omit<PetLog, "id">) {
   }
   const ref = await addDoc(logsCol(petId), input);
   return ref.id;
+}
+
+export async function deleteLog(petId: string, logId: string) {
+  if (shouldUseDemoData()) {
+    demoUpdate<PetLog[]>(demoKey(petId), [], (prev) => prev.filter((l) => l.id !== logId));
+    return;
+  }
+  const { db } = getFirebase();
+  await deleteDoc(doc(db, "pets", petId, "logs", logId));
 }

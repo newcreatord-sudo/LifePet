@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { usePetStore } from "@/stores/petStore";
 import { useAuthStore } from "@/stores/authStore";
-import { updatePet } from "@/data/pets";
-import { createLog, subscribeLogsRange } from "@/data/logs";
+import { deletePetCascade, updatePet } from "@/data/pets";
+import { createLog, deleteLog, subscribeLogsRange } from "@/data/logs";
 import { getPetDocumentDownloadUrl, subscribeDocuments, uploadPetDocument } from "@/data/documents";
 import { deletePetPhoto, uploadPetPhoto } from "@/data/profilePhotos";
 import { PetAvatar } from "@/components/PetAvatar";
@@ -11,7 +11,7 @@ import type { Pet, PetDocument } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ExternalLink, FileText, LineChart, PhoneCall, Save, ShieldPlus } from "lucide-react";
+import { ExternalLink, FileText, LineChart, PhoneCall, Save, ShieldPlus, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Pets() {
@@ -49,6 +49,7 @@ export default function Pets() {
   const [docs, setDocs] = useState<PetDocument[]>([]);
   const [uploading, setUploading] = useState(false);
   const [weightLogs, setWeightLogs] = useState<{ at: number; kg: number }[]>([]);
+  const [weightLogIds, setWeightLogIds] = useState<{ id: string; at: number; kg: number }[]>([]);
   const [newWeight, setNewWeight] = useState("");
   const [addingWeight, setAddingWeight] = useState(false);
 
@@ -113,6 +114,14 @@ export default function Pets() {
         .filter((p) => Number.isFinite(p.kg) && p.kg > 0)
         .sort((a, b) => a.at - b.at);
       setWeightLogs(points);
+
+      const withIds = all
+        .filter((l) => l.type === "weight")
+        .map((l) => ({ id: l.id, at: l.occurredAt, kg: Number(l.value?.amount) }))
+        .filter((p) => Number.isFinite(p.kg) && p.kg > 0)
+        .sort((a, b) => b.at - a.at)
+        .slice(0, 10);
+      setWeightLogIds(withIds);
     });
     return () => unsub();
   }, [activePetId]);
@@ -151,10 +160,16 @@ export default function Pets() {
         createdAt: Date.now(),
         createdBy: user.uid,
       });
+      await updatePet(activePetId, { weightKg: v });
       setNewWeight("");
     } finally {
       setAddingWeight(false);
     }
+  }
+
+  async function removeWeightLog(logId: string) {
+    if (!activePetId) return;
+    await deleteLog(activePetId, logId);
   }
 
   async function onSave() {
@@ -202,6 +217,17 @@ export default function Pets() {
       });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onDeletePet() {
+    if (!activePetId || !activePet) return;
+    if (!confirm(`Eliminare definitivamente ${activePet.name}? Questa azione cancella anche dati e documenti.`)) return;
+    try {
+      await deletePetCascade(activePetId);
+      window.location.href = "/app/dashboard";
+    } catch {
+      return;
     }
   }
 
@@ -512,6 +538,12 @@ export default function Pets() {
               {saving ? "Salvataggio…" : "Salva"}
             </span>
           </button>
+
+          <div className="mt-3">
+            <button onClick={onDeletePet} type="button" className="rounded-xl bg-rose-500 text-white px-4 py-2 text-sm font-medium hover:bg-rose-400">
+              Elimina pet
+            </button>
+          </div>
           </CardContent>
         </Card>
 
@@ -554,6 +586,30 @@ export default function Pets() {
                     {addingWeight ? "…" : "Salva"}
                   </button>
                 </div>
+
+                {weightLogIds.length > 0 ? (
+                  <div className="lp-panel p-3">
+                    <div className="text-xs text-slate-600">Ultime pesate</div>
+                    <div className="mt-2 space-y-2">
+                      {weightLogIds.map((w) => (
+                        <div key={w.id} className="flex items-center justify-between gap-3">
+                          <div className="text-sm">
+                            <span className="font-medium">{w.kg.toFixed(1)} kg</span>
+                            <span className="text-xs text-slate-600"> · {new Date(w.at).toLocaleString()}</span>
+                          </div>
+                          <button
+                            onClick={() => removeWeightLog(w.id)}
+                            className="lp-btn-icon"
+                            type="button"
+                            aria-label="Elimina pesata"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="text-xs text-slate-600">Consiglio: una pesata ogni 2–4 settimane rende l’indice longevità più accurato.</div>
               </div>

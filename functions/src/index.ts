@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import { getMessaging } from "firebase-admin/messaging";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
@@ -14,6 +15,7 @@ setGlobalOptions({ region: "us-central1" });
 initializeApp();
 
 const db = getFirestore();
+const bucket = getStorage().bucket();
 
 const SKIP_AI = process.env.SKIP_AI === "1";
 const OPENAI_API_KEY = SKIP_AI ? null : defineSecret("OPENAI_API_KEY");
@@ -70,6 +72,26 @@ type GroupMemberDoc = {
   uid?: unknown;
   joinedAt?: unknown;
 };
+
+async function deleteCollection(ref: FirebaseFirestore.CollectionReference, batchSize: number) {
+  let snap = await ref.orderBy("__name__").limit(batchSize).get();
+  while (!snap.empty) {
+    const batch = db.batch();
+    for (const d of snap.docs) batch.delete(d.ref);
+    await batch.commit();
+    snap = await ref.orderBy("__name__").limit(batchSize).get();
+  }
+}
+
+async function safeDeleteStoragePath(path: string) {
+  const p = String(path || "").trim();
+  if (!p) return;
+  try {
+    await bucket.file(p).delete({ ignoreNotFound: true } as { ignoreNotFound: boolean });
+  } catch {
+    return;
+  }
+}
 
 function parsePlan(v: unknown): "free" | "pro" {
   return v === "pro" ? "pro" : "free";
@@ -551,10 +573,12 @@ export const onGpsPointCreated = onDocumentCreated("pets/{petId}/gpsPoints/{poin
 
   const dist = haversineMeters({ lat: g.centerLat, lng: g.centerLng }, { lat: p.lat, lng: p.lng });
   if (dist > g.radiusM) {
+    const dedupeFrom = Date.now() - 30 * 60 * 1000;
+    if (await hasRecentNotification(petId, "gps_outside_geofence", dedupeFrom)) return;
     await createPetNotification(petId, {
       type: "gps_outside_geofence",
-      title: "Outside safe area",
-      body: `Latest point is ~${Math.round(dist)} m from the safe center (radius ${Math.round(g.radiusM)} m).`,
+      title: "Fuori zona sicura",
+      body: `Ultimo punto a ~${Math.round(dist)} m dal centro (raggio ${Math.round(g.radiusM)} m).`,
       severity: "warning",
     });
   }
@@ -831,4 +855,48 @@ export const onGroupMessageCreated = onDocumentCreated("groups/{groupId}/message
       })
     )
   );
+});
+
+export const deletePetCascade = onCall(async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  const petId = String(req.data?.petId ?? "");
+  if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+
+  const petRef = db.collection("pets").doc(petId);
+  const petSnap = await petRef.get();
+  if (!petSnap.exists) throw new HttpsError("not-found", "Pet not found");
+  const pet = petSnap.data() as { ownerId?: unknown; photoPath?: unknown };
+  const ownerId = typeof pet.ownerId === "string" ? pet.ownerId : null;
+  if (!ownerId || ownerId !== uid) throw new HttpsError("permission-denied", "Not allowed");
+
+  const docsSnap = await petRef.collection("documents").limit(500).get();
+  const docPaths = docsSnap.docs
+    .map((d) => String((d.data() as { storagePath?: unknown }).storagePath ?? ""))
+    .filter(Boolean);
+
+  const photoPath = typeof pet.photoPath === "string" ? pet.photoPath : null;
+
+  const subcols = [
+    "logs",
+    "healthEvents",
+    "documents",
+    "expenses",
+    "gpsPoints",
+    "agendaEvents",
+    "tasks",
+    "routines",
+    "notifications",
+    "vaccines",
+    "medications",
+    "bookings",
+  ];
+
+  await Promise.all(subcols.map((name) => deleteCollection(petRef.collection(name), 300)));
+  await petRef.delete();
+
+  await Promise.all(docPaths.map((p) => safeDeleteStoragePath(p)));
+  if (photoPath) await safeDeleteStoragePath(photoPath);
+
+  return { ok: true };
 });

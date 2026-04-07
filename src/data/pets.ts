@@ -10,6 +10,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoRead, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
@@ -62,6 +63,16 @@ export async function deletePet(petId: string) {
   }
   const { db } = getFirebase();
   await deleteDoc(doc(db, "pets", petId));
+}
+
+export async function deletePetCascade(petId: string) {
+  if (shouldUseDemoData()) {
+    await deletePet(petId);
+    return;
+  }
+  const { functions } = getFirebase();
+  const fn = httpsCallable(functions, "deletePetCascade");
+  await fn({ petId });
 }
 
 export async function getPet(petId: string) {

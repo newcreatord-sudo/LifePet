@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
 import { getFirebase, getFirebaseConfigError } from "@/lib/firebase";
 import { HeartPulse, PawPrint, ShieldPlus, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
@@ -14,6 +14,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
   const navigate = useNavigate();
 
   const title = useMemo(() => (mode === "signin" ? "Accedi" : "Crea account"), [mode]);
@@ -26,6 +28,7 @@ export default function Login() {
     }
     setLoading(true);
     setError(null);
+    setResetSent(false);
     try {
       const { auth } = getFirebase();
       if (mode === "signin") {
@@ -38,6 +41,29 @@ export default function Login() {
       setError(authUserMessage(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onResetPassword() {
+    if (configError) {
+      setError(configError);
+      return;
+    }
+    const addr = email.trim();
+    if (!addr) {
+      setError("Inserisci prima la tua email.");
+      return;
+    }
+    setResetBusy(true);
+    setError(null);
+    try {
+      const { auth } = getFirebase();
+      await sendPasswordResetEmail(auth, addr);
+      setResetSent(true);
+    } catch (err) {
+      setError(authUserMessage(err));
+    } finally {
+      setResetBusy(false);
     }
   }
 
@@ -152,6 +178,12 @@ export default function Login() {
             </div>
           ) : null}
 
+          {resetSent ? (
+            <div className="mb-3 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-900">
+              Email inviata. Controlla la casella e lo spam.
+            </div>
+          ) : null}
+
           {configError ? (
             <div className="mb-3 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-sm text-slate-800">
               <div className="font-medium">Firebase non configurato</div>
@@ -198,6 +230,19 @@ export default function Login() {
               {loading ? "Attendi…" : title}
             </button>
           </form>
+
+          {mode === "signin" && !configError ? (
+            <div className="mt-3 text-sm">
+              <button
+                type="button"
+                onClick={onResetPassword}
+                disabled={resetBusy || loading}
+                className="text-fuchsia-700 hover:text-fuchsia-800 disabled:opacity-60"
+              >
+                {resetBusy ? "Invio…" : "Password dimenticata?"}
+              </button>
+            </div>
+          ) : null}
 
           <div className="mt-4 text-xs text-slate-500">
             Le funzionalità AI sono solo informative e non sostituiscono il veterinario.
