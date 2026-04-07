@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Heart, MessageSquare, Plus } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
-import { createPost, likePost, subscribePosts } from "@/data/community";
+import { createComment, createPost, likePost, subscribeComments, subscribePosts } from "@/data/community";
 import { ensureDefaultGroups, sendGroupMessage, subscribeGroupMessages, subscribeGroups } from "@/data/groups";
-import type { CommunityGroup, CommunityGroupMessage, CommunityPost } from "@/types";
+import type { CommunityComment, CommunityGroup, CommunityGroupMessage, CommunityPost } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -15,6 +15,11 @@ export default function Community() {
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
 
+  const [openPostId, setOpenPostId] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<string, CommunityComment[]>>({});
+  const [commentText, setCommentText] = useState("");
+  const [commenting, setCommenting] = useState(false);
+
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string>("dogs");
   const [messages, setMessages] = useState<CommunityGroupMessage[]>([]);
@@ -25,6 +30,14 @@ export default function Community() {
     const unsub = subscribePosts(50, setPosts);
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (!openPostId) return;
+    const unsub = subscribeComments(openPostId, 50, (items) => {
+      setComments((prev) => ({ ...prev, [openPostId]: items }));
+    });
+    return () => unsub();
+  }, [openPostId]);
 
   useEffect(() => {
     ensureDefaultGroups();
@@ -73,6 +86,20 @@ export default function Community() {
       setChatText("");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function onAddComment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !openPostId) return;
+    const t = commentText.trim();
+    if (!t) return;
+    setCommenting(true);
+    try {
+      await createComment(openPostId, { authorId: user.uid, createdAt: Date.now(), text: t });
+      setCommentText("");
+    } finally {
+      setCommenting(false);
     }
   }
 
@@ -234,12 +261,49 @@ export default function Community() {
                           <Heart className="w-4 h-4" />
                           {p.likeCount}
                         </button>
-                        <div className="inline-flex items-center gap-1 rounded-xl border border-slate-800 px-3 py-2 text-xs text-slate-400">
+                        <button
+                          onClick={() => setOpenPostId((cur) => (cur === p.id ? null : p.id))}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        >
                           <MessageSquare className="w-4 h-4" />
-                          Commenti in arrivo
-                        </div>
+                          Commenti
+                        </button>
                       </div>
                     </div>
+
+                    {openPostId === p.id ? (
+                      <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/30 p-3">
+                        <div className="text-sm font-semibold">Commenti</div>
+                        <div className="mt-2 space-y-2">
+                          {(comments[p.id] ?? []).length === 0 ? (
+                            <div className="text-sm text-slate-400">Nessun commento. Inizia tu.</div>
+                          ) : (
+                            (comments[p.id] ?? []).map((c) => (
+                              <div key={c.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                                <div className="text-sm whitespace-pre-wrap">{c.text}</div>
+                                <div className="text-[10px] text-slate-500 mt-1">{new Date(c.createdAt).toLocaleString()}</div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <form onSubmit={onAddComment} className="mt-3 flex items-center gap-2">
+                          <input
+                            value={commentText}
+                            onChange={(e) => setCommentText(e.target.value)}
+                            placeholder={user ? "Scrivi un commento…" : "Accedi per commentare"}
+                            disabled={!user}
+                            className="flex-1 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40 disabled:opacity-60"
+                          />
+                          <button
+                            disabled={commenting || !user}
+                            className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                            type="submit"
+                          >
+                            {commenting ? "…" : "Invia"}
+                          </button>
+                        </form>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>

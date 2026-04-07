@@ -16,7 +16,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const title = useMemo(() => (mode === "signin" ? "Sign in" : "Create account"), [mode]);
+  const title = useMemo(() => (mode === "signin" ? "Accedi" : "Crea account"), [mode]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -121,30 +121,30 @@ export default function Login() {
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
             <div className="flex items-center gap-2 mb-4">
-            <button
-              onClick={() => setMode("signin")}
-              className={
-                mode === "signin"
-                  ? "px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm"
-                  : "px-3 py-1.5 rounded-xl text-sm text-slate-300 hover:bg-slate-950/30"
-              }
-            >
-              Sign in
-            </button>
-            <button
-              onClick={() => setMode("signup")}
-              className={
-                mode === "signup"
-                  ? "px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm"
-                  : "px-3 py-1.5 rounded-xl text-sm text-slate-300 hover:bg-slate-950/30"
-              }
-            >
-              Create account
-            </button>
-          </div>
+              <button
+                onClick={() => setMode("signin")}
+                className={
+                  mode === "signin"
+                    ? "px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm"
+                    : "px-3 py-1.5 rounded-xl text-sm text-slate-300 hover:bg-slate-950/30"
+                }
+              >
+                Accedi
+              </button>
+              <button
+                onClick={() => setMode("signup")}
+                className={
+                  mode === "signup"
+                    ? "px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm"
+                    : "px-3 py-1.5 rounded-xl text-sm text-slate-300 hover:bg-slate-950/30"
+                }
+              >
+                Crea account
+              </button>
+            </div>
 
           <div className="text-xl font-semibold mb-1">{title}</div>
-          <div className="text-sm text-slate-400 mb-4">Track routines, health logs, and AI insights.</div>
+          <div className="text-sm text-slate-400 mb-4">Tieni traccia di routine, salute e insight AI.</div>
 
           {error ? (
             <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
@@ -154,7 +154,7 @@ export default function Login() {
 
           {configError ? (
             <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-              <div className="font-medium">Firebase not configured</div>
+              <div className="font-medium">Firebase non configurato</div>
               <div className="text-xs text-slate-400 mt-1">{configError}</div>
               <button
                 type="button"
@@ -164,7 +164,7 @@ export default function Login() {
                 }}
                 className="mt-3 w-full rounded-xl bg-emerald-300/90 text-slate-950 font-medium py-2 text-sm hover:bg-emerald-300"
               >
-                Enter demo mode
+                Entra in modalità demo
               </button>
             </div>
           ) : null}
@@ -195,12 +195,12 @@ export default function Login() {
               className="w-full rounded-xl bg-emerald-300/90 text-slate-950 font-medium py-2 text-sm hover:bg-emerald-300 disabled:opacity-60"
               type="submit"
             >
-              {loading ? "Please wait…" : title}
+              {loading ? "Attendi…" : title}
             </button>
           </form>
 
           <div className="mt-4 text-xs text-slate-500">
-            AI features are informational only and do not replace veterinary advice.
+            Le funzionalità AI sono solo informative e non sostituiscono il veterinario.
           </div>
         </div>
       </div>

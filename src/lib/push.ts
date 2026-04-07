@@ -18,17 +18,17 @@ export async function ensureMessagingServiceWorker() {
 }
 
 export async function enablePushNotifications() {
-  if (!isPushSupported()) throw new Error("Push notifications not supported");
+  if (!isPushSupported()) throw new Error("Notifiche push non supportate");
   const vapidKey = getVapidKey();
-  if (!vapidKey) throw new Error("Missing VITE_FIREBASE_VAPID_KEY");
+  if (!vapidKey) throw new Error("Manca VITE_FIREBASE_VAPID_KEY");
   const permission = await Notification.requestPermission();
-  if (permission !== "granted") throw new Error("Notification permission denied");
+  if (permission !== "granted") throw new Error("Permesso notifiche negato");
 
   const registration = await ensureMessagingServiceWorker();
   const { app } = getFirebase();
   const messaging = getMessaging(app);
   const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
-  if (!token) throw new Error("Failed to get FCM token");
+  if (!token) throw new Error("Impossibile ottenere il token FCM");
   return token;
 }
 
@@ -47,4 +47,3 @@ export function subscribeForegroundMessages(onPayload: (payload: MessagePayload)
   const messaging = getMessaging(app);
   return onMessage(messaging, onPayload);
 }
-

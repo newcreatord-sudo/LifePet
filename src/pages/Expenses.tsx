@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
-import { createExpense, subscribeExpensesRange, subscribeRecentExpenses } from "@/data/expenses";
+import { createExpense, deleteExpense, subscribeExpensesRange, subscribeRecentExpenses } from "@/data/expenses";
 import type { Expense, ExpenseCategory } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -227,7 +228,20 @@ export default function Expenses() {
                       <div className="text-sm font-medium">€ {it.amount.toFixed(2)} · {categoryLabel(it.category)}</div>
                       {it.note ? <div className="text-xs text-slate-400 mt-0.5">{it.note}</div> : null}
                     </div>
-                    <div className="text-xs text-slate-500">{new Date(it.occurredAt).toLocaleString()}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-slate-500">{new Date(it.occurredAt).toLocaleString()}</div>
+                      {user && activePetId ? (
+                        <button
+                          onClick={async () => {
+                            if (!confirm("Eliminare questa spesa?")) return;
+                            await deleteExpense(activePetId, it.id);
+                          }}
+                          className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               ))}

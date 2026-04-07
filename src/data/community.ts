@@ -3,13 +3,18 @@ import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
-import type { CommunityPost } from "@/types";
+import type { CommunityComment, CommunityPost } from "@/types";
 
 const DEMO_KEY = "lifepet:demo:posts";
 
 export function postsCol() {
   const { db } = getFirebase();
   return collection(db, "posts");
+}
+
+export function commentsCol(postId: string) {
+  const { db } = getFirebase();
+  return collection(db, "posts", postId, "comments");
 }
 
 export function subscribePosts(limitCount: number, onData: (posts: CommunityPost[]) => void) {
@@ -46,4 +51,33 @@ export async function likePost(postId: string) {
   }
   const fn = httpsCallable(getFirebase().functions, "likePost");
   await fn({ postId });
+}
+
+function demoCommentsKey(postId: string) {
+  return `lifepet:demo:posts:${postId}:comments`;
+}
+
+export function subscribeComments(postId: string, limitCount: number, onData: (items: CommunityComment[]) => void) {
+  if (shouldUseDemoData()) {
+    return demoSubscribe<CommunityComment[]>(demoCommentsKey(postId), [], (all) => {
+      const items = all.slice().sort((a, b) => a.createdAt - b.createdAt).slice(-limitCount);
+      onData(items);
+    });
+  }
+  const q = query(commentsCol(postId), orderBy("createdAt", "asc"), limit(limitCount));
+  return onSnapshot(q, (snap) => {
+    const items: CommunityComment[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CommunityComment, "id">) }));
+    onData(items);
+  });
+}
+
+export async function createComment(postId: string, input: Omit<CommunityComment, "id" | "postId">) {
+  if (shouldUseDemoData()) {
+    const id = demoId();
+    const next: CommunityComment = { id, postId, ...(input as Omit<CommunityComment, "id" | "postId">) };
+    demoUpdate<CommunityComment[]>(demoCommentsKey(postId), [], (prev) => [...prev, next]);
+    return id;
+  }
+  const ref = await addDoc(commentsCol(postId), { postId, ...input });
+  return ref.id;
 }

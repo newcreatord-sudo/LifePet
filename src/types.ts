@@ -265,6 +265,7 @@ export type MarketplaceListing = {
   price: number;
   currency: string;
   status: "active" | "sold" | "hidden";
+  contact?: string;
   photoPaths?: string[];
 };
 

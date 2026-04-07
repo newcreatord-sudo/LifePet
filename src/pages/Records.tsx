@@ -309,7 +309,7 @@ export default function Records() {
       )}
       <div className="text-xs text-slate-500 flex items-center gap-2">
         <HeartPulse className="w-4 h-4" />
-        Suggerimento: usa Health per eventi e Documents per file.
+        Suggerimento: usa Salute per gli eventi e Documenti per i file.
       </div>
     </div>
   );

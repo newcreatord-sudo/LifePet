@@ -34,31 +34,31 @@ import { PetSwitcher } from "@/components/PetSwitcher";
 const nav = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/app/status", label: "Status", icon: Activity },
-  { to: "/app/pets", label: "Pet Profile", icon: PawPrint },
-  { to: "/app/health", label: "Health", icon: ShieldPlus },
-  { to: "/app/symptoms", label: "Symptom AI", icon: Stethoscope },
-  { to: "/app/records", label: "Records", icon: Files },
-  { to: "/app/documents", label: "Documents", icon: Files },
-  { to: "/app/medications", label: "Medications", icon: Pill },
-  { to: "/app/vaccines", label: "Vaccines", icon: Syringe },
-  { to: "/app/nutrition", label: "Nutrition", icon: Utensils },
-  { to: "/app/wellness", label: "Wellness", icon: HeartPulse },
+  { to: "/app/pets", label: "Profilo Pet", icon: PawPrint },
+  { to: "/app/health", label: "Salute", icon: ShieldPlus },
+  { to: "/app/symptoms", label: "Sintomi AI", icon: Stethoscope },
+  { to: "/app/records", label: "Cartella clinica", icon: Files },
+  { to: "/app/documents", label: "Documenti", icon: Files },
+  { to: "/app/medications", label: "Terapie", icon: Pill },
+  { to: "/app/vaccines", label: "Vaccini", icon: Syringe },
+  { to: "/app/nutrition", label: "Alimentazione", icon: Utensils },
+  { to: "/app/wellness", label: "Benessere", icon: HeartPulse },
   { to: "/app/agenda", label: "Agenda", icon: CalendarCheck },
   { to: "/app/planner", label: "Planner", icon: CalendarCheck },
   { to: "/app/training", label: "Training", icon: GraduationCap },
-  { to: "/app/bookings", label: "Bookings", icon: ClipboardList },
+  { to: "/app/bookings", label: "Prenotazioni", icon: ClipboardList },
   { to: "/app/gps", label: "GPS", icon: MapPin },
-  { to: "/app/expenses", label: "Expenses", icon: Receipt },
+  { to: "/app/expenses", label: "Spese", icon: Receipt },
   { to: "/app/community", label: "Community", icon: Users },
   { to: "/app/marketplace", label: "Marketplace", icon: ShoppingBag },
   { to: "/app/insights", label: "Insights", icon: Sparkles },
-  { to: "/app/settings", label: "Settings", icon: Settings },
+  { to: "/app/settings", label: "Impostazioni", icon: Settings },
 ];
 
 const mobileNav = [
   { to: "/app/dashboard", label: "Home", icon: LayoutDashboard },
-  { to: "/app/planner", label: "Tasks", icon: CalendarCheck },
-  { to: "/app/pets", label: "Pets", icon: PawPrint },
+  { to: "/app/planner", label: "Task", icon: CalendarCheck },
+  { to: "/app/pets", label: "Pet", icon: PawPrint },
   { to: "/app/insights", label: "AI", icon: Sparkles },
 ];
 
@@ -81,6 +81,17 @@ export function AppShellLayout() {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const id = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+    if (!id) return;
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [location.hash, location.pathname]);
 
   const activePet = useMemo(() => {
     return pets.find((p) => p.id === activePetId) ?? pets[0] ?? null;

@@ -1,4 +1,4 @@
-import { addDoc, collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
@@ -38,4 +38,22 @@ export async function createListing(input: Omit<MarketplaceListing, "id">) {
   }
   const ref = await addDoc(listingsCol(), input);
   return ref.id;
+}
+
+export async function updateListing(listingId: string, patch: Partial<Omit<MarketplaceListing, "id" | "sellerId" | "createdAt">>) {
+  if (shouldUseDemoData()) {
+    demoUpdate<MarketplaceListing[]>(DEMO_KEY, [], (prev) => prev.map((l) => (l.id === listingId ? ({ ...l, ...patch } as MarketplaceListing) : l)));
+    return;
+  }
+  const { db } = getFirebase();
+  await updateDoc(doc(db, "listings", listingId), patch);
+}
+
+export async function deleteListing(listingId: string) {
+  if (shouldUseDemoData()) {
+    demoUpdate<MarketplaceListing[]>(DEMO_KEY, [], (prev) => prev.filter((l) => l.id !== listingId));
+    return;
+  }
+  const { db } = getFirebase();
+  await deleteDoc(doc(db, "listings", listingId));
 }

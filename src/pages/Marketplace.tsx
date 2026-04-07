@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Sparkles } from "lucide-react";
+import { Mail, Phone, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
-import { createListing, subscribeListings } from "@/data/marketplace";
+import { createListing, deleteListing, subscribeListings, updateListing } from "@/data/marketplace";
 import { aiChat } from "@/data/ai";
 import { aiUserMessage } from "@/lib/aiErrors";
 import type { ListingCategory, MarketplaceListing } from "@/types";
@@ -32,6 +32,7 @@ export default function Marketplace() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<ListingCategory>("accessories");
   const [price, setPrice] = useState("");
+  const [contact, setContact] = useState("");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -57,14 +58,23 @@ export default function Marketplace() {
         price: v,
         currency: "EUR",
         status: "active",
+        contact: contact.trim() || undefined,
       });
       setTitle("");
       setDescription("");
       setPrice("");
       setCategory("accessories");
+      setContact("");
     } finally {
       setCreating(false);
     }
+  }
+
+  function contactHref(value: string) {
+    const v = value.trim();
+    if (!v) return null;
+    if (v.includes("@")) return `mailto:${v}`;
+    return `tel:${v}`;
   }
 
   async function onSuggest() {
@@ -157,6 +167,15 @@ export default function Marketplace() {
               className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
             />
           </label>
+          <label className="lg:col-span-12 block">
+            <div className="text-xs text-slate-400 mb-1">Contatto (email o telefono, opzionale)</div>
+            <input
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+              placeholder="es. nome@email.com oppure +39..."
+              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+            />
+          </label>
         </form>
         </CardContent>
       </Card>
@@ -188,7 +207,7 @@ export default function Marketplace() {
       <Card>
         <CardHeader>
           <CardTitle>Annunci</CardTitle>
-          <CardDescription>Contatto in-app in arrivo.</CardDescription>
+          <CardDescription>Contatta il venditore tramite email/telefono (se fornito).</CardDescription>
         </CardHeader>
         <CardContent>
         {filtered.length === 0 ? (
@@ -201,7 +220,41 @@ export default function Marketplace() {
                 <div className="text-xs text-slate-500 mt-0.5">{categoryLabel(it.category)} · € {it.price.toFixed(2)}</div>
                 <div className="text-sm text-slate-300 mt-2 whitespace-pre-wrap">{it.description}</div>
                 <div className="text-xs text-slate-500 mt-3">Pubblicato: {new Date(it.createdAt).toLocaleString()}</div>
-                <div className="mt-3 text-xs text-slate-400">Il contatto verrà aggiunto con chat in-app sicura.</div>
+                <div className="mt-3 flex items-center gap-2">
+                  {it.contact ? (
+                    <a
+                      href={contactHref(it.contact) ?? undefined}
+                      className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 inline-flex items-center gap-2"
+                    >
+                      {it.contact.includes("@") ? <Mail className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                      Contatta
+                    </a>
+                  ) : (
+                    <div className="text-xs text-slate-400">Contatto non disponibile.</div>
+                  )}
+
+                  {user && it.sellerId === user.uid ? (
+                    <>
+                      <button
+                        onClick={async () => {
+                          await updateListing(it.id, { status: "sold" });
+                        }}
+                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                      >
+                        Segna venduto
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!confirm("Eliminare questo annuncio?")) return;
+                          await deleteListing(it.id);
+                        }}
+                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>

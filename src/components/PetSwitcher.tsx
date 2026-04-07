@@ -8,7 +8,7 @@ import { PetAvatar } from "@/components/PetAvatar";
 export function PetSwitcher({ pets, activePet }: { pets: Pet[]; activePet: Pet | null }) {
   const setActivePetId = usePetStore((s) => s.setActivePetId);
   const [open, setOpen] = useState(false);
-  const label = useMemo(() => activePet?.name ?? "Select a pet", [activePet]);
+  const label = useMemo(() => activePet?.name ?? "Seleziona un pet", [activePet]);
 
   return (
     <div className="relative">
@@ -19,7 +19,7 @@ export function PetSwitcher({ pets, activePet }: { pets: Pet[]; activePet: Pet |
         <div className="flex items-center gap-3 text-left">
           <PetAvatar photoPath={activePet?.photoPath} name={activePet?.name} className="w-9 h-9 rounded-xl" />
           <div>
-            <div className="text-xs text-slate-400">Active pet</div>
+            <div className="text-xs text-slate-400">Pet attivo</div>
             <div className="text-sm font-medium">{label}</div>
           </div>
         </div>
@@ -30,7 +30,7 @@ export function PetSwitcher({ pets, activePet }: { pets: Pet[]; activePet: Pet |
         <div className="absolute z-10 mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 shadow-xl overflow-hidden">
           <div className="max-h-72 overflow-auto">
             {pets.length === 0 ? (
-              <div className="p-3 text-sm text-slate-400">No pets yet. Create one from Dashboard.</div>
+              <div className="p-3 text-sm text-slate-400">Nessun pet ancora. Creane uno dal Dashboard.</div>
             ) : (
               pets.map((p) => (
                 <button
@@ -58,7 +58,7 @@ export function PetSwitcher({ pets, activePet }: { pets: Pet[]; activePet: Pet |
           <div className="border-t border-slate-800 p-2">
             <div className="flex items-center gap-2 text-xs text-slate-400 px-2 py-1">
               <Plus className="w-3 h-3" />
-              Create pets from Dashboard
+              Crea pet dal Dashboard
             </div>
           </div>
         </div>

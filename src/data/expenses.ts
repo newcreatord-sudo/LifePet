@@ -1,4 +1,4 @@
-import { addDoc, collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
@@ -58,4 +58,22 @@ export async function createExpense(petId: string, input: Omit<Expense, "id">) {
   }
   const ref = await addDoc(expensesCol(petId), input);
   return ref.id;
+}
+
+export async function deleteExpense(petId: string, expenseId: string) {
+  if (shouldUseDemoData()) {
+    demoUpdate<Expense[]>(demoKey(petId), [], (prev) => prev.filter((e) => e.id !== expenseId));
+    return;
+  }
+  const { db } = getFirebase();
+  await deleteDoc(doc(db, "pets", petId, "expenses", expenseId));
+}
+
+export async function updateExpense(petId: string, expenseId: string, patch: Partial<Omit<Expense, "id" | "petId" | "createdAt" | "createdBy">>) {
+  if (shouldUseDemoData()) {
+    demoUpdate<Expense[]>(demoKey(petId), [], (prev) => prev.map((e) => (e.id === expenseId ? ({ ...e, ...patch } as Expense) : e)));
+    return;
+  }
+  const { db } = getFirebase();
+  await updateDoc(doc(db, "pets", petId, "expenses", expenseId), patch);
 }
