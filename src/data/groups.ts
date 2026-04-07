@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -10,7 +11,7 @@ import {
   doc,
 } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
-import type { CommunityGroup, CommunityGroupMessage } from "@/types";
+import type { CommunityGroup, CommunityGroupMember, CommunityGroupMessage } from "@/types";
 import { demoId, demoRead, demoSubscribe, demoUpdate, demoWrite } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
 
@@ -28,6 +29,10 @@ function messagesCol(groupId: string) {
 
 function demoMessagesKey(groupId: string) {
   return `lifepet:demo:group:${groupId}:messages`;
+}
+
+function demoMembersKey(groupId: string) {
+  return `lifepet:demo:group:${groupId}:members`;
 }
 
 export async function ensureDefaultGroups() {
@@ -90,6 +95,38 @@ export function subscribeGroupMessages(groupId: string, onData: (msgs: Community
   });
 }
 
+export function subscribeGroupMembership(groupId: string, uid: string, onData: (isMember: boolean) => void) {
+  if (shouldUseDemoData()) {
+    return demoSubscribe<CommunityGroupMember[]>(demoMembersKey(groupId), [], (all) => {
+      onData(all.some((m) => m.uid === uid));
+    });
+  }
+  return onSnapshot(doc(getFirebase().db, "groups", groupId, "members", uid), (snap) => {
+    onData(snap.exists());
+  });
+}
+
+export async function joinGroup(groupId: string, uid: string) {
+  if (shouldUseDemoData()) {
+    demoUpdate<CommunityGroupMember[]>(demoMembersKey(groupId), [], (prev) => {
+      if (prev.some((m) => m.uid === uid)) return prev;
+      return [...prev, { id: uid, uid, joinedAt: Date.now() }];
+    });
+    return;
+  }
+  const { db } = getFirebase();
+  await setDoc(doc(db, "groups", groupId, "members", uid), { uid, joinedAt: Date.now() }, { merge: true });
+}
+
+export async function leaveGroup(groupId: string, uid: string) {
+  if (shouldUseDemoData()) {
+    demoUpdate<CommunityGroupMember[]>(demoMembersKey(groupId), [], (prev) => prev.filter((m) => m.uid !== uid));
+    return;
+  }
+  const { db } = getFirebase();
+  await deleteDoc(doc(db, "groups", groupId, "members", uid));
+}
+
 export async function sendGroupMessage(groupId: string, input: Omit<CommunityGroupMessage, "id">) {
   if (shouldUseDemoData()) {
     const id = demoId();
@@ -100,4 +137,3 @@ export async function sendGroupMessage(groupId: string, input: Omit<CommunityGro
   const ref = await addDoc(messagesCol(groupId), input);
   return ref.id;
 }
-

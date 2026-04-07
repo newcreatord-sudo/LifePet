@@ -59,6 +59,18 @@ type TaskDoc = {
   source?: unknown;
 };
 
+type GroupMessageDoc = {
+  groupId?: unknown;
+  authorId?: unknown;
+  createdAt?: unknown;
+  text?: unknown;
+};
+
+type GroupMemberDoc = {
+  uid?: unknown;
+  joinedAt?: unknown;
+};
+
 function parsePlan(v: unknown): "free" | "pro" {
   return v === "pro" ? "pro" : "free";
 }
@@ -789,5 +801,34 @@ export const taskReminderSweep = onSchedule("every 10 minutes", async () => {
 
       await d.ref.set({ reminderSentAt: now }, { merge: true });
     })
+  );
+});
+
+export const onGroupMessageCreated = onDocumentCreated("groups/{groupId}/messages/{messageId}", async (event) => {
+  const groupId = event.params.groupId as string;
+  const msg = event.data?.data() as GroupMessageDoc | undefined;
+  if (!msg) return;
+  const authorId = typeof msg.authorId === "string" ? msg.authorId : null;
+  const text = typeof msg.text === "string" ? msg.text.trim() : "";
+
+  const groupSnap = await db.collection("groups").doc(groupId).get();
+  const groupName = groupSnap.exists ? String((groupSnap.data() as { name?: unknown }).name ?? "Community") : "Community";
+
+  const membersSnap = await db.collection("groups").doc(groupId).collection("members").limit(500).get();
+  const memberUids = membersSnap.docs
+    .map((d) => String((d.data() as GroupMemberDoc).uid ?? d.id))
+    .filter((uid) => uid && uid !== authorId);
+
+  if (memberUids.length === 0) return;
+  const body = text.length > 120 ? `${text.slice(0, 120)}…` : text;
+
+  await Promise.all(
+    memberUids.map((uid) =>
+      sendPushToUser(uid, {
+        title: `Nuovo messaggio · ${groupName}`,
+        body: body || "Apri la chat per leggere.",
+        data: { groupId, type: "group_message" },
+      })
+    )
   );
 });

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Heart, MessageSquare, Plus } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { createComment, createPost, likePost, subscribeComments, subscribePosts } from "@/data/community";
-import { ensureDefaultGroups, sendGroupMessage, subscribeGroupMessages, subscribeGroups } from "@/data/groups";
+import { ensureDefaultGroups, joinGroup, leaveGroup, sendGroupMessage, subscribeGroupMembership, subscribeGroupMessages, subscribeGroups } from "@/data/groups";
 import type { CommunityComment, CommunityGroup, CommunityGroupMessage, CommunityPost } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -25,6 +25,7 @@ export default function Community() {
   const [messages, setMessages] = useState<CommunityGroupMessage[]>([]);
   const [chatText, setChatText] = useState("");
   const [sending, setSending] = useState(false);
+  const [isMember, setIsMember] = useState(false);
 
   useEffect(() => {
     const unsub = subscribePosts(50, setPosts);
@@ -54,6 +55,12 @@ export default function Community() {
     return () => unsub();
   }, [activeGroupId]);
 
+  useEffect(() => {
+    if (!user || !activeGroupId) return;
+    const unsub = subscribeGroupMembership(activeGroupId, user.uid, setIsMember);
+    return () => unsub();
+  }, [activeGroupId, user]);
+
   const activeGroup = useMemo(() => groups.find((g) => g.id === activeGroupId) ?? null, [activeGroupId, groups]);
 
   async function onPost(e: React.FormEvent) {
@@ -77,6 +84,7 @@ export default function Community() {
     if (!t) return;
     setSending(true);
     try {
+      await joinGroup(activeGroupId, user.uid);
       await sendGroupMessage(activeGroupId, {
         groupId: activeGroupId,
         authorId: user.uid,
@@ -112,8 +120,8 @@ export default function Community() {
           onClick={() => setTab("feed")}
           className={
             tab === "feed"
-              ? "px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm"
-              : "px-3 py-1.5 rounded-xl text-sm text-slate-300 hover:bg-slate-950/30"
+              ? "px-3 py-1.5 rounded-xl bg-white border border-slate-200/70 text-sm"
+              : "px-3 py-1.5 rounded-xl text-sm text-slate-700 hover:bg-white/60"
           }
         >
           Feed
@@ -122,11 +130,11 @@ export default function Community() {
           onClick={() => setTab("groups")}
           className={
             tab === "groups"
-              ? "px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm"
-              : "px-3 py-1.5 rounded-xl text-sm text-slate-300 hover:bg-slate-950/30"
+              ? "px-3 py-1.5 rounded-xl bg-white border border-slate-200/70 text-sm"
+              : "px-3 py-1.5 rounded-xl text-sm text-slate-700 hover:bg-white/60"
           }
         >
-          Groups
+          Gruppi
         </button>
       </div>
 
@@ -139,7 +147,7 @@ export default function Community() {
             </CardHeader>
             <CardContent>
             {groups.length === 0 ? (
-              <div className="text-sm text-slate-400">Caricamento gruppi…</div>
+              <div className="text-sm text-slate-600">Caricamento gruppi…</div>
             ) : (
               <div className="space-y-2">
                 {groups.map((g) => (
@@ -148,12 +156,12 @@ export default function Community() {
                     onClick={() => setActiveGroupId(g.id)}
                     className={
                       g.id === activeGroupId
-                        ? "w-full text-left rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2"
-                        : "w-full text-left rounded-xl border border-slate-800 px-3 py-2 hover:bg-slate-900"
+                        ? "w-full text-left rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2"
+                        : "w-full text-left rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 hover:bg-white"
                     }
                   >
                     <div className="text-sm font-medium">{g.name}</div>
-                    {g.topic ? <div className="text-xs text-slate-400 mt-0.5">{g.topic}</div> : null}
+                    {g.topic ? <div className="text-xs text-slate-600 mt-0.5">{g.topic}</div> : null}
                   </button>
                 ))}
               </div>
@@ -163,28 +171,51 @@ export default function Community() {
 
           <Card className="lg:col-span-8">
             <CardHeader>
-              <div>
-                <div className="font-semibold">{activeGroup?.name ?? "Chat"}</div>
-                <div className="text-xs text-slate-500">Sii rispettoso. Nessuna diagnosi medica.</div>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold">{activeGroup?.name ?? "Chat"}</div>
+                  <div className="text-xs text-slate-600">Sii rispettoso. Nessuna diagnosi medica.</div>
+                </div>
+                {user && activeGroupId ? (
+                  isMember ? (
+                    <button
+                      onClick={async () => {
+                        await leaveGroup(activeGroupId, user.uid);
+                      }}
+                      className="lp-btn-secondary"
+                    >
+                      Lascia
+                    </button>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        await joinGroup(activeGroupId, user.uid);
+                      }}
+                      className="lp-btn-primary"
+                    >
+                      Segui
+                    </button>
+                  )
+                ) : null}
               </div>
             </CardHeader>
             <CardContent>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 h-72 overflow-auto space-y-2">
+            <div className="rounded-xl border border-slate-200/70 bg-white/70 p-3 h-72 overflow-auto space-y-2">
               {messages.length === 0 ? (
-                <div className="text-sm text-slate-400">Nessun messaggio. Inizia tu.</div>
+                <div className="text-sm text-slate-600">Nessun messaggio. Inizia tu.</div>
               ) : (
                 messages.map((m) => (
                   <div
                     key={m.id}
                     className={
                       m.authorId === user?.uid
-                        ? "ml-auto max-w-[85%] rounded-xl bg-emerald-300/15 border border-emerald-300/20 px-3 py-2 text-sm"
-                        : "mr-auto max-w-[85%] rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-sm"
+                        ? "ml-auto max-w-[85%] rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-sm"
+                        : "mr-auto max-w-[85%] rounded-xl bg-white border border-slate-200/70 px-3 py-2 text-sm"
                     }
                   >
                     <div className="whitespace-pre-wrap">{m.text}</div>
-                    <div className="text-[10px] text-slate-500 mt-1">{new Date(m.createdAt).toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-600 mt-1">{new Date(m.createdAt).toLocaleString()}</div>
                   </div>
                 ))
               )}
@@ -194,12 +225,13 @@ export default function Community() {
               <input
                 value={chatText}
                 onChange={(e) => setChatText(e.target.value)}
-                placeholder="Scrivi un messaggio…"
-                className="flex-1 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                placeholder={isMember ? "Scrivi un messaggio…" : "Segui il gruppo per scrivere"}
+                disabled={!isMember}
+                className="flex-1 lp-input disabled:opacity-60"
               />
               <button
-                disabled={sending}
-                className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                disabled={sending || !isMember}
+                className="lp-btn-primary"
                 type="submit"
               >
                 {sending ? "…" : "Invia"}

@@ -253,6 +253,12 @@ export type CommunityGroupMessage = {
   text: string;
 };
 
+export type CommunityGroupMember = {
+  id: string;
+  uid: string;
+  joinedAt: number;
+};
+
 export type ListingCategory = "food" | "accessories" | "medicine" | "services" | "other";
 
 export type MarketplaceListing = {
