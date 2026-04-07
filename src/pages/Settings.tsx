@@ -59,10 +59,10 @@ export default function Settings() {
           <CardDescription>Informazioni base del tuo profilo.</CardDescription>
         </CardHeader>
         <CardContent>
-        <div className="text-sm text-slate-400">Accesso effettuato come</div>
+        <div className="text-sm text-slate-600">Accesso effettuato come</div>
         <div className="text-sm font-medium mt-1">{user?.email ?? "—"}</div>
         {user?.isDemo ? (
-          <div className="mt-2 inline-flex items-center rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 text-xs text-emerald-100">
+          <div className="mt-2 inline-flex items-center rounded-full border border-fuchsia-600/20 bg-fuchsia-600/10 px-2.5 py-1 text-xs text-fuchsia-800">
             Modalità demo
           </div>
         ) : null}
@@ -72,7 +72,7 @@ export default function Settings() {
               await logout();
               navigate("/login", { replace: true });
             }}
-            className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900"
+            className="lp-btn-secondary"
           >
             <span className="inline-flex items-center gap-2">
               <LogOut className="w-4 h-4" />
@@ -90,13 +90,13 @@ export default function Settings() {
         </CardHeader>
         <CardContent>
         <div className="mt-2 flex items-center justify-between gap-3">
-          <div className="text-sm text-slate-400">Attuale</div>
+          <div className="text-sm text-slate-600">Attuale</div>
           <div className="text-sm font-medium">{effectivePlan.toUpperCase()}</div>
         </div>
         {billing?.betaProEnabled ? (
-          <div className="mt-2 text-xs text-emerald-200">Beta attiva: tutto gratis, feature Pro sbloccate.</div>
+          <div className="mt-2 text-xs text-fuchsia-700">Beta attiva: tutto gratis, feature Pro sbloccate.</div>
         ) : null}
-        <div className="mt-2 text-xs text-slate-500">I limiti AI sono applicati server-side.</div>
+        <div className="mt-2 text-xs text-slate-600">I limiti AI sono applicati server-side.</div>
 
         <div className="mt-4 flex flex-col sm:flex-row gap-2">
           <button
@@ -115,8 +115,8 @@ export default function Settings() {
             }}
             className={
               billing?.billingEnabled && !billing?.betaProEnabled
-                ? "rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
-                : "rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-400"
+                ? "lp-btn-primary"
+                : "rounded-xl border border-slate-200/70 bg-white/60 px-4 py-2 text-sm text-slate-400"
             }
           >
             <span className="inline-flex items-center gap-2">
@@ -138,14 +138,14 @@ export default function Settings() {
                 setBillingBusy(false);
               }
             }}
-            className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
+            className="lp-btn-secondary"
           >
             Gestisci abbonamento
           </button>
         </div>
 
         {!billing?.billingEnabled ? (
-          <div className="mt-2 text-xs text-slate-500">Billing non attivo lato backend: per ora resta tutto gratis.</div>
+          <div className="mt-2 text-xs text-slate-600">Billing non attivo lato backend: per ora resta tutto gratis.</div>
         ) : null}
         {billingError ? (
           <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
@@ -163,7 +163,7 @@ export default function Settings() {
         <CardContent>
 
         {user?.isDemo ? (
-          <div className="mt-3 text-sm text-slate-400">Le notifiche push sono disabilitate in modalità demo.</div>
+          <div className="mt-3 text-sm text-slate-600">Le notifiche push sono disabilitate in modalità demo.</div>
         ) : !pushAvailable ? (
           <EmptyState
             icon={Bell}
@@ -188,7 +188,7 @@ export default function Settings() {
                   setPushBusy(false);
                 }
               }}
-              className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+              className="lp-btn-primary"
             >
               {pushBusy ? "Attivazione…" : "Attiva push"}
             </button>
@@ -208,7 +208,7 @@ export default function Settings() {
                   setPushBusy(false);
                 }
               }}
-              className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
+              className="lp-btn-secondary"
             >
               Disattiva
             </button>
@@ -216,7 +216,7 @@ export default function Settings() {
         )}
 
         {pushToken ? (
-          <div className="mt-3 text-xs text-slate-500">Push attive</div>
+          <div className="mt-3 text-xs text-slate-600">Push attive</div>
         ) : null}
         {pushError ? (
           <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">

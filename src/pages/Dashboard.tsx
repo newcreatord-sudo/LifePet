@@ -122,7 +122,7 @@ export default function Dashboard() {
             <button
               onClick={quickAddTask}
               disabled={!user || !activePetId}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-sm hover:bg-white disabled:opacity-60"
             >
               <Plus className="w-4 h-4" />
               Task rapido
@@ -130,7 +130,7 @@ export default function Dashboard() {
             <button
               onClick={() => quickAddLog("note")}
               disabled={!user || !activePetId}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-fuchsia-600 text-white px-3 py-2 text-sm font-medium hover:bg-fuchsia-500 disabled:opacity-60"
             >
               <NotebookPen className="w-4 h-4" />
               Nota rapida
@@ -143,26 +143,26 @@ export default function Dashboard() {
         <div className="lg:col-span-7">
           <Card className="overflow-hidden">
             <div className="relative">
-              <div className="absolute inset-0">
-                <div className="absolute -top-24 -left-24 w-72 h-72 bg-emerald-400/10 blur-3xl rounded-full" />
-                <div className="absolute -bottom-28 -right-24 w-96 h-96 bg-cyan-400/10 blur-3xl rounded-full" />
-              </div>
+                <div className="absolute inset-0">
+                  <div className="absolute -top-24 -left-24 w-72 h-72 bg-fuchsia-400/20 blur-3xl rounded-full" />
+                  <div className="absolute -bottom-28 -right-24 w-96 h-96 bg-sky-400/20 blur-3xl rounded-full" />
+                </div>
               <div className="relative p-5">
                 {activePet ? (
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <PetAvatar photoPath={activePet.photoPath} name={activePet.name} className="w-12 h-12 rounded-2xl" />
                       <div>
-                        <div className="text-xs text-slate-400">Pet attivo</div>
+                        <div className="text-xs text-slate-600">Pet attivo</div>
                         <div className="text-lg font-semibold">{activePet.name}</div>
-                        <div className="text-xs text-slate-500">{activePet.species}{activePet.breed ? ` · ${activePet.breed}` : ""}</div>
+                        <div className="text-xs text-slate-600">{activePet.species}{activePet.breed ? ` · ${activePet.breed}` : ""}</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Link to="/app/status" className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                      <Link to="/app/status" className="lp-btn-icon">
                         Status
                       </Link>
-                      <Link to="/app/records" className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                      <Link to="/app/records" className="lp-btn-icon">
                         Records
                       </Link>
                     </div>
@@ -173,7 +173,7 @@ export default function Dashboard() {
                     title="Crea il primo pet"
                     description="Aggiungi il profilo per iniziare con routine, salute e cartella clinica."
                     action={
-                      <a href="#create-pet" className="inline-flex items-center justify-center rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300">
+                      <a href="#create-pet" className="inline-flex items-center justify-center rounded-xl bg-fuchsia-600 text-white px-4 py-2 text-sm font-medium hover:bg-fuchsia-500">
                         Inizia
                       </a>
                     }
@@ -182,30 +182,30 @@ export default function Dashboard() {
 
                 {activePet ? (
                   <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <Target className="w-4 h-4 text-emerald-200" />
+                    <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <Target className="w-4 h-4 text-fuchsia-700" />
                         Task dovuti
                       </div>
                       <div className="mt-1 text-2xl font-semibold">{dueTasks.length}</div>
                     </div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <Bell className="w-4 h-4 text-emerald-200" />
+                    <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <Bell className="w-4 h-4 text-fuchsia-700" />
                         Alert
                       </div>
                       <div className="mt-1 text-2xl font-semibold">{notifications.length}</div>
                     </div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <CalendarClock className="w-4 h-4 text-emerald-200" />
+                    <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <CalendarClock className="w-4 h-4 text-fuchsia-700" />
                         Agenda
                       </div>
                       <div className="mt-1 text-2xl font-semibold">{upcoming.length}</div>
                     </div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <Sparkles className="w-4 h-4 text-emerald-200" />
+                    <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <Sparkles className="w-4 h-4 text-fuchsia-700" />
                         Insight
                       </div>
                       <div className="mt-1 text-2xl font-semibold">{recentLogs.length}</div>
@@ -225,41 +225,41 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               {!activePetId ? (
-                <div className="text-sm text-slate-400">Seleziona o crea un pet per usare le azioni rapide.</div>
+                <div className="text-sm text-slate-600">Seleziona o crea un pet per usare le azioni rapide.</div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => quickAddLog("food")} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 hover:bg-slate-900/60 text-left">
+                  <button onClick={() => quickAddLog("food")} className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 hover:bg-white text-left">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <HeartPulse className="w-4 h-4 text-emerald-200" />
+                      <HeartPulse className="w-4 h-4 text-fuchsia-700" />
                       Cibo
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">Registra pasto</div>
+                    <div className="text-xs text-slate-600 mt-1">Registra pasto</div>
                   </button>
-                  <button onClick={() => quickAddLog("water")} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 hover:bg-slate-900/60 text-left">
+                  <button onClick={() => quickAddLog("water")} className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 hover:bg-white text-left">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <Droplets className="w-4 h-4 text-emerald-200" />
+                      <Droplets className="w-4 h-4 text-fuchsia-700" />
                       Acqua
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">Idratazione</div>
+                    <div className="text-xs text-slate-600 mt-1">Idratazione</div>
                   </button>
-                  <button onClick={() => quickAddLog("activity")} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 hover:bg-slate-900/60 text-left">
+                  <button onClick={() => quickAddLog("activity")} className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 hover:bg-white text-left">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <Footprints className="w-4 h-4 text-emerald-200" />
+                      <Footprints className="w-4 h-4 text-fuchsia-700" />
                       Attività
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">Passeggiata / gioco</div>
+                    <div className="text-xs text-slate-600 mt-1">Passeggiata / gioco</div>
                   </button>
-                  <button onClick={() => quickAddLog("symptom")} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 hover:bg-slate-900/60 text-left">
+                  <button onClick={() => quickAddLog("symptom")} className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 hover:bg-white text-left">
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <HeartPulse className="w-4 h-4 text-rose-200" />
                       Sintomi
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">Nota salute</div>
+                    <div className="text-xs text-slate-600 mt-1">Nota salute</div>
                   </button>
                 </div>
               )}
-              <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-400 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-emerald-200" />
+              <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3 text-xs text-slate-600 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-fuchsia-700" />
                 Per riepiloghi AI: apri Insights e genera una sintesi.
               </div>
             </CardContent>
@@ -275,7 +275,7 @@ export default function Dashboard() {
                 <CardTitle>Task in scadenza</CardTitle>
                 <CardDescription>{activePetId ? "Per il pet attivo" : "Seleziona o crea un pet"}</CardDescription>
               </div>
-              <Link to="/app/planner" className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+              <Link to="/app/planner" className="lp-btn-icon">
                 Planner
               </Link>
             </div>
@@ -287,9 +287,9 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-2">
                 {dueTasks.map((t) => (
-                  <div key={t.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                  <div key={t.id} className="lp-panel px-3 py-2">
                     <div className="text-sm font-medium">{t.title}</div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-600">
                       Scadenza: {t.dueAt ? new Date(t.dueAt).toLocaleString() : "—"}
                     </div>
                   </div>
@@ -310,29 +310,29 @@ export default function Dashboard() {
                   <CardTitle>Smart alerts</CardTitle>
                   <CardDescription>Consigli automatici in base ai log</CardDescription>
                 </div>
-                <Link to="/app/health" className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                <Link to="/app/health" className="lp-btn-icon">
                   Salute
                 </Link>
               </div>
             </CardHeader>
             <CardContent>
             {!activePetId ? (
-              <div className="text-sm text-slate-400">Seleziona un pet per vedere gli alert.</div>
+              <div className="text-sm text-slate-600">Seleziona un pet per vedere gli alert.</div>
             ) : notifications.length === 0 ? (
-              <div className="text-sm text-slate-400">Nessun alert non letto.</div>
+              <div className="text-sm text-slate-600">Nessun alert non letto.</div>
             ) : (
               <div className="space-y-2">
                 {notifications.map((n) => (
-                  <div key={n.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                  <div key={n.id} className="lp-panel px-3 py-2">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="text-sm font-medium">{n.title}</div>
-                        <div className="text-xs text-slate-400 mt-0.5">{n.body}</div>
-                        <div className="text-xs text-slate-500 mt-1">{new Date(n.createdAt).toLocaleString()}</div>
+                        <div className="text-xs text-slate-600 mt-0.5">{n.body}</div>
+                        <div className="text-xs text-slate-600 mt-1">{new Date(n.createdAt).toLocaleString()}</div>
                       </div>
                       <button
                         onClick={() => activePetId && markNotificationRead(activePetId, n.id)}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="lp-btn-icon"
                       >
                         Segna letto
                       </button>
@@ -351,22 +351,22 @@ export default function Dashboard() {
                   <CardTitle>Agenda</CardTitle>
                   <CardDescription>Prossimi eventi e promemoria</CardDescription>
                 </div>
-                <Link to="/app/agenda" className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                <Link to="/app/agenda" className="lp-btn-icon">
                   Apri
                 </Link>
               </div>
             </CardHeader>
             <CardContent>
             {!activePetId ? (
-              <div className="text-sm text-slate-400">Seleziona un pet per vedere i prossimi eventi.</div>
+              <div className="text-sm text-slate-600">Seleziona un pet per vedere i prossimi eventi.</div>
             ) : upcoming.length === 0 ? (
-              <div className="text-sm text-slate-400">Nessun evento in arrivo.</div>
+              <div className="text-sm text-slate-600">Nessun evento in arrivo.</div>
             ) : (
               <div className="space-y-2">
                 {upcoming.map((e) => (
-                  <div key={e.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                  <div key={e.id} className="lp-panel px-3 py-2">
                     <div className="text-sm font-medium">{e.title}</div>
-                    <div className="text-xs text-slate-500">{new Date(e.dueAt).toLocaleString()} · {e.kind}</div>
+                    <div className="text-xs text-slate-600">{new Date(e.dueAt).toLocaleString()} · {e.kind}</div>
                   </div>
                 ))}
               </div>
@@ -382,20 +382,20 @@ export default function Dashboard() {
             <CardContent>
             <form onSubmit={onCreatePet} className="space-y-3">
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Nome</div>
+                <div className="text-xs text-slate-600 mb-1">Nome</div>
                 <input
                   value={petName}
                   onChange={(e) => setPetName(e.target.value)}
                   required
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                  className="lp-input"
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Specie</div>
+                <div className="text-xs text-slate-600 mb-1">Specie</div>
                 <select
                   value={petSpecies}
                   onChange={(e) => setPetSpecies(e.target.value)}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                  className="lp-select"
                 >
                   <option value="dog">Cane</option>
                   <option value="cat">Gatto</option>
@@ -404,7 +404,7 @@ export default function Dashboard() {
               </label>
               <button
                 disabled={creatingPet}
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
+                className="w-full lp-btn-primary"
                 type="submit"
               >
                 {creatingPet ? "Creazione…" : "Crea"}
@@ -426,35 +426,35 @@ export default function Dashboard() {
               <button
                 onClick={() => quickAddLog("food")}
                 disabled={!user || !activePetId}
-                className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 disabled:opacity-60"
+                className="lp-btn-icon"
               >
                 Cibo
               </button>
               <button
                 onClick={() => quickAddLog("water")}
                 disabled={!user || !activePetId}
-                className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 disabled:opacity-60"
+                className="lp-btn-icon"
               >
                 Acqua
               </button>
               <button
                 onClick={() => quickAddLog("weight")}
                 disabled={!user || !activePetId}
-                className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 disabled:opacity-60"
+                className="lp-btn-icon"
               >
                 Peso
               </button>
               <button
                 onClick={() => quickAddLog("activity")}
                 disabled={!user || !activePetId}
-                className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 disabled:opacity-60"
+                className="lp-btn-icon"
               >
                 Attività
               </button>
               <button
                 onClick={() => quickAddLog("symptom")}
                 disabled={!user || !activePetId}
-                className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 disabled:opacity-60"
+                className="lp-btn-icon"
               >
                 Sintomi
               </button>
@@ -464,14 +464,14 @@ export default function Dashboard() {
         <CardContent>
         {activePetId ? (
           recentLogs.length === 0 ? (
-            <div className="text-sm text-slate-400">Nessun log. Aggiungi una nota rapida o registra un evento.</div>
+            <div className="text-sm text-slate-600">Nessun log. Aggiungi una nota rapida o registra un evento.</div>
           ) : (
             <div className="space-y-2">
               {recentLogs.map((l) => (
-                <div key={l.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                <div key={l.id} className="lp-panel px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-medium">{l.type}</div>
-                    <div className="text-xs text-slate-500">{new Date(l.occurredAt).toLocaleString()}</div>
+                    <div className="text-xs text-slate-600">{new Date(l.occurredAt).toLocaleString()}</div>
                   </div>
                   {l.note ? <div className="text-sm text-slate-300 mt-1">{l.note}</div> : null}
                 </div>
@@ -479,7 +479,7 @@ export default function Dashboard() {
             </div>
           )
         ) : (
-          <div className="text-sm text-slate-400">Seleziona o crea un pet per vedere l’attività.</div>
+          <div className="text-sm text-slate-600">Seleziona o crea un pet per vedere l’attività.</div>
         )}
         </CardContent>
       </Card>
