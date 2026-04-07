@@ -41,6 +41,15 @@ type NotificationDoc = {
   type?: unknown;
 };
 
+type AgendaEventDoc = {
+  petId?: unknown;
+  title?: unknown;
+  dueAt?: unknown;
+  kind?: unknown;
+  reminderMinutesBefore?: unknown;
+  reminderSentAt?: unknown;
+};
+
 function parsePlan(v: unknown): "free" | "pro" {
   return v === "pro" ? "pro" : "free";
 }
@@ -678,6 +687,55 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
           severity: "info",
         });
       }
+    })
+  );
+});
+
+function agendaKindLabel(kind: string) {
+  if (kind === "vet") return "Veterinario";
+  if (kind === "grooming") return "Toelettatura";
+  if (kind === "training") return "Training";
+  if (kind === "cleaning") return "Pulizia";
+  return "Promemoria";
+}
+
+export const agendaReminderSweep = onSchedule("every 5 minutes", async () => {
+  const now = Date.now();
+  const lookAheadMs = 14 * 24 * 60 * 60 * 1000;
+
+  const snap = await db
+    .collectionGroup("agendaEvents")
+    .where("dueAt", ">=", now - 60 * 60 * 1000)
+    .where("dueAt", "<=", now + lookAheadMs)
+    .limit(400)
+    .get();
+
+  await Promise.all(
+    snap.docs.map(async (d) => {
+      const data = d.data() as AgendaEventDoc;
+      const petId = typeof data.petId === "string" ? data.petId : null;
+      const dueAt = typeof data.dueAt === "number" ? data.dueAt : null;
+      const reminderMinutesBefore = typeof data.reminderMinutesBefore === "number" ? data.reminderMinutesBefore : 0;
+      const reminderSentAt = typeof data.reminderSentAt === "number" ? data.reminderSentAt : null;
+      if (!petId || !dueAt) return;
+      if (reminderMinutesBefore <= 0) return;
+      if (reminderSentAt) return;
+
+      const remindAt = dueAt - reminderMinutesBefore * 60 * 1000;
+      const windowMs = 6 * 60 * 1000;
+      if (now < remindAt || now > remindAt + windowMs) return;
+
+      const titleStr = typeof data.title === "string" ? data.title : "Evento";
+      const kindStr = typeof data.kind === "string" ? data.kind : "other";
+
+      await createPetNotification(petId, {
+        type: `agenda_due:${d.id}`,
+        title: `${agendaKindLabel(kindStr)} tra ${reminderMinutesBefore} min`,
+        body: `${titleStr} · ${new Date(dueAt).toLocaleString()}`,
+        severity: "info",
+      });
+
+      await d.ref.set({ reminderSentAt: now }, { merge: true });
     })
   );
 });
