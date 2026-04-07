@@ -126,7 +126,7 @@ export default function Planner() {
                   value={routineTitle}
                   onChange={(e) => setRoutineTitle(e.target.value)}
                   placeholder="Pasto serale"
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                  className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-500/30"
                 />
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -135,7 +135,7 @@ export default function Planner() {
                   <select
                     value={routineKind}
                     onChange={(e) => setRoutineKind(e.target.value as RoutineKind)}
-                    className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                    className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
                   >
                     <option value="food">Cibo</option>
                     <option value="med">Farmaco</option>
@@ -152,13 +152,13 @@ export default function Planner() {
                     value={routineTimes}
                     onChange={(e) => setRoutineTimes(e.target.value)}
                     placeholder="08:00, 19:00"
-                    className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                    className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
                   />
                 </label>
               </div>
               <button
                 disabled={creatingRoutine}
-                className="w-full rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                className="w-full rounded-xl bg-fuchsia-600 text-white px-4 py-2 text-sm font-medium hover:bg-fuchsia-500 disabled:opacity-60"
                 type="submit"
               >
                 {creatingRoutine ? "Creazione…" : "Crea routine"}
@@ -172,7 +172,7 @@ export default function Planner() {
               ) : (
                 <div className="space-y-2">
                   {routines.map((r) => (
-                    <div key={r.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                    <div key={r.id} className="rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
                       {editingRoutineId === r.id ? (
                         <form
                           onSubmit={async (e) => {
@@ -199,7 +199,7 @@ export default function Planner() {
                             <input
                               value={editRoutineTitle}
                               onChange={(e) => setEditRoutineTitle(e.target.value)}
-                              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                              className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
                             />
                           </label>
                           <label className="block">
@@ -207,7 +207,7 @@ export default function Planner() {
                             <select
                               value={editRoutineKind}
                               onChange={(e) => setEditRoutineKind(e.target.value as RoutineKind)}
-                              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                              className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
                             >
                               <option value="food">Cibo</option>
                               <option value="med">Farmaco</option>
@@ -223,21 +223,21 @@ export default function Planner() {
                             <input
                               value={editRoutineTimes}
                               onChange={(e) => setEditRoutineTimes(e.target.value)}
-                              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                              className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
                             />
                           </label>
                           <div className="sm:col-span-2 flex items-center gap-2 justify-end">
                             <button
                               type="button"
                               onClick={() => setEditingRoutineId(null)}
-                              className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                              className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                             >
                               Annulla
                             </button>
                             <button
                               disabled={savingRoutine}
                               type="submit"
-                              className="rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-emerald-300 disabled:opacity-60"
+                              className="rounded-xl bg-fuchsia-600 text-white px-3 py-2 text-xs font-medium hover:bg-fuchsia-500 disabled:opacity-60"
                             >
                               {savingRoutine ? "Salvataggio…" : "Salva"}
                             </button>
@@ -257,7 +257,7 @@ export default function Planner() {
                                 setEditRoutineKind(r.kind);
                                 setEditRoutineTimes(r.times.join(", "));
                               }}
-                              className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                              className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
@@ -267,7 +267,7 @@ export default function Planner() {
                                 if (!confirm("Eliminare questa routine?")) return;
                                 await deleteRoutine(activePetId, r.id);
                               }}
-                              className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                              className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -275,8 +275,8 @@ export default function Planner() {
                               onClick={() => activePetId && setRoutineEnabled(activePetId, r.id, !r.enabled)}
                               className={
                                 r.enabled
-                                  ? "rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-emerald-300"
-                                  : "rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                                  ? "rounded-xl bg-fuchsia-600 text-white px-3 py-2 text-xs font-medium hover:bg-fuchsia-500"
+                                  : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                               }
                             >
                               {r.enabled ? "Attiva" : "Disattiva"}
@@ -309,17 +309,17 @@ export default function Planner() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Titolo task"
               required
-              className="rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+              className="rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-500/30"
             />
             <input
               value={dueAt}
               onChange={(e) => setDueAt(e.target.value)}
               type="datetime-local"
-              className="rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+              className="rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-500/30"
             />
             <button
               disabled={creating}
-              className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+              className="rounded-xl bg-fuchsia-600 text-white px-4 py-2 text-sm font-medium hover:bg-fuchsia-500 disabled:opacity-60"
               type="submit"
             >
               {creating ? "Aggiunta…" : "Aggiungi"}
@@ -341,7 +341,7 @@ export default function Planner() {
           ) : (
             <div className="space-y-2">
               {due.map((t) => (
-                <div key={t.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                <div key={t.id} className="rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
                   {editingTaskId === t.id ? (
                     <form
                       onSubmit={async (e) => {
@@ -363,7 +363,7 @@ export default function Planner() {
                         <input
                           value={editTaskTitle}
                           onChange={(e) => setEditTaskTitle(e.target.value)}
-                          className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                          className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
                         />
                       </label>
                       <label className="block">
@@ -372,21 +372,21 @@ export default function Planner() {
                           value={editTaskDueAt}
                           onChange={(e) => setEditTaskDueAt(e.target.value)}
                           type="datetime-local"
-                          className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                          className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
                         />
                       </label>
                       <div className="md:col-span-2 flex items-center gap-2 justify-end">
                         <button
                           type="button"
                           onClick={() => setEditingTaskId(null)}
-                          className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                          className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                         >
                           Annulla
                         </button>
                         <button
                           disabled={savingTask}
                           type="submit"
-                          className="rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-emerald-300 disabled:opacity-60"
+                          className="rounded-xl bg-fuchsia-600 text-white px-3 py-2 text-xs font-medium hover:bg-fuchsia-500 disabled:opacity-60"
                         >
                           {savingTask ? "Salvataggio…" : "Salva"}
                         </button>
@@ -405,7 +405,7 @@ export default function Planner() {
                             setEditTaskTitle(t.title);
                             setEditTaskDueAt(t.dueAt ? new Date(t.dueAt).toISOString().slice(0, 16) : "");
                           }}
-                          className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                          className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
@@ -415,13 +415,13 @@ export default function Planner() {
                             if (!confirm("Eliminare questo task?")) return;
                             await deleteTask(activePetId, t.id);
                           }}
-                          className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                          className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => toggleDone(t, true)}
-                          className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                          className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                         >
                           Fatto
                         </button>
@@ -446,7 +446,7 @@ export default function Planner() {
           ) : (
             <div className="space-y-2">
               {done.map((t) => (
-                <div key={t.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                <div key={t.id} className="rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium">{t.title}</div>
@@ -459,13 +459,13 @@ export default function Planner() {
                           if (!confirm("Eliminare questo task?")) return;
                           await deleteTask(activePetId, t.id);
                         }}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => toggleDone(t, false)}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                       >
                         Annulla
                       </button>

@@ -103,24 +103,24 @@ export function AppShellLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pb-[72px] lg:pb-0">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-fuchsia-50 text-slate-900 pb-[72px] lg:pb-0">
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr]">
-        <aside className="hidden lg:block border-r border-slate-800 bg-slate-950">
+        <aside className="hidden lg:block border-r border-slate-200/70 bg-white/60 backdrop-blur-sm">
           <div className="h-screen sticky top-0 p-4 flex flex-col gap-4">
             <div className="flex items-center gap-2 px-2">
-              <div className="w-9 h-9 rounded-xl bg-emerald-300/15 border border-emerald-300/30 flex items-center justify-center">
-                <PawPrint className="w-5 h-5 text-emerald-200" />
+              <div className="w-9 h-9 rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 flex items-center justify-center">
+                <PawPrint className="w-5 h-5 text-fuchsia-700" />
               </div>
               <div className="leading-tight">
                 <div className="text-sm font-semibold flex items-center gap-2">
                   LifePet
                   {user?.isDemo ? (
-                    <span className="inline-flex items-center rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2 py-0.5 text-[10px] text-emerald-100">
+                    <span className="inline-flex items-center rounded-full border border-fuchsia-600/20 bg-fuchsia-600/10 px-2 py-0.5 text-[10px] text-fuchsia-800">
                       DEMO
                     </span>
                   ) : null}
                 </div>
-                <div className="text-xs text-slate-400">Care, planner, insights</div>
+                <div className="text-xs text-slate-600">Cura, planner, insights</div>
               </div>
             </div>
 
@@ -137,8 +137,8 @@ export function AppShellLayout() {
                       cn(
                         "flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors",
                         isActive
-                          ? "bg-slate-900 text-slate-100"
-                          : "text-slate-300 hover:bg-slate-900/60 hover:text-slate-100"
+                          ? "bg-white text-slate-900 border border-slate-200/70 shadow-sm"
+                          : "text-slate-700 hover:bg-white/70 hover:text-slate-900"
                       )
                     }
                   >
@@ -149,20 +149,20 @@ export function AppShellLayout() {
               })}
             </nav>
 
-            <div className="mt-auto pt-4 border-t border-slate-800">
+            <div className="mt-auto pt-4 border-t border-slate-200/70">
               <button
                 onClick={onLogout}
-                className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm border border-slate-800 hover:bg-slate-900"
+                className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm border border-slate-200/70 bg-white/60 hover:bg-white"
               >
                 <LogOut className="w-4 h-4" />
-                Sign out
+                Esci
               </button>
             </div>
           </div>
         </aside>
 
         {mobileMenuOpen && (
-          <div className="fixed inset-0 z-40 bg-slate-950 lg:hidden flex flex-col pt-16 px-4 pb-24 overflow-y-auto">
+          <div className="fixed inset-0 z-40 bg-gradient-to-br from-sky-50 via-white to-fuchsia-50 lg:hidden flex flex-col pt-16 px-4 pb-24 overflow-y-auto">
             <div className="mb-4">
               <PetSwitcher pets={pets as Pet[]} activePet={activePet} />
             </div>
@@ -177,8 +177,8 @@ export function AppShellLayout() {
                       cn(
                         "flex items-center gap-3 rounded-xl px-4 py-3 text-base transition-colors",
                         isActive
-                          ? "bg-slate-900 text-slate-100 font-medium"
-                          : "text-slate-300 hover:bg-slate-900/60 hover:text-slate-100"
+                          ? "bg-white text-slate-900 font-medium border border-slate-200/70 shadow-sm"
+                          : "text-slate-700 hover:bg-white/70 hover:text-slate-900"
                       )
                     }
                   >
@@ -188,13 +188,13 @@ export function AppShellLayout() {
                 );
               })}
             </nav>
-            <div className="mt-8 pt-4 border-t border-slate-800">
+            <div className="mt-8 pt-4 border-t border-slate-200/70">
               <button
                 onClick={onLogout}
-                className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-base border border-slate-800 hover:bg-slate-900"
+                className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-base border border-slate-200/70 bg-white/70 hover:bg-white"
               >
                 <LogOut className="w-5 h-5" />
-                Sign out
+                Esci
               </button>
             </div>
           </div>
@@ -202,18 +202,18 @@ export function AppShellLayout() {
 
         <main className="min-h-full relative">
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="absolute -top-24 -left-24 w-72 h-72 bg-emerald-400/10 blur-3xl rounded-full" />
-            <div className="absolute top-24 -right-28 w-96 h-96 bg-cyan-400/10 blur-3xl rounded-full" />
+            <div className="absolute -top-24 -left-24 w-72 h-72 bg-fuchsia-400/20 blur-3xl rounded-full" />
+            <div className="absolute top-24 -right-28 w-96 h-96 bg-sky-400/20 blur-3xl rounded-full" />
           </div>
-          <div className="lg:hidden sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md p-4 border-b border-slate-800 flex items-center justify-between gap-3">
+          <div className="lg:hidden sticky top-0 z-50 bg-white/70 backdrop-blur-md p-4 border-b border-slate-200/70 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-emerald-300/15 border border-emerald-300/30 flex items-center justify-center">
-                <PawPrint className="w-4 h-4 text-emerald-200" />
+              <div className="w-8 h-8 rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 flex items-center justify-center">
+                <PawPrint className="w-4 h-4 text-fuchsia-700" />
               </div>
               <div className="font-semibold flex items-center gap-2">
                 LifePet
                 {user?.isDemo ? (
-                  <span className="inline-flex items-center rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2 py-0.5 text-[10px] text-emerald-100">
+                  <span className="inline-flex items-center rounded-full border border-fuchsia-600/20 bg-fuchsia-600/10 px-2 py-0.5 text-[10px] text-fuchsia-800">
                     DEMO
                   </span>
                 ) : null}
@@ -221,7 +221,7 @@ export function AppShellLayout() {
             </div>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-xl border border-slate-800 hover:bg-slate-900"
+              className="p-2 rounded-xl border border-slate-200/70 bg-white/60 hover:bg-white"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -235,7 +235,7 @@ export function AppShellLayout() {
         </main>
       </div>
 
-      <div className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-slate-950/90 backdrop-blur-md border-t border-slate-800 pb-safe">
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-white/70 backdrop-blur-md border-t border-slate-200/70 pb-safe">
         <div className="flex items-center justify-around h-16 px-2">
           {mobileNav.map((item) => {
             const Icon = item.icon;
@@ -246,7 +246,7 @@ export function AppShellLayout() {
                 className={({ isActive }) =>
                   cn(
                     "flex flex-col items-center justify-center w-16 h-full gap-1 transition-colors",
-                    isActive ? "text-emerald-300" : "text-slate-400 hover:text-slate-200"
+                      isActive ? "text-fuchsia-700" : "text-slate-600 hover:text-slate-900"
                   )
                 }
               >

@@ -12,3 +12,17 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-gradient-to-br from-sky-50 via-white to-fuchsia-50 text-slate-900;
+  }
+
+  a {
+    @apply text-fuchsia-700 hover:text-fuchsia-800;
+  }
+}
