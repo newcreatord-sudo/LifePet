@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { usePetStore } from "@/stores/petStore";
 import { useAuthStore } from "@/stores/authStore";
 import { updatePet } from "@/data/pets";
+import { createLog, subscribeLogsRange } from "@/data/logs";
 import { getPetDocumentDownloadUrl, subscribeDocuments, uploadPetDocument } from "@/data/documents";
 import { deletePetPhoto, uploadPetPhoto } from "@/data/profilePhotos";
 import { PetAvatar } from "@/components/PetAvatar";
@@ -10,7 +11,7 @@ import type { Pet, PetDocument } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ExternalLink, FileText, PhoneCall, Save, ShieldPlus } from "lucide-react";
+import { ExternalLink, FileText, LineChart, PhoneCall, Save, ShieldPlus } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Pets() {
@@ -47,6 +48,9 @@ export default function Pets() {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [docs, setDocs] = useState<PetDocument[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [weightLogs, setWeightLogs] = useState<{ at: number; kg: number }[]>([]);
+  const [newWeight, setNewWeight] = useState("");
+  const [addingWeight, setAddingWeight] = useState(false);
 
   useEffect(() => {
     setName(activePet?.name ?? "");
@@ -97,6 +101,61 @@ export default function Pets() {
     const unsub = subscribeDocuments(activePetId, setDocs);
     return () => unsub();
   }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const toMs = Date.now();
+    const fromMs = toMs - 365 * 24 * 60 * 60 * 1000;
+    const unsub = subscribeLogsRange(activePetId, fromMs, toMs, (all) => {
+      const points = all
+        .filter((l) => l.type === "weight")
+        .map((l) => ({ at: l.occurredAt, kg: Number(l.value?.amount) }))
+        .filter((p) => Number.isFinite(p.kg) && p.kg > 0)
+        .sort((a, b) => a.at - b.at);
+      setWeightLogs(points);
+    });
+    return () => unsub();
+  }, [activePetId]);
+
+  const weightSpark = useMemo(() => {
+    if (weightLogs.length < 2) return null;
+    const values = weightLogs.map((p) => p.kg);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const w = 320;
+    const h = 90;
+    const pad = 8;
+    const step = (w - pad * 2) / (weightLogs.length - 1);
+    const d = weightLogs
+      .map((p, i) => {
+        const x = pad + i * step;
+        const y = pad + (1 - (p.kg - min) / span) * (h - pad * 2);
+        return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+    return { d, w, h, min, max };
+  }, [weightLogs]);
+
+  async function addWeightLog() {
+    if (!user || !activePetId) return;
+    const v = Number(newWeight);
+    if (!Number.isFinite(v) || v <= 0) return;
+    setAddingWeight(true);
+    try {
+      await createLog(activePetId, {
+        petId: activePetId,
+        type: "weight",
+        occurredAt: Date.now(),
+        value: { amount: v, unit: "kg" },
+        createdAt: Date.now(),
+        createdBy: user.uid,
+      });
+      setNewWeight("");
+    } finally {
+      setAddingWeight(false);
+    }
+  }
 
   async function onSave() {
     if (!activePetId) return;
@@ -459,6 +518,50 @@ export default function Pets() {
         <section className="lg:col-span-5 space-y-6">
           <Card>
             <CardHeader>
+              <CardTitle>Crescita</CardTitle>
+              <CardDescription>Peso nel tempo (ultimi 12 mesi).</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3">
+                <div className="lp-panel p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs text-slate-600">Peso attuale (profilo)</div>
+                      <div className="text-lg font-semibold">{activePet.weightKg ? `${activePet.weightKg} kg` : "—"}</div>
+                      <div className="text-xs text-slate-600">BCS: {activePet.bodyConditionScore ?? "—"} / 9</div>
+                    </div>
+                    <LineChart className="w-5 h-5 text-fuchsia-700" />
+                  </div>
+
+                  {weightSpark ? (
+                    <div className="mt-3">
+                      <svg width={weightSpark.w} height={weightSpark.h} className="w-full">
+                        <path d={weightSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                      </svg>
+                      <div className="mt-1 text-[11px] text-slate-600">Range: {weightSpark.min.toFixed(1)}–{weightSpark.max.toFixed(1)} kg</div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-sm text-slate-600">Aggiungi 2+ pesate per vedere il grafico.</div>
+                  )}
+                </div>
+
+                <div className="flex items-end gap-2">
+                  <label className="block flex-1">
+                    <div className="text-xs text-slate-600 mb-1">Aggiungi peso (kg)</div>
+                    <input value={newWeight} onChange={(e) => setNewWeight(e.target.value)} inputMode="decimal" className="lp-input" />
+                  </label>
+                  <button onClick={addWeightLog} disabled={addingWeight || !user} className="lp-btn-primary">
+                    {addingWeight ? "…" : "Salva"}
+                  </button>
+                </div>
+
+                <div className="text-xs text-slate-600">Consiglio: una pesata ogni 2–4 settimane rende l’indice longevità più accurato.</div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Foto</CardTitle>
               <CardDescription>Mostrata nel selettore pet e nelle schermate principali.</CardDescription>
             </CardHeader>
@@ -471,17 +574,17 @@ export default function Pets() {
                   accept="image/*"
                   onChange={onUploadPhoto}
                   disabled={photoBusy}
-                  className="block w-full text-sm text-slate-300 file:mr-3 file:rounded-xl file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:text-slate-100 hover:file:bg-slate-900"
+                  className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-fuchsia-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-fuchsia-500"
                 />
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     onClick={onRemovePhoto}
                     disabled={photoBusy || !activePet.photoPath}
-                    className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 disabled:opacity-60"
+                    className="lp-btn-secondary"
                   >
                     Rimuovi
                   </button>
-                  <div className="text-xs text-slate-500">Stored in Firebase Storage.</div>
+                  <div className="text-xs text-slate-600">Salvata su Firebase Storage.</div>
                 </div>
               </div>
             </div>
@@ -495,7 +598,7 @@ export default function Pets() {
                   <CardTitle>Documenti</CardTitle>
                   <CardDescription>Carica e apri referti e allegati.</CardDescription>
                 </div>
-                <Link to="/app/documents" className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                <Link to="/app/documents" className="lp-btn-icon">
                   Apri libreria
                 </Link>
               </div>
@@ -505,18 +608,18 @@ export default function Pets() {
             type="file"
             onChange={onUpload}
             disabled={uploading}
-            className="block w-full text-sm text-slate-300 file:mr-3 file:rounded-xl file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:text-slate-100 hover:file:bg-slate-900"
+            className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-fuchsia-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-fuchsia-500"
           />
           <div className="mt-3 space-y-2">
             {docs.length === 0 ? (
               <EmptyState icon={FileText} title="Nessun documento" description="Carica il primo referto per averlo sempre con te." />
             ) : (
               docs.map((d) => (
-                <div key={d.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                <div key={d.id} className="lp-panel px-3 py-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium truncate">{d.name}</div>
-                      <div className="text-xs text-slate-500">Caricato: {new Date(d.createdAt).toLocaleString()}</div>
+                      <div className="text-xs text-slate-600">Caricato: {new Date(d.createdAt).toLocaleString()}</div>
                     </div>
                     <button
                       onClick={async () => {
@@ -527,7 +630,7 @@ export default function Pets() {
                           return;
                         }
                       }}
-                      className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                      className="lp-btn-icon"
                     >
                       Apri
                     </button>
@@ -536,7 +639,7 @@ export default function Pets() {
               ))
             )}
           </div>
-          <div className="mt-3 text-xs text-slate-500">Stored in Firebase Storage; metadata in Firestore.</div>
+          <div className="mt-3 text-xs text-slate-600">File su Storage, metadati su Firestore.</div>
             </CardContent>
           </Card>
         </section>

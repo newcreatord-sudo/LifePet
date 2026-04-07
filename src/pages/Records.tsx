@@ -54,13 +54,24 @@ export default function Records() {
   const [tasks, setTasks] = useState<PetTask[]>([]);
   const [q, setQ] = useState("");
   const [show, setShow] = useState<Record<ItemKind, boolean>>({ health: true, log: true, doc: true, task: false });
+  const [logTypeFilter, setLogTypeFilter] = useState<Record<string, boolean>>({
+    symptom: true,
+    weight: true,
+    med: true,
+    vet: true,
+    food: true,
+    water: true,
+    activity: true,
+  });
+  const [rangeDays, setRangeDays] = useState("180");
   const [billing, setBilling] = useState<BillingStatus | null>(null);
 
   const range = useMemo(() => {
     const toMs = Date.now();
-    const fromMs = toMs - 180 * 24 * 60 * 60 * 1000;
+    const days = Number(rangeDays);
+    const fromMs = toMs - (Number.isFinite(days) && days > 0 ? days : 180) * 24 * 60 * 60 * 1000;
     return { fromMs, toMs };
-  }, []);
+  }, [rangeDays]);
 
   useEffect(() => {
     if (!activePetId) return;
@@ -111,6 +122,7 @@ export default function Records() {
     const logTypes = new Set(["symptom", "weight", "med", "vet", "food", "water", "activity"]);
     for (const l of logs) {
       if (!logTypes.has(l.type)) continue;
+      if (!logTypeFilter[l.type]) continue;
       items.push({
         kind: "log",
         id: l.id,
@@ -152,7 +164,7 @@ export default function Records() {
       })
       .sort((a, b) => b.ts - a.ts)
       .slice(0, 200);
-  }, [docs, health, logs, q, show, tasks]);
+  }, [docs, health, logTypeFilter, logs, q, show, tasks]);
 
   const effectivePlan = billing?.effectivePlan ?? (profile?.plan ?? (user?.isDemo ? "pro" : "free"));
   const canExport = effectivePlan === "pro";
@@ -166,7 +178,7 @@ export default function Records() {
           title="Seleziona un pet"
           description="Scegli un profilo per vedere la cartella clinica."
           action={
-            <Link to="/app/pets" className="inline-flex items-center justify-center rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900">
+            <Link to="/app/pets" className="lp-btn-secondary inline-flex items-center justify-center">
               Vai al profilo pet
             </Link>
           }
@@ -181,9 +193,9 @@ export default function Records() {
             <CardContent>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
               <div className="lg:col-span-6">
-                <div className="text-xs text-slate-400 mb-1">Cerca</div>
-                <div className="flex items-center gap-2 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2">
-                  <Search className="w-4 h-4 text-slate-400" />
+                <div className="text-xs text-slate-600 mb-1">Cerca</div>
+                <div className="flex items-center gap-2 rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2">
+                  <Search className="w-4 h-4 text-slate-600" />
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
@@ -192,7 +204,16 @@ export default function Records() {
                   />
                 </div>
               </div>
-              <div className="lg:col-span-6 flex flex-wrap gap-2">
+              <div className="lg:col-span-3">
+                <div className="text-xs text-slate-600 mb-1">Periodo</div>
+                <select value={rangeDays} onChange={(e) => setRangeDays(e.target.value)} className="lp-select">
+                  <option value="30">Ultimi 30 giorni</option>
+                  <option value="90">Ultimi 90 giorni</option>
+                  <option value="180">Ultimi 180 giorni</option>
+                  <option value="365">Ultimo anno</option>
+                </select>
+              </div>
+              <div className="lg:col-span-3 flex flex-wrap gap-2">
                 {(
                   [
                     ["health", "Salute"],
@@ -206,8 +227,8 @@ export default function Records() {
                     onClick={() => setShow((s) => ({ ...s, [k]: !s[k] }))}
                     className={
                       show[k]
-                        ? "rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs"
-                        : "rounded-xl border border-slate-800 px-3 py-2 text-xs text-slate-300 hover:bg-slate-900"
+                        ? "rounded-xl bg-white border border-slate-200/70 px-3 py-2 text-xs"
+                        : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
                     }
                   >
                     {label}
@@ -215,6 +236,34 @@ export default function Records() {
                 ))}
               </div>
             </div>
+
+            {show.log ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(
+                  [
+                    ["symptom", "Sintomi"],
+                    ["weight", "Peso"],
+                    ["food", "Cibo"],
+                    ["water", "Acqua"],
+                    ["activity", "Attività"],
+                    ["med", "Farmaci"],
+                    ["vet", "Veterinario"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setLogTypeFilter((s) => ({ ...s, [k]: !s[k] }))}
+                    className={
+                      logTypeFilter[k]
+                        ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                        : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             </CardContent>
           </Card>
 
@@ -247,8 +296,8 @@ export default function Records() {
                   }}
                   className={
                     canExport
-                      ? "rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-emerald-300"
-                      : "rounded-xl border border-slate-800 px-3 py-2 text-xs text-slate-400"
+                      ? "lp-btn-primary"
+                      : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-400"
                   }
                 >
                   <span className="inline-flex items-center gap-2">
@@ -256,7 +305,7 @@ export default function Records() {
                     Esporta
                   </span>
                 </button>
-                {billing?.betaProEnabled ? <div className="text-xs text-emerald-200">Beta</div> : null}
+                {billing?.betaProEnabled ? <div className="text-xs text-fuchsia-700">Beta</div> : null}
                 </div>
               </div>
             </CardHeader>
@@ -268,16 +317,16 @@ export default function Records() {
                 {timeline.map((it) => {
                   const Icon = iconFor(it.kind);
                   return (
-                    <div key={`${it.kind}:${it.id}`} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                    <div key={`${it.kind}:${it.id}`} className="lp-panel px-3 py-2">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5">
-                            <Icon className={it.kind === "health" ? "w-4 h-4 text-emerald-200" : "w-4 h-4 text-slate-300"} />
+                            <Icon className={it.kind === "health" ? "w-4 h-4 text-fuchsia-700" : "w-4 h-4 text-slate-700"} />
                           </div>
                           <div>
                             <div className="text-sm font-medium">{it.title}</div>
-                            <div className="text-xs text-slate-500">{it.subtitle ?? it.kind}</div>
-                            {it.note ? <div className="mt-1 text-sm text-slate-300 whitespace-pre-wrap">{it.note}</div> : null}
+                            <div className="text-xs text-slate-600">{it.subtitle ?? it.kind}</div>
+                            {it.note ? <div className="mt-1 text-sm text-slate-800 whitespace-pre-wrap">{it.note}</div> : null}
                             {it.attachment ? (
                               <button
                                 onClick={async () => {
@@ -288,26 +337,26 @@ export default function Records() {
                                     return;
                                   }
                                 }}
-                                className="mt-2 rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                                className="mt-2 lp-btn-icon"
                               >
                                 Apri: {it.attachment.name}
                               </button>
                             ) : null}
                           </div>
                         </div>
-                        <div className="text-xs text-slate-500 whitespace-nowrap">{new Date(it.ts).toLocaleString()}</div>
+                        <div className="text-xs text-slate-600 whitespace-nowrap">{new Date(it.ts).toLocaleString()}</div>
                       </div>
                     </div>
                   );
                 })}
               </div>
             )}
-            <div className="mt-3 text-xs text-slate-500">Questa vista aiuta a ricostruire storia clinica e routine. Non sostituisce il veterinario.</div>
+            <div className="mt-3 text-xs text-slate-600">Questa vista aiuta a ricostruire storia clinica e routine. Non sostituisce il veterinario.</div>
             </CardContent>
           </Card>
         </>
       )}
-      <div className="text-xs text-slate-500 flex items-center gap-2">
+      <div className="text-xs text-slate-600 flex items-center gap-2">
         <HeartPulse className="w-4 h-4" />
         Suggerimento: usa Salute per gli eventi e Documenti per i file.
       </div>

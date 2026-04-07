@@ -189,7 +189,7 @@ export default function Gps() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="GPS" description="Registra punti posizione e configura una zona sicura (geofence)." />
+      <PageHeader title="GPS" description="Tracking, storico e zona sicura (geofence)." />
 
       <Card>
         <CardHeader>
@@ -201,11 +201,11 @@ export default function Gps() {
             <div className="flex items-center gap-2">
               {watching ? (
                 <button onClick={stopTracking} className="rounded-xl bg-rose-500 text-white px-4 py-2 text-sm font-medium hover:bg-rose-400">
-                  Stop tracking
+                  Ferma tracking
                 </button>
               ) : (
                 <button onClick={startTracking} disabled={!activePetId} className="lp-btn-primary">
-                  Start tracking
+                  Avvia tracking
                 </button>
               )}
 
@@ -253,6 +253,29 @@ export default function Gps() {
                 </svg>
               </div>
             ) : null}
+
+            <div className="md:col-span-3 lp-panel p-3">
+              <div className="text-xs text-slate-600">Mappa</div>
+              <div className="mt-2 rounded-xl overflow-hidden border border-slate-200/70">
+                <iframe
+                  title="Mappa GPS"
+                  className="w-full h-[320px]"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  src={(() => {
+                    const d = 0.01;
+                    const left = latest.lng - d;
+                    const right = latest.lng + d;
+                    const top = latest.lat + d;
+                    const bottom = latest.lat - d;
+                    const bbox = `${left},${bottom},${right},${top}`;
+                    const marker = `${latest.lat},${latest.lng}`;
+                    return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(marker)}`;
+                  })()}
+                />
+              </div>
+              <div className="mt-2 text-xs text-slate-600">Vista indicativa: usa “Apri su OpenStreetMap” per zoom e dettagli.</div>
+            </div>
           </div>
         ) : (
           <EmptyState title="Nessun punto ancora" description="Premi “Registra punto” per salvare la posizione." />
