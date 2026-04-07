@@ -19,6 +19,11 @@ const db = getFirestore();
 const bucket = getStorage().bucket();
 const adminAuth = getAuth();
 
+async function recountReports(ref: FirebaseFirestore.CollectionReference, max: number) {
+  const snap = await ref.orderBy("createdAt", "desc").limit(max).get();
+  return snap.size;
+}
+
 const SKIP_AI = process.env.SKIP_AI === "1";
 const OPENAI_API_KEY = SKIP_AI ? null : defineSecret("OPENAI_API_KEY");
 
@@ -1016,6 +1021,30 @@ export const onListingDeleted = onDocumentDeleted("listings/{listingId}", async 
   const paths = Array.isArray(data?.photoPaths) ? data?.photoPaths.map((p) => String(p)) : [];
   await Promise.all(paths.filter(Boolean).map((p) => safeDeleteStoragePath(p)));
 });
+
+export const communityPostReportTrigger = onDocumentCreated("posts/{postId}/reports/{reportId}", async (event) => {
+  const postId = event.params.postId as string;
+  const postRef = db.collection("posts").doc(postId);
+  const reportsRef = postRef.collection("reports");
+  const count = await recountReports(reportsRef, 50);
+  const patch: Record<string, unknown> = { reportCount: count };
+  if (count >= 3) patch.status = "hidden";
+  await postRef.set(patch, { merge: true });
+});
+
+export const communityCommentReportTrigger = onDocumentCreated(
+  "posts/{postId}/comments/{commentId}/reports/{reportId}",
+  async (event) => {
+    const postId = event.params.postId as string;
+    const commentId = event.params.commentId as string;
+    const commentRef = db.collection("posts").doc(postId).collection("comments").doc(commentId);
+    const reportsRef = commentRef.collection("reports");
+    const count = await recountReports(reportsRef, 50);
+    const patch: Record<string, unknown> = { reportCount: count };
+    if (count >= 3) patch.status = "hidden";
+    await commentRef.set(patch, { merge: true });
+  }
+);
 
 export const deletePetCascade = onCall(async (req) => {
   const uid = req.auth?.uid;

@@ -44,11 +44,18 @@ export default function Marketplace() {
   const [onlyWithPhotos, setOnlyWithPhotos] = useState(false);
 
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [openListing, setOpenListing] = useState<MarketplaceListing | null>(null);
+  const [openIdx, setOpenIdx] = useState(0);
 
   function parseCategory(v: string): ListingCategory | "all" {
     if (v === "food" || v === "accessories" || v === "medicine" || v === "services" || v === "other") return v;
     return "all";
   }
+
+  const openPhotos = useMemo(() => {
+    if (!openListing) return [];
+    return (openListing.photoPaths ?? []).map((p) => ({ path: p, url: photoUrls[p] })).filter((x) => x.url);
+  }, [openListing, photoUrls]);
 
   useEffect(() => {
     const unsub = subscribeListings(50, setItems);
@@ -320,7 +327,17 @@ export default function Marketplace() {
                     {(it.photoPaths ?? []).slice(0, 3).map((p) => {
                       const url = photoUrls[p];
                       return url ? (
-                        <img key={p} src={url} className="h-24 w-full object-cover rounded-xl border border-slate-200/70" />
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => {
+                            setOpenListing(it);
+                            setOpenIdx(0);
+                          }}
+                          className="h-24 w-full overflow-hidden rounded-xl border border-slate-200/70"
+                        >
+                          <img src={url} className="h-24 w-full object-cover" />
+                        </button>
                       ) : (
                         <div key={p} className="h-24 rounded-xl border border-slate-200/70 bg-slate-100/60 grid place-items-center">
                           <ImageIcon className="w-5 h-5 text-slate-500" />
@@ -368,12 +385,101 @@ export default function Marketplace() {
                     </>
                   ) : null}
                 </div>
+
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenListing(it);
+                      setOpenIdx(0);
+                    }}
+                    className="lp-btn-secondary"
+                  >
+                    Apri dettagli
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
         </CardContent>
       </Card>
+
+      {openListing ? (
+        <div className="fixed inset-0 z-50 bg-black/50 p-4 overflow-auto" onClick={() => setOpenListing(null)}>
+          <div className="mx-auto max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <div className="lp-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-lg font-semibold">{openListing.title}</div>
+                  <div className="text-sm text-slate-700">{categoryLabel(openListing.category)} · € {openListing.price.toFixed(2)}</div>
+                </div>
+                <button onClick={() => setOpenListing(null)} className="lp-btn-icon" type="button">
+                  Chiudi
+                </button>
+              </div>
+
+              {openPhotos.length > 0 ? (
+                <div className="mt-3">
+                  <div className="rounded-2xl border border-slate-200/70 overflow-hidden bg-slate-50">
+                    <img src={openPhotos[Math.min(openIdx, openPhotos.length - 1)]?.url} className="w-full max-h-[420px] object-contain" />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="lp-btn-secondary"
+                      onClick={() => setOpenIdx((i) => Math.max(0, i - 1))}
+                      disabled={openIdx <= 0}
+                    >
+                      Precedente
+                    </button>
+                    <div className="text-xs text-slate-600">{openIdx + 1} / {openPhotos.length}</div>
+                    <button
+                      type="button"
+                      className="lp-btn-secondary"
+                      onClick={() => setOpenIdx((i) => Math.min(openPhotos.length - 1, i + 1))}
+                      disabled={openIdx >= openPhotos.length - 1}
+                    >
+                      Successiva
+                    </button>
+                  </div>
+                  <div className="mt-2 grid grid-cols-6 gap-2">
+                    {openPhotos.slice(0, 6).map((p, idx) => (
+                      <button
+                        key={p.path}
+                        type="button"
+                        onClick={() => setOpenIdx(idx)}
+                        className={
+                          idx === openIdx
+                            ? "h-14 rounded-xl overflow-hidden border border-fuchsia-600/40"
+                            : "h-14 rounded-xl overflow-hidden border border-slate-200/70"
+                        }
+                      >
+                        <img src={p.url} className="h-14 w-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 text-sm text-slate-600">Nessuna foto.</div>
+              )}
+
+              <div className="mt-3 text-sm text-slate-800 whitespace-pre-wrap">{openListing.description}</div>
+
+              <div className="mt-4 flex items-center gap-2">
+                {openListing.contact ? (
+                  <a href={contactHref(openListing.contact) ?? undefined} className="lp-btn-primary inline-flex items-center gap-2">
+                    {openListing.contact.includes("@") ? <Mail className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                    Contatta
+                  </a>
+                ) : (
+                  <div className="text-sm text-slate-600">Contatto non disponibile.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

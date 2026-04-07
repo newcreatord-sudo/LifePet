@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, setDoc, where } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
@@ -24,7 +24,7 @@ export function subscribePosts(limitCount: number, onData: (posts: CommunityPost
       onData(posts);
     });
   }
-  const q = query(postsCol(), orderBy("createdAt", "desc"), limit(limitCount));
+  const q = query(postsCol(), where("status", "==", "active"), orderBy("createdAt", "desc"), limit(limitCount));
   return onSnapshot(q, (snap) => {
     const posts: CommunityPost[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CommunityPost, "id">) }));
     onData(posts);
@@ -64,7 +64,7 @@ export function subscribeComments(postId: string, limitCount: number, onData: (i
       onData(items);
     });
   }
-  const q = query(commentsCol(postId), orderBy("createdAt", "asc"), limit(limitCount));
+  const q = query(commentsCol(postId), where("status", "==", "active"), orderBy("createdAt", "asc"), limit(limitCount));
   return onSnapshot(q, (snap) => {
     const items: CommunityComment[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CommunityComment, "id">) }));
     onData(items);
