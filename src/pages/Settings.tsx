@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePetStore } from "@/stores/petStore";
 import { deletePushToken, savePushToken } from "@/data/pushTokens";
 import { disablePushNotifications, enablePushNotifications, getVapidKey, isPushSupported, subscribeForegroundMessages } from "@/lib/push";
-import { subscribeUserProfile, type UserProfile } from "@/data/users";
+import { subscribeUserProfile, updateUserPreferences, type UserProfile } from "@/data/users";
 import { billingCreateCheckoutSession, billingCreatePortalSession, getBillingStatus, type BillingStatus } from "@/data/billing";
 import { exportPetData } from "@/data/export";
 import { deleteAccountCascade } from "@/data/account";
@@ -27,6 +27,8 @@ export default function Settings() {
   const [billingError, setBillingError] = useState<string | null>(null);
   const [privacyBusy, setPrivacyBusy] = useState(false);
   const [privacyError, setPrivacyError] = useState<string | null>(null);
+
+  const prefs = profile?.preferences ?? { aiEnabled: true, gpsEnabled: true, communityEnabled: true };
 
   const pushAvailable = useMemo(() => isPushSupported() && !!getVapidKey(), []);
 
@@ -86,6 +88,63 @@ export default function Settings() {
             </span>
           </button>
         </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Preferenze</CardTitle>
+          <CardDescription>Controlla consensi e funzioni sensibili.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!user ? (
+            <EmptyState title="Accedi" description="Per gestire le preferenze devi essere autenticato." />
+          ) : (
+            <div className="space-y-3">
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium">AI (informativa)</div>
+                  <div className="text-xs text-slate-600">Insights, sintomi e suggerimenti (non medico).</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={prefs.aiEnabled !== false}
+                  onChange={async (e) => {
+                    await updateUserPreferences(user.uid, { aiEnabled: e.target.checked });
+                  }}
+                />
+              </label>
+
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium">GPS & posizione</div>
+                  <div className="text-xs text-slate-600">Tracking e geofence (puoi disattivare in qualsiasi momento).</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={prefs.gpsEnabled !== false}
+                  onChange={async (e) => {
+                    await updateUserPreferences(user.uid, { gpsEnabled: e.target.checked });
+                  }}
+                />
+              </label>
+
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium">Community</div>
+                  <div className="text-xs text-slate-600">Post, commenti e chat gruppi.</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={prefs.communityEnabled !== false}
+                  onChange={async (e) => {
+                    await updateUserPreferences(user.uid, { communityEnabled: e.target.checked });
+                  }}
+                />
+              </label>
+              <div className="text-xs text-slate-600">Le funzioni disattivate vengono nascoste e bloccate nelle schermate.</div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

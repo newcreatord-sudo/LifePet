@@ -671,8 +671,8 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
         if (!(await hasRecentNotification(petId, type, dedupeFrom))) {
           await createPetNotification(petId, {
             type,
-            title: "Hydration check",
-            body: "No water log in the last 24h. Refresh the bowl and observe.",
+            title: "Idratazione: check",
+            body: "Nessun log acqua nelle ultime 24h. Cambia l’acqua e monitora.",
             severity: "warning",
           });
         }
@@ -683,8 +683,8 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
         if (!(await hasRecentNotification(petId, type, dedupeFrom))) {
           await createPetNotification(petId, {
             type,
-            title: "Activity reminder",
-            body: "No activity logs in the last 48h. Add a short play/walk session.",
+            title: "Attività: promemoria",
+            body: "Nessun log attività nelle ultime 48h. Aggiungi una breve sessione (gioco/passeggiata).",
             severity: "info",
           });
         }
@@ -695,8 +695,59 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
         if (!(await hasRecentNotification(petId, type, dedupeFrom))) {
           await createPetNotification(petId, {
             type,
-            title: "Meal reminder",
-            body: "No food logs in the last 24h. Check meals and appetite.",
+            title: "Pasti: promemoria",
+            body: "Nessun log cibo nelle ultime 24h. Controlla pasti e appetito.",
+            severity: "warning",
+          });
+        }
+      }
+
+      const from14d = now - 14 * 24 * 60 * 60 * 1000;
+      const logs14d = await fetchRecentLogsSince(petId, from14d, 500);
+      const prev7Start = now - 14 * 24 * 60 * 60 * 1000;
+      const prev7End = now - 7 * 24 * 60 * 60 * 1000;
+      const cur7Start = prev7End;
+
+      const countIn = (t: string, a: number, b: number) =>
+        logs14d.filter((l) => l.type === t && (l.occurredAt ?? 0) >= a && (l.occurredAt ?? 0) < b).length;
+
+      const prevActivity = countIn("activity", prev7Start, prev7End);
+      const curActivity = countIn("activity", cur7Start, now);
+      if (prevActivity >= 2 && curActivity <= Math.floor(prevActivity / 2)) {
+        const type = "activity_drop_7d";
+        if (!(await hasRecentNotification(petId, type, weekAgo))) {
+          await createPetNotification(petId, {
+            type,
+            title: "Attività in calo",
+            body: `Attività ultimi 7 giorni: ${curActivity} vs ${prevActivity} (settimana precedente).`,
+            severity: "warning",
+          });
+        }
+      }
+
+      const prevWater = countIn("water", prev7Start, prev7End);
+      const curWater = countIn("water", cur7Start, now);
+      if (prevWater >= 3 && curWater <= Math.floor(prevWater / 2)) {
+        const type = "water_drop_7d";
+        if (!(await hasRecentNotification(petId, type, weekAgo))) {
+          await createPetNotification(petId, {
+            type,
+            title: "Idratazione in calo",
+            body: `Log acqua ultimi 7 giorni: ${curWater} vs ${prevWater}. Monitora ciotola e abitudini.`,
+            severity: "warning",
+          });
+        }
+      }
+
+      const prevFood = countIn("food", prev7Start, prev7End);
+      const curFood = countIn("food", cur7Start, now);
+      if (prevFood >= 3 && curFood <= Math.floor(prevFood / 2)) {
+        const type = "food_drop_7d";
+        if (!(await hasRecentNotification(petId, type, weekAgo))) {
+          await createPetNotification(petId, {
+            type,
+            title: "Pasti in calo",
+            body: `Log cibo ultimi 7 giorni: ${curFood} vs ${prevFood}. Controlla appetito e routine.`,
             severity: "warning",
           });
         }
@@ -709,8 +760,8 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
         if (!(await hasRecentNotification(petId, type, weekAgo))) {
           await createPetNotification(petId, {
             type,
-            title: "Weight check",
-            body: "No weight logs in the last 30 days. Add a quick weight entry.",
+            title: "Peso: check",
+            body: "Nessun log peso negli ultimi 30 giorni. Aggiungi una pesata rapida.",
             severity: "info",
           });
         }
@@ -729,8 +780,8 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
         if (await hasRecentNotification(petId, type, weekAgo)) continue;
         await createPetNotification(petId, {
           type,
-          title: "Vaccine due soon",
-          body: `${data.name ?? "Vaccine"} due on ${new Date(nextDueAt).toLocaleDateString()}.`,
+          title: "Vaccino in scadenza",
+          body: `${data.name ?? "Vaccino"} previsto il ${new Date(nextDueAt).toLocaleDateString()}.`,
           severity: "info",
         });
       }
@@ -944,4 +995,52 @@ export const gpsRetentionSweep = onSchedule("every 24 hours", async () => {
   const batch = db.batch();
   for (const d of snap.docs) batch.delete(d.ref);
   await batch.commit();
+});
+
+export const budgetSweep = onSchedule("every 6 hours", async () => {
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const toMs = Date.now();
+
+  const petsSnap = await db.collection("pets").where("budgetMonthly", ">", 0).limit(200).get();
+  await Promise.all(
+    petsSnap.docs.map(async (petDoc) => {
+      const petId = petDoc.id;
+      const pet = petDoc.data() as { budgetMonthly?: unknown; budgetCurrency?: unknown };
+      const budgetMonthly = typeof pet.budgetMonthly === "number" ? pet.budgetMonthly : null;
+      if (!budgetMonthly || budgetMonthly <= 0) return;
+      const currency = typeof pet.budgetCurrency === "string" ? pet.budgetCurrency : "EUR";
+
+      const expSnap = await db
+        .collection("pets")
+        .doc(petId)
+        .collection("expenses")
+        .where("occurredAt", ">=", monthStart)
+        .where("occurredAt", "<=", toMs)
+        .limit(2000)
+        .get();
+
+      let sum = 0;
+      for (const d of expSnap.docs) {
+        const e = d.data() as { amount?: unknown; currency?: unknown };
+        const amount = typeof e.amount === "number" ? e.amount : 0;
+        const cur = typeof e.currency === "string" ? e.currency : "EUR";
+        if (cur !== currency) continue;
+        sum += amount;
+      }
+
+      if (sum <= budgetMonthly) return;
+      const type = `budget_overrun:${monthKey}`;
+      const dedupeFrom = Date.now() - 24 * 60 * 60 * 1000;
+      if (await hasRecentNotification(petId, type, dedupeFrom)) return;
+
+      await createPetNotification(petId, {
+        type,
+        title: "Budget mensile superato",
+        body: `Speso ${currency} ${sum.toFixed(2)} su ${currency} ${budgetMonthly.toFixed(2)} (mese ${monthKey}).`,
+        severity: "warning",
+      });
+    })
+  );
 });

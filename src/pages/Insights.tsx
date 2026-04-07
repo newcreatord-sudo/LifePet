@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePetStore } from "@/stores/petStore";
+import { useAuthStore } from "@/stores/authStore";
+import { subscribeUserProfile } from "@/data/users";
 import { aiChat, aiGenerateSummary } from "@/data/ai";
 import { Sparkles } from "lucide-react";
 import { aiUserMessage } from "@/lib/aiErrors";
@@ -10,7 +12,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 type ChatMsg = { role: "user" | "assistant"; text: string };
 
 export default function Insights() {
+  const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const [aiAllowed, setAiAllowed] = useState(true);
   const [days, setDays] = useState(7);
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -19,6 +23,17 @@ export default function Insights() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const disclaimer = useMemo(() => "LifePet AI è solo informativa e non sostituisce il veterinario.", []);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setAiAllowed(true);
+      return;
+    }
+    const unsub = subscribeUserProfile(user.uid, (p) => {
+      setAiAllowed(p?.preferences?.aiEnabled !== false);
+    });
+    return () => unsub();
+  }, [user]);
 
   async function onGenerateSummary() {
     if (!activePetId) return;
@@ -56,6 +71,13 @@ export default function Insights() {
     <div className="space-y-6">
       <PageHeader title="Insights" description="Sintesi AI e domande/risposte basate sui log del tuo pet." />
 
+      {!aiAllowed ? (
+        <EmptyState
+          title="AI disattivata"
+          description="Riattivala in Impostazioni → Preferenze per usare Insights."
+        />
+      ) : null}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <Card className="lg:col-span-5">
           <CardHeader>
@@ -63,7 +85,7 @@ export default function Insights() {
             <CardDescription>Generazione manuale</CardDescription>
           </CardHeader>
           <CardContent>
-          {!activePetId ? (
+          {!aiAllowed ? null : !activePetId ? (
             <EmptyState title="Seleziona un pet" description="Scegli un profilo per generare la sintesi." />
           ) : (
             <div className="space-y-3">

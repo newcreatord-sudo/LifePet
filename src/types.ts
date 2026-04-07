@@ -37,6 +37,8 @@ export type Pet = {
     registry?: string;
   };
   dietNotes?: string;
+  budgetMonthly?: number;
+  budgetCurrency?: string;
   geofence?: {
     enabled: boolean;
     centerLat: number;

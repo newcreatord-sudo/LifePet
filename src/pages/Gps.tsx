@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ExternalLink, Trash2 } from "lucide-react";
+import { subscribeUserProfile } from "@/data/users";
+import { Link } from "react-router-dom";
 
 function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
@@ -32,6 +34,7 @@ export default function Gps() {
   const [tracking, setTracking] = useState(false);
   const [watching, setWatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gpsAllowed, setGpsAllowed] = useState(true);
 
   const watchIdRef = useRef<number | null>(null);
   const lastSavedRef = useRef<{ lat: number; lng: number; at: number } | null>(null);
@@ -53,6 +56,17 @@ export default function Gps() {
       unsub2();
     };
   }, [activePetId, historyLimit]);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setGpsAllowed(true);
+      return;
+    }
+    const unsub = subscribeUserProfile(user.uid, (p) => {
+      setGpsAllowed(p?.preferences?.gpsEnabled !== false);
+    });
+    return () => unsub();
+  }, [user]);
 
   async function saveGeofence() {
     if (!activePetId) return;
@@ -192,6 +206,19 @@ export default function Gps() {
     <div className="space-y-6">
       <PageHeader title="GPS" description="Tracking, storico e zona sicura (geofence)." />
 
+      {!gpsAllowed ? (
+        <EmptyState
+          title="GPS disattivato"
+          description="Riattivalo in Impostazioni → Preferenze per usare tracking e geofence."
+          action={
+            <Link to="/app/settings" className="lp-btn-secondary inline-flex items-center justify-center">
+              Vai a Impostazioni
+            </Link>
+          }
+        />
+      ) : (
+        <>
+
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
@@ -205,12 +232,12 @@ export default function Gps() {
                   Ferma tracking
                 </button>
               ) : (
-                <button onClick={startTracking} disabled={!activePetId} className="lp-btn-primary">
+                <button onClick={startTracking} disabled={!activePetId || !gpsAllowed} className="lp-btn-primary">
                   Avvia tracking
                 </button>
               )}
 
-              <button onClick={recordOnce} disabled={!activePetId || tracking} className="lp-btn-secondary">
+              <button onClick={recordOnce} disabled={!activePetId || tracking || !gpsAllowed} className="lp-btn-secondary">
                 {tracking ? "Registrazione…" : "Registra punto"}
               </button>
             </div>
@@ -410,6 +437,8 @@ export default function Gps() {
         )}
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

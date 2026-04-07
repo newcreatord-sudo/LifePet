@@ -4,6 +4,7 @@ import {
   CalendarCheck,
   HeartPulse,
   Activity,
+  Bell,
   ClipboardList,
   Files,
   LayoutDashboard,
@@ -33,6 +34,7 @@ import { PetSwitcher } from "@/components/PetSwitcher";
 
 const nav = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/app/notifications", label: "Notifiche", icon: Bell },
   { to: "/app/status", label: "Status", icon: Activity },
   { to: "/app/pets", label: "Profilo Pet", icon: PawPrint },
   { to: "/app/health", label: "Salute", icon: ShieldPlus },

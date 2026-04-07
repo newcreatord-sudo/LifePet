@@ -4,6 +4,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { createComment, createPost, likePost, subscribeComments, subscribePosts } from "@/data/community";
 import { ensureDefaultGroups, joinGroup, leaveGroup, sendGroupMessage, subscribeGroupMembership, subscribeGroupMessages, subscribeGroups } from "@/data/groups";
 import type { CommunityComment, CommunityGroup, CommunityGroupMessage, CommunityPost } from "@/types";
+import { subscribeUserProfile } from "@/data/users";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -26,6 +27,7 @@ export default function Community() {
   const [chatText, setChatText] = useState("");
   const [sending, setSending] = useState(false);
   const [isMember, setIsMember] = useState(false);
+  const [communityAllowed, setCommunityAllowed] = useState(true);
 
   useEffect(() => {
     const unsub = subscribePosts(50, setPosts);
@@ -60,6 +62,17 @@ export default function Community() {
     const unsub = subscribeGroupMembership(activeGroupId, user.uid, setIsMember);
     return () => unsub();
   }, [activeGroupId, user]);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setCommunityAllowed(true);
+      return;
+    }
+    const unsub = subscribeUserProfile(user.uid, (p) => {
+      setCommunityAllowed(p?.preferences?.communityEnabled !== false);
+    });
+    return () => unsub();
+  }, [user]);
 
   const activeGroup = useMemo(() => groups.find((g) => g.id === activeGroupId) ?? null, [activeGroupId, groups]);
 
@@ -115,30 +128,34 @@ export default function Community() {
     <div className="space-y-6">
       <PageHeader title="Community" description="Condividi consigli, fai domande e supporta altri proprietari." />
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setTab("feed")}
-          className={
-            tab === "feed"
-              ? "px-3 py-1.5 rounded-xl bg-white border border-slate-200/70 text-sm"
-              : "px-3 py-1.5 rounded-xl text-sm text-slate-700 hover:bg-white/60"
-          }
-        >
-          Feed
-        </button>
-        <button
-          onClick={() => setTab("groups")}
-          className={
-            tab === "groups"
-              ? "px-3 py-1.5 rounded-xl bg-white border border-slate-200/70 text-sm"
-              : "px-3 py-1.5 rounded-xl text-sm text-slate-700 hover:bg-white/60"
-          }
-        >
-          Gruppi
-        </button>
-      </div>
+      {!communityAllowed ? (
+        <EmptyState title="Community disattivata" description="Riattivala in Impostazioni → Preferenze." />
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setTab("feed")}
+              className={
+                tab === "feed"
+                  ? "px-3 py-1.5 rounded-xl bg-white border border-slate-200/70 text-sm"
+                  : "px-3 py-1.5 rounded-xl text-sm text-slate-700 hover:bg-white/60"
+              }
+            >
+              Feed
+            </button>
+            <button
+              onClick={() => setTab("groups")}
+              className={
+                tab === "groups"
+                  ? "px-3 py-1.5 rounded-xl bg-white border border-slate-200/70 text-sm"
+                  : "px-3 py-1.5 rounded-xl text-sm text-slate-700 hover:bg-white/60"
+              }
+            >
+              Gruppi
+            </button>
+          </div>
 
-      {tab === "groups" ? (
+          {tab === "groups" ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <Card className="lg:col-span-4">
             <CardHeader>
@@ -256,11 +273,11 @@ export default function Community() {
                 onChange={(e) => setText(e.target.value)}
                 rows={3}
                 placeholder="Scrivi qualcosa di utile…"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-textarea"
               />
               <button
                 disabled={posting}
-                className="self-start inline-flex items-center gap-2 rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                className="self-start inline-flex items-center gap-2 lp-btn-primary"
                 type="submit"
               >
                 <Plus className="w-4 h-4" />
@@ -281,21 +298,21 @@ export default function Community() {
             ) : (
               <div className="space-y-3">
                 {posts.map((p) => (
-                  <div key={p.id} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+                  <div key={p.id} className="lp-card p-4">
                     <div className="text-sm whitespace-pre-wrap">{p.text}</div>
                     <div className="mt-3 flex items-center justify-between gap-3">
-                      <div className="text-xs text-slate-500">{new Date(p.createdAt).toLocaleString()}</div>
+                      <div className="text-xs text-slate-600">{new Date(p.createdAt).toLocaleString()}</div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => likePost(p.id)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                          className="inline-flex items-center gap-1 lp-btn-icon"
                         >
                           <Heart className="w-4 h-4" />
                           {p.likeCount}
                         </button>
                         <button
                           onClick={() => setOpenPostId((cur) => (cur === p.id ? null : p.id))}
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                          className="inline-flex items-center gap-1 lp-btn-icon"
                         >
                           <MessageSquare className="w-4 h-4" />
                           Commenti
@@ -304,16 +321,16 @@ export default function Community() {
                     </div>
 
                     {openPostId === p.id ? (
-                      <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/30 p-3">
+                      <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                         <div className="text-sm font-semibold">Commenti</div>
                         <div className="mt-2 space-y-2">
                           {(comments[p.id] ?? []).length === 0 ? (
                             <div className="text-sm text-slate-400">Nessun commento. Inizia tu.</div>
                           ) : (
                             (comments[p.id] ?? []).map((c) => (
-                              <div key={c.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                              <div key={c.id} className="lp-panel px-3 py-2">
                                 <div className="text-sm whitespace-pre-wrap">{c.text}</div>
-                                <div className="text-[10px] text-slate-500 mt-1">{new Date(c.createdAt).toLocaleString()}</div>
+                                <div className="text-[10px] text-slate-600 mt-1">{new Date(c.createdAt).toLocaleString()}</div>
                               </div>
                             ))
                           )}
@@ -324,11 +341,11 @@ export default function Community() {
                             onChange={(e) => setCommentText(e.target.value)}
                             placeholder={user ? "Scrivi un commento…" : "Accedi per commentare"}
                             disabled={!user}
-                            className="flex-1 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40 disabled:opacity-60"
+                            className="flex-1 lp-input disabled:opacity-60"
                           />
                           <button
                             disabled={commenting || !user}
-                            className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                            className="lp-btn-primary"
                             type="submit"
                           >
                             {commenting ? "…" : "Invia"}
@@ -344,6 +361,8 @@ export default function Community() {
           </Card>
         </>
       ) : null}
+        </>
+      )}
     </div>
   );
 }

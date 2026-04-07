@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
@@ -9,6 +9,7 @@ import { aiUserMessage } from "@/lib/aiErrors";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { subscribeUserProfile } from "@/data/users";
 
 type Severity = "low" | "medium" | "high";
 type Intake = "normal" | "reduced" | "none";
@@ -18,6 +19,19 @@ export default function Symptoms() {
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
   const pet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
+
+  const [aiAllowed, setAiAllowed] = useState(true);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setAiAllowed(true);
+      return;
+    }
+    const unsub = subscribeUserProfile(user.uid, (p) => {
+      setAiAllowed(p?.preferences?.aiEnabled !== false);
+    });
+    return () => unsub();
+  }, [user]);
 
   const [symptoms, setSymptoms] = useState("");
   const [durationHours, setDurationHours] = useState("24");
@@ -120,13 +134,25 @@ export default function Symptoms() {
         title="Checker sintomi AI"
         description="Triage informativo: non sostituisce il veterinario."
         actions={
-          <Link to="/app/health" className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm hover:bg-slate-900">
+          <Link to="/app/health" className="lp-btn-secondary">
             Torna a Salute
           </Link>
         }
       />
 
-      {!activePetId ? (
+      {!aiAllowed ? (
+        <EmptyState
+          title="AI disattivata"
+          description="Riattivala in Impostazioni → Preferenze per usare il checker sintomi."
+          action={
+            <Link to="/app/settings" className="lp-btn-secondary inline-flex items-center justify-center">
+              Vai a Impostazioni
+            </Link>
+          }
+        />
+      ) : null}
+
+      {!aiAllowed ? null : !activePetId ? (
         <EmptyState title="Seleziona un pet" description="Scegli un profilo per usare il checker sintomi." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

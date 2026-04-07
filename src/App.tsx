@@ -22,6 +22,7 @@ import Expenses from "@/pages/Expenses";
 import Community from "@/pages/Community";
 import Marketplace from "@/pages/Marketplace";
 import Insights from "@/pages/Insights";
+import Notifications from "@/pages/Notifications";
 import Settings from "@/pages/Settings";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShellLayout } from "@/components/AppShellLayout";
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="community" element={<Community />} />
           <Route path="marketplace" element={<Marketplace />} />
           <Route path="insights" element={<Insights />} />
+          <Route path="notifications" element={<Notifications />} />
           <Route path="settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

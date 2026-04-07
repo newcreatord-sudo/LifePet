@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { createExpense, deleteExpense, subscribeExpensesRange, subscribeRecentExpenses } from "@/data/expenses";
+import { updatePet } from "@/data/pets";
 import type { Expense, ExpenseCategory } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -21,6 +22,8 @@ function categoryLabel(cat: ExpenseCategory) {
 export default function Expenses() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pets = usePetStore((s) => s.pets);
+  const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
   const [items, setItems] = useState<Expense[]>([]);
   const [monthItems, setMonthItems] = useState<Expense[]>([]);
   const [items90d, setItems90d] = useState<Expense[]>([]);
@@ -29,6 +32,13 @@ export default function Expenses() {
   const [category, setCategory] = useState<ExpenseCategory>("food");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [budget, setBudget] = useState("");
+  const [savingBudget, setSavingBudget] = useState(false);
+
+  useEffect(() => {
+    setBudget(activePet?.budgetMonthly?.toString() ?? "");
+  }, [activePet?.budgetMonthly]);
 
   const monthRange = useMemo(() => {
     const now = new Date();
@@ -62,6 +72,13 @@ export default function Expenses() {
   }, [activePetId, range90d.fromMs, range90d.toMs]);
 
   const totalMonth = useMemo(() => monthItems.reduce((s, e) => s + e.amount, 0), [monthItems]);
+
+  const budgetValue = useMemo(() => {
+    const v = Number(budget);
+    if (!Number.isFinite(v) || v <= 0) return null;
+    return v;
+  }, [budget]);
+
 
   const breakdown = useMemo(() => {
     const map = new Map<ExpenseCategory, number>();
@@ -125,20 +142,20 @@ export default function Expenses() {
           ) : (
             <form onSubmit={onAdd} className="space-y-3">
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Importo (EUR)</div>
+                <div className="text-xs text-slate-600 mb-1">Importo (EUR)</div>
                 <input
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   inputMode="decimal"
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Categoria</div>
+                <div className="text-xs text-slate-600 mb-1">Categoria</div>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-select"
                 >
                   <option value="food">Cibo</option>
                   <option value="vet">Veterinario</option>
@@ -150,16 +167,16 @@ export default function Expenses() {
                 </select>
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Note</div>
+                <div className="text-xs text-slate-600 mb-1">Note</div>
                 <input
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
               <button
                 disabled={saving}
-                className="w-full rounded-xl bg-emerald-300/90 text-slate-950 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                className="w-full lp-btn-primary"
                 type="submit"
               >
                 {saving ? "Aggiunta…" : "Aggiungi"}
@@ -182,29 +199,29 @@ export default function Expenses() {
           <CardContent>
           {activePetId ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-                <div className="text-xs text-slate-500">Ripartizione</div>
+              <div className="lp-surface p-3">
+                <div className="text-xs text-slate-600">Ripartizione</div>
                 {breakdown.length === 0 ? (
-                  <div className="text-sm text-slate-400 mt-2">Nessuna spesa questo mese.</div>
+                  <div className="text-sm text-slate-600 mt-2">Nessuna spesa questo mese.</div>
                 ) : (
                   <div className="mt-2 space-y-2">
                     {breakdown.slice(0, 6).map(([cat, sum]) => (
                       <div key={cat} className="flex items-center justify-between text-sm">
-                        <div className="text-slate-300">{categoryLabel(cat)}</div>
+                        <div className="text-slate-700">{categoryLabel(cat)}</div>
                         <div className="font-medium">€ {sum.toFixed(2)}</div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-                <div className="text-xs text-slate-500">Previsione</div>
-                <div className="mt-2 text-sm text-slate-300">Stima prossimo mese: <span className="font-medium">€ {forecast.avg.toFixed(2)}</span></div>
-                <div className="mt-2 text-xs text-slate-500">Basata sugli ultimi {forecast.months.length} mesi negli ultimi 90 giorni.</div>
+              <div className="lp-surface p-3">
+                <div className="text-xs text-slate-600">Previsione</div>
+                <div className="mt-2 text-sm text-slate-700">Stima prossimo mese: <span className="font-medium">€ {forecast.avg.toFixed(2)}</span></div>
+                <div className="mt-2 text-xs text-slate-600">Basata sugli ultimi {forecast.months.length} mesi negli ultimi 90 giorni.</div>
                 {forecast.months.length ? (
                   <div className="mt-2 space-y-1">
                     {forecast.months.map(([k, v]) => (
-                      <div key={k} className="flex items-center justify-between text-xs text-slate-400">
+                      <div key={k} className="flex items-center justify-between text-xs text-slate-600">
                         <div>{k}</div>
                         <div>€ {v.toFixed(2)}</div>
                       </div>
@@ -212,9 +229,61 @@ export default function Expenses() {
                   </div>
                 ) : null}
               </div>
+
+              <div className="md:col-span-2 lp-surface p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs text-slate-600">Budget mensile</div>
+                    <div className="text-sm font-semibold">{activePet?.budgetMonthly ? `€ ${activePet.budgetMonthly.toFixed(2)}` : "Non impostato"}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-slate-600">Speso</div>
+                    <div className="text-sm font-semibold">€ {totalMonth.toFixed(2)}</div>
+                  </div>
+                </div>
+
+                {activePet?.budgetMonthly ? (
+                  <div className="mt-2">
+                    <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                      <div
+                        className={totalMonth > activePet.budgetMonthly ? "h-2 bg-rose-500" : "h-2 bg-fuchsia-600"}
+                        style={{ width: `${Math.min(100, Math.round((totalMonth / activePet.budgetMonthly) * 100))}%` }}
+                      />
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      {totalMonth > activePet.budgetMonthly ? "Budget superato" : `Utilizzato ${Math.round((totalMonth / activePet.budgetMonthly) * 100)}%`}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-3 flex flex-col sm:flex-row gap-2 items-end">
+                  <label className="block flex-1">
+                    <div className="text-xs text-slate-600 mb-1">Imposta budget (EUR)</div>
+                    <input value={budget} onChange={(e) => setBudget(e.target.value)} inputMode="decimal" className="lp-input" />
+                  </label>
+                  <button
+                    className="lp-btn-primary"
+                    disabled={!activePetId || savingBudget}
+                    onClick={async () => {
+                      if (!activePetId) return;
+                      const v = budgetValue;
+                      setSavingBudget(true);
+                      try {
+                        await updatePet(activePetId, { budgetMonthly: v ?? undefined, budgetCurrency: "EUR" });
+                      } finally {
+                        setSavingBudget(false);
+                      }
+                    }}
+                    type="button"
+                  >
+                    {savingBudget ? "Salvataggio…" : "Salva budget"}
+                  </button>
+                </div>
+                <div className="mt-2 text-xs text-slate-600">Se superi il budget, arriva una notifica automatica.</div>
+              </div>
             </div>
           ) : null}
-          <div className="text-xs text-slate-500">Spese recenti</div>
+          <div className="text-xs text-slate-600">Spese recenti</div>
           {!activePetId ? (
             <EmptyState title="Seleziona un pet" description="Scegli un profilo per vedere le spese." />
           ) : items.length === 0 ? (
@@ -222,21 +291,21 @@ export default function Expenses() {
           ) : (
             <div className="mt-2 space-y-2">
               {items.map((it) => (
-                <div key={it.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                <div key={it.id} className="lp-panel px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium">€ {it.amount.toFixed(2)} · {categoryLabel(it.category)}</div>
-                      {it.note ? <div className="text-xs text-slate-400 mt-0.5">{it.note}</div> : null}
+                      {it.note ? <div className="text-xs text-slate-600 mt-0.5">{it.note}</div> : null}
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="text-xs text-slate-500">{new Date(it.occurredAt).toLocaleString()}</div>
+                      <div className="text-xs text-slate-600">{new Date(it.occurredAt).toLocaleString()}</div>
                       {user && activePetId ? (
                         <button
                           onClick={async () => {
                             if (!confirm("Eliminare questa spesa?")) return;
                             await deleteExpense(activePetId, it.id);
                           }}
-                          className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                          className="lp-btn-icon"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
