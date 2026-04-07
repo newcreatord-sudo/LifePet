@@ -21,12 +21,16 @@ export default function Planner() {
   const [routineTitle, setRoutineTitle] = useState("");
   const [routineKind, setRoutineKind] = useState<RoutineKind>("food");
   const [routineTimes, setRoutineTimes] = useState("08:00, 19:00");
+  const [routineRecurrenceType, setRoutineRecurrenceType] = useState<"daily" | "weekly">("daily");
+  const [routineWeekdays, setRoutineWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [creatingRoutine, setCreatingRoutine] = useState(false);
 
   const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
   const [editRoutineTitle, setEditRoutineTitle] = useState("");
   const [editRoutineKind, setEditRoutineKind] = useState<RoutineKind>("food");
   const [editRoutineTimes, setEditRoutineTimes] = useState("");
+  const [editRoutineRecurrenceType, setEditRoutineRecurrenceType] = useState<"daily" | "weekly">("daily");
+  const [editRoutineWeekdays, setEditRoutineWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [savingRoutine, setSavingRoutine] = useState(false);
 
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -94,7 +98,10 @@ export default function Planner() {
         kind: routineKind,
         enabled: true,
         times,
-        recurrence: { type: "daily" },
+        recurrence:
+          routineRecurrenceType === "weekly"
+            ? { type: "weekly", weekdays: routineWeekdays.length ? routineWeekdays : [new Date().getDay()] }
+            : { type: "daily" },
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         createdAt: Date.now(),
         createdBy: user.uid,
@@ -103,6 +110,24 @@ export default function Planner() {
     } finally {
       setCreatingRoutine(false);
     }
+  }
+
+  const weekdayOptions = useMemo(
+    () =>
+      [
+        { i: 1, label: "Lun" },
+        { i: 2, label: "Mar" },
+        { i: 3, label: "Mer" },
+        { i: 4, label: "Gio" },
+        { i: 5, label: "Ven" },
+        { i: 6, label: "Sab" },
+        { i: 0, label: "Dom" },
+      ] as const,
+    []
+  );
+
+  function parseRecurrenceType(v: string): "daily" | "weekly" {
+    return v === "weekly" ? "weekly" : "daily";
   }
 
   return (
@@ -121,21 +146,21 @@ export default function Planner() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             <form onSubmit={onCreateRoutine} className="lg:col-span-5 space-y-3">
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Titolo</div>
+                <div className="text-xs text-slate-600 mb-1">Titolo</div>
                 <input
                   value={routineTitle}
                   onChange={(e) => setRoutineTitle(e.target.value)}
                   placeholder="Pasto serale"
-                  className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-500/30"
+                  className="lp-input"
                 />
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="block">
-                  <div className="text-xs text-slate-400 mb-1">Tipo</div>
+                  <div className="text-xs text-slate-600 mb-1">Tipo</div>
                   <select
                     value={routineKind}
                     onChange={(e) => setRoutineKind(e.target.value as RoutineKind)}
-                    className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
+                    className="lp-select"
                   >
                     <option value="food">Cibo</option>
                     <option value="med">Farmaco</option>
@@ -147,23 +172,60 @@ export default function Planner() {
                   </select>
                 </label>
                 <label className="block">
-                  <div className="text-xs text-slate-400 mb-1">Orari (separati da virgola)</div>
+                  <div className="text-xs text-slate-600 mb-1">Orari (separati da virgola)</div>
                   <input
                     value={routineTimes}
                     onChange={(e) => setRoutineTimes(e.target.value)}
                     placeholder="08:00, 19:00"
-                    className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
+                    className="lp-input"
                   />
                 </label>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <div className="text-xs text-slate-600 mb-1">Ricorrenza</div>
+                  <select value={routineRecurrenceType} onChange={(e) => setRoutineRecurrenceType(parseRecurrenceType(e.target.value))} className="lp-select">
+                    <option value="daily">Giornaliera</option>
+                    <option value="weekly">Settimanale</option>
+                  </select>
+                </label>
+
+                {routineRecurrenceType === "weekly" ? (
+                  <div>
+                    <div className="text-xs text-slate-600 mb-1">Giorni</div>
+                    <div className="flex flex-wrap gap-2">
+                      {weekdayOptions.map((w) => (
+                        <button
+                          key={w.i}
+                          type="button"
+                          onClick={() =>
+                            setRoutineWeekdays((prev) =>
+                              prev.includes(w.i) ? prev.filter((x) => x !== w.i) : [...prev, w.i]
+                            )
+                          }
+                          className={
+                            routineWeekdays.includes(w.i)
+                              ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                              : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
+                          }
+                        >
+                          {w.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <button
                 disabled={creatingRoutine}
-                className="w-full rounded-xl bg-fuchsia-600 text-white px-4 py-2 text-sm font-medium hover:bg-fuchsia-500 disabled:opacity-60"
+                className="w-full lp-btn-primary"
                 type="submit"
               >
                 {creatingRoutine ? "Creazione…" : "Crea routine"}
               </button>
-              <div className="text-xs text-slate-500">Le routine generano task per i prossimi 7 giorni (senza duplicati).</div>
+              <div className="text-xs text-slate-600">Le routine generano task per i prossimi 7 giorni (senza duplicati).</div>
             </form>
 
             <div className="lg:col-span-7">
@@ -186,7 +248,15 @@ export default function Planner() {
                             if (!t || times.length === 0) return;
                             setSavingRoutine(true);
                             try {
-                              await updateRoutine(activePetId, r.id, { title: t, kind: editRoutineKind, times });
+                              await updateRoutine(activePetId, r.id, {
+                                title: t,
+                                kind: editRoutineKind,
+                                times,
+                                recurrence:
+                                  editRoutineRecurrenceType === "weekly"
+                                    ? { type: "weekly", weekdays: editRoutineWeekdays.length ? editRoutineWeekdays : [new Date().getDay()] }
+                                    : { type: "daily" },
+                              });
                               setEditingRoutineId(null);
                             } finally {
                               setSavingRoutine(false);
@@ -226,6 +296,44 @@ export default function Planner() {
                               className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
                             />
                           </label>
+
+                          <label className="block">
+                            <div className="text-xs text-slate-400 mb-1">Ricorrenza</div>
+                            <select
+                              value={editRoutineRecurrenceType}
+                              onChange={(e) => setEditRoutineRecurrenceType(parseRecurrenceType(e.target.value))}
+                              className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm"
+                            >
+                              <option value="daily">Giornaliera</option>
+                              <option value="weekly">Settimanale</option>
+                            </select>
+                          </label>
+
+                          {editRoutineRecurrenceType === "weekly" ? (
+                            <div className="sm:col-span-2">
+                              <div className="text-xs text-slate-400 mb-1">Giorni</div>
+                              <div className="flex flex-wrap gap-2">
+                                {weekdayOptions.map((w) => (
+                                  <button
+                                    key={w.i}
+                                    type="button"
+                                    onClick={() =>
+                                      setEditRoutineWeekdays((prev) =>
+                                        prev.includes(w.i) ? prev.filter((x) => x !== w.i) : [...prev, w.i]
+                                      )
+                                    }
+                                    className={
+                                      editRoutineWeekdays.includes(w.i)
+                                        ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                                        : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
+                                    }
+                                  >
+                                    {w.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                           <div className="sm:col-span-2 flex items-center gap-2 justify-end">
                             <button
                               type="button"
@@ -247,7 +355,10 @@ export default function Planner() {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="text-sm font-medium">{r.title}</div>
-                            <div className="text-xs text-slate-500">{r.kind} · {r.times.join(", ")}</div>
+                            <div className="text-xs text-slate-600">
+                              {r.kind} · {r.times.join(", ")}
+                              {r.recurrence.type === "weekly" ? ` · ${r.recurrence.weekdays.join("/")}` : ""}
+                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
@@ -256,6 +367,8 @@ export default function Planner() {
                                 setEditRoutineTitle(r.title);
                                 setEditRoutineKind(r.kind);
                                 setEditRoutineTimes(r.times.join(", "));
+                                setEditRoutineRecurrenceType(r.recurrence.type);
+                                setEditRoutineWeekdays(r.recurrence.type === "weekly" ? r.recurrence.weekdays : [1, 2, 3, 4, 5]);
                               }}
                               className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                             >

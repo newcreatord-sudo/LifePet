@@ -900,3 +900,20 @@ export const deletePetCascade = onCall(async (req) => {
 
   return { ok: true };
 });
+
+export const gpsRetentionSweep = onSchedule("every 24 hours", async () => {
+  const now = Date.now();
+  const cutoff = now - 90 * 24 * 60 * 60 * 1000;
+
+  const snap = await db
+    .collectionGroup("gpsPoints")
+    .where("recordedAt", "<", cutoff)
+    .orderBy("recordedAt", "asc")
+    .limit(500)
+    .get();
+
+  if (snap.empty) return;
+  const batch = db.batch();
+  for (const d of snap.docs) batch.delete(d.ref);
+  await batch.commit();
+});

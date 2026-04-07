@@ -158,13 +158,14 @@ export default function Records() {
     const needle = q.trim().toLowerCase();
     return items
       .filter((it) => show[it.kind])
+      .filter((it) => it.ts >= range.fromMs && it.ts <= range.toMs)
       .filter((it) => {
         if (!needle) return true;
         return `${it.title} ${it.subtitle ?? ""} ${it.note ?? ""}`.toLowerCase().includes(needle);
       })
       .sort((a, b) => b.ts - a.ts)
       .slice(0, 200);
-  }, [docs, health, logTypeFilter, logs, q, show, tasks]);
+  }, [docs, health, logTypeFilter, logs, q, range.fromMs, range.toMs, show, tasks]);
 
   const effectivePlan = billing?.effectivePlan ?? (profile?.plan ?? (user?.isDemo ? "pro" : "free"));
   const canExport = effectivePlan === "pro";

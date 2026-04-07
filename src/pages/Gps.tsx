@@ -28,6 +28,7 @@ export default function Gps() {
 
   const [latest, setLatest] = useState<GpsPoint | null>(null);
   const [history, setHistory] = useState<GpsPoint[]>([]);
+  const [historyLimit, setHistoryLimit] = useState(20);
   const [tracking, setTracking] = useState(false);
   const [watching, setWatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,12 +47,12 @@ export default function Gps() {
   useEffect(() => {
     if (!activePetId) return;
     const unsub1 = subscribeLatestGpsPoint(activePetId, setLatest);
-    const unsub2 = subscribeGpsHistory(activePetId, 20, setHistory);
+    const unsub2 = subscribeGpsHistory(activePetId, historyLimit, setHistory);
     return () => {
       unsub1();
       unsub2();
     };
-  }, [activePetId]);
+  }, [activePetId, historyLimit]);
 
   async function saveGeofence() {
     if (!activePetId) return;
@@ -369,7 +370,21 @@ export default function Gps() {
         ) : history.length === 0 ? (
           <EmptyState title="Nessuno storico" description="Registra un punto per iniziare." />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs text-slate-600">Mostrati: {history.length} punti</div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setHistoryLimit(20)} className={historyLimit === 20 ? "lp-btn-primary" : "lp-btn-secondary"}>
+                  20
+                </button>
+                <button onClick={() => setHistoryLimit(50)} className={historyLimit === 50 ? "lp-btn-primary" : "lp-btn-secondary"}>
+                  50
+                </button>
+                <button onClick={() => setHistoryLimit(200)} className={historyLimit === 200 ? "lp-btn-primary" : "lp-btn-secondary"}>
+                  200
+                </button>
+              </div>
+            </div>
             {history.map((p) => (
               <div key={p.id} className="lp-panel px-3 py-2">
                 <div className="flex items-center justify-between gap-3">
