@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { usePetStore } from "@/stores/petStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -9,6 +9,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Link } from "react-router-dom";
+import { subscribeUserProfile } from "@/data/users";
+import type { AiCitation } from "@/types";
 
 const guides: Record<string, Array<{ title: string; bullets: string[] }>> = {
   dog: [
@@ -49,7 +51,11 @@ export default function Training() {
   const [context, setContext] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiText, setAiText] = useState<string | null>(null);
+  const [citations, setCitations] = useState<AiCitation[]>([]);
   const [creatingTask, setCreatingTask] = useState(false);
+  const [creatingPlan, setCreatingPlan] = useState(false);
+  const [planTime, setPlanTime] = useState("18:00");
+  const [aiAllowed, setAiAllowed] = useState(true);
 
   const bucket = useMemo(() => {
     const s = (pet?.species || "other").toLowerCase();
@@ -58,12 +64,30 @@ export default function Training() {
     return "other";
   }, [pet?.species]);
 
+  const issues = useMemo(() => {
+    if (bucket === "dog") return ["Tira al guinzaglio", "Abbaia alla porta", "Salta addosso", "Ansia da separazione"];
+    if (bucket === "cat") return ["Graffia divano", "Aggressività nel gioco", "Lettiera: problemi", "Miagola di notte"];
+    return ["Paura/stress", "Routine e arricchimento", "Manipolazione e cura", "Aggressività"];
+  }, [bucket]);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setAiAllowed(true);
+      return;
+    }
+    const unsub = subscribeUserProfile(user.uid, (p) => {
+      setAiAllowed(p?.preferences?.aiEnabled !== false);
+    });
+    return () => unsub();
+  }, [user]);
+
   async function onAskAi() {
     if (!activePetId) return;
     const i = issue.trim();
     if (!i) return;
     setAiLoading(true);
     setAiText(null);
+    setCitations([]);
     try {
       const prompt = [
         "Sei un coach comportamentale per LifePet.",
@@ -75,6 +99,7 @@ export default function Training() {
       ].filter(Boolean).join("\n");
       const res = await aiChat(activePetId, null, prompt);
       setAiText(res.answer);
+      setCitations(res.citations ?? []);
     } catch (e) {
       setAiText(aiUserMessage(e));
     } finally {
@@ -99,6 +124,31 @@ export default function Training() {
     }
   }
 
+  async function addTrainingPlan() {
+    if (!user || !activePetId) return;
+    const base = Date.now();
+    const t = issue.trim() || "sessione";
+    const [hh, mm] = planTime.split(":").map((x) => Number(x));
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return;
+    setCreatingPlan(true);
+    try {
+      for (let i = 0; i < 7; i += 1) {
+        const d = new Date(base + i * 24 * 60 * 60 * 1000);
+        d.setHours(hh, mm, 0, 0);
+        await createTask(activePetId, {
+          petId: activePetId,
+          title: `Training: ${t} (giorno ${i + 1}/7)`,
+          dueAt: d.getTime(),
+          status: "due",
+          createdAt: Date.now(),
+          createdBy: user.uid,
+        });
+      }
+    } finally {
+      setCreatingPlan(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader title="Training" description="Guide, strumenti e suggerimenti AI per comportamento e apprendimento." />
@@ -115,13 +165,13 @@ export default function Training() {
             <CardContent className="space-y-3">
             <div className="space-y-2">
               {guides[bucket].map((g) => (
-                <div key={g.title} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                <div key={g.title} className="lp-panel px-3 py-2">
                   <div className="text-sm font-medium">{g.title}</div>
-                  <div className="text-xs text-slate-400 mt-1">{g.bullets.join(" · ")}</div>
+                  <div className="text-xs text-slate-600 mt-1">{g.bullets.join(" · ")}</div>
                 </div>
               ))}
             </div>
-            <div className="text-xs text-slate-500">Per aggressività o casi complessi, consulta un educatore o un veterinario comportamentalista.</div>
+            <div className="text-xs text-slate-600">Per aggressività o casi complessi, consulta un educatore o un veterinario comportamentalista.</div>
             </CardContent>
           </Card>
 
@@ -132,37 +182,53 @@ export default function Training() {
                   <CardTitle>AI comportamento</CardTitle>
                   <CardDescription>Piano step-by-step e routine giornaliera.</CardDescription>
                 </div>
-                <Link to="/app/planner" className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                <Link to="/app/planner" className="lp-btn-secondary">
                   Planner
                 </Link>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
+            {!aiAllowed ? <EmptyState title="AI disattivata" description="Riattivala in Impostazioni → Preferenze per usare Training AI." /> : null}
+
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Problema</div>
+              <div className="text-xs text-slate-600 mb-1">Problema</div>
               <input
                 value={issue}
                 onChange={(e) => setIssue(e.target.value)}
                 placeholder="es. abbaia alla porta, tira al guinzaglio, graffia il divano"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
+
+            <div className="flex flex-wrap gap-2">
+              {issues.map((x) => (
+                <button
+                  key={x}
+                  type="button"
+                  onClick={() => setIssue(x)}
+                  className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
+                >
+                  {x}
+                </button>
+              ))}
+            </div>
+
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Contesto (opzionale)</div>
+              <div className="text-xs text-slate-600 mb-1">Contesto (opzionale)</div>
               <textarea
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
                 rows={3}
                 placeholder="Trigger, frequenza, ambiente, cambi recenti…"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-textarea"
               />
             </label>
 
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 onClick={onAskAi}
-                disabled={aiLoading}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                disabled={aiLoading || !aiAllowed}
+                className="inline-flex items-center justify-center gap-2 lp-btn-primary disabled:opacity-60"
               >
                 <Sparkles className="w-4 h-4" />
                 {aiLoading ? "…" : "Chiedi all’AI"}
@@ -170,16 +236,31 @@ export default function Training() {
               <button
                 onClick={addTrainingTask}
                 disabled={creatingTask}
-                className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
+                className="lp-btn-secondary disabled:opacity-60"
               >
                 {creatingTask ? "Aggiunta…" : "Aggiungi come task"}
               </button>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm whitespace-pre-wrap min-h-28">
+            <div className="flex flex-col sm:flex-row gap-2 items-end">
+              <label className="block">
+                <div className="text-xs text-slate-600 mb-1">Orario piano 7 giorni</div>
+                <input value={planTime} onChange={(e) => setPlanTime(e.target.value)} type="time" className="lp-input" />
+              </label>
+              <button onClick={addTrainingPlan} disabled={creatingPlan || !user} className="lp-btn-secondary disabled:opacity-60" type="button">
+                {creatingPlan ? "Creazione…" : "Crea piano 7 giorni"}
+              </button>
+            </div>
+
+            <div className="lp-panel p-3 text-sm whitespace-pre-wrap min-h-28">
               {aiText ?? "Descrivi un problema e chiedi un piano step-by-step."}
             </div>
-            <div className="text-xs text-slate-500">Suggerimenti informativi: non sostituiscono un professionista.</div>
+
+            {citations.length ? (
+              <div className="text-xs text-slate-600">Citazioni: {citations.map((c) => `${c.kind}:${c.type ?? c.id}`).join(" · ")}</div>
+            ) : null}
+
+            <div className="text-xs text-slate-600">Suggerimenti informativi: non sostituiscono un professionista.</div>
             </CardContent>
           </Card>
         </div>

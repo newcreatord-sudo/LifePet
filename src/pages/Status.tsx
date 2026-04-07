@@ -8,6 +8,7 @@ import { subscribeRecentHealthEvents } from "@/data/health";
 import { subscribeLatestGpsPoint } from "@/data/gps";
 import { subscribeMedications } from "@/data/medications";
 import { subscribeVaccines } from "@/data/vaccines";
+import { subscribeHealthScoresRange } from "@/data/healthScores";
 import type { GpsPoint, HealthEvent, PetLog, PetMedication, PetTask, PetVaccine } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -68,6 +69,7 @@ export default function Status() {
   const [gpsLatest, setGpsLatest] = useState<GpsPoint | null>(null);
   const [meds, setMeds] = useState<PetMedication[]>([]);
   const [vaccines, setVaccines] = useState<PetVaccine[]>([]);
+  const [scores, setScores] = useState<number[]>([]);
 
   const range = useMemo(() => {
     const toMs = Date.now();
@@ -87,6 +89,16 @@ export default function Status() {
   useEffect(() => {
     if (!activePetId) return;
     const unsub = subscribeTasks(activePetId, setTasks);
+    return () => unsub();
+  }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const toMs = Date.now();
+    const fromMs = toMs - 30 * 24 * 60 * 60 * 1000;
+    const unsub = subscribeHealthScoresRange(activePetId, fromMs, toMs, 40, (items) => {
+      setScores(items.map((i) => i.score));
+    });
     return () => unsub();
   }, [activePetId]);
 
@@ -148,11 +160,8 @@ export default function Status() {
 
     const weights = logs30d
       .filter((l) => l.type === "weight")
-      .map((l) => {
-        const n = Number(String(l.note ?? "").replace(/[^0-9.,]/g, "").replace(",", "."));
-        return Number.isFinite(n) ? n : null;
-      })
-      .filter((x): x is number => x !== null)
+      .map((l) => (typeof l.value?.amount === "number" ? l.value.amount : null))
+      .filter((x): x is number => x !== null && Number.isFinite(x) && x > 0)
       .slice(-14);
 
     const activityByDay = new Map<string, number>();
@@ -172,12 +181,13 @@ export default function Status() {
       metrics: { symptom30d, weight30d, activity7d, water24h, due7d, done7d },
       suggestions,
       charts: {
+        scoreSpark: simpleSpark(scores.slice(-14)),
         weightSpark: simpleSpark(weights),
         activitySpark: simpleSpark(activitySeries),
         waterSpark: simpleSpark(waterSeries),
       },
     };
-  }, [healthEvents, logs30d, range.from24h, range.from72h, range.from7d, tasks]);
+  }, [healthEvents, logs30d, range.from24h, range.from72h, range.from7d, scores, tasks]);
 
   const longevity = useMemo(() => {
     if (!activePet) return null;
@@ -248,6 +258,19 @@ export default function Status() {
               </div>
 
               <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-slate-600">Trend indice (14d)</div>
+                    <Activity className="w-4 h-4 text-slate-600" />
+                  </div>
+                  <div className="mt-1 text-sm font-medium">{scores.length ? "Disponibile" : "Nessun dato"}</div>
+                  {computed.charts.scoreSpark ? (
+                    <svg width={computed.charts.scoreSpark.w} height={computed.charts.scoreSpark.h} className="mt-2">
+                      <path d={computed.charts.scoreSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                    </svg>
+                  ) : null}
+                </div>
+
                 <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                   <div className="flex items-center justify-between">
                     <div className="text-xs text-slate-600">Idratazione (24h)</div>

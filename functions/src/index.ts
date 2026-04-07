@@ -794,6 +794,65 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
   );
 });
 
+export const healthScoreSweep = onSchedule("every 24 hours", async () => {
+  const now = Date.now();
+  const from30d = now - 30 * 24 * 60 * 60 * 1000;
+  const from7d = now - 7 * 24 * 60 * 60 * 1000;
+  const today = ymd(new Date());
+
+  const petsSnap = await db.collection("pets").orderBy("createdAt", "desc").limit(300).get();
+  await Promise.all(
+    petsSnap.docs.map(async (petDoc) => {
+      const petId = petDoc.id;
+
+      const logs30d = await fetchRecentLogsSince(petId, from30d, 800);
+      const symptomCount30d = logs30d.filter((l) => l.type === "symptom").length;
+      const weightLogs30d = logs30d.filter((l) => l.type === "weight").length;
+      const activityLogs7d = logs30d.filter((l) => l.type === "activity" && (l.occurredAt ?? 0) >= from7d).length;
+      const waterLogs7d = logs30d.filter((l) => l.type === "water" && (l.occurredAt ?? 0) >= from7d).length;
+
+      const dueSnap = await petDoc.ref
+        .collection("tasks")
+        .where("dueAt", ">=", from7d)
+        .where("dueAt", "<=", now)
+        .orderBy("dueAt", "asc")
+        .limit(800)
+        .get();
+      const dueTasks7d = dueSnap.docs.filter((d) => String((d.data() as { status?: unknown }).status ?? "") === "due").length;
+      const completedTasks7d = dueSnap.docs.filter((d) => String((d.data() as { status?: unknown }).status ?? "") === "done").length;
+
+      const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+      const symptomPenalty = clamp(symptomCount30d * 7, 0, 50);
+      const weightBonus = clamp(weightLogs30d * 4, 0, 25);
+      const activityBonus = clamp(activityLogs7d * 2, 0, 12);
+      const hydrationBonus = clamp(waterLogs7d * 1, 0, 10);
+      const adherence = dueTasks7d === 0 ? 0.7 : clamp(completedTasks7d / Math.max(1, dueTasks7d), 0, 1);
+      const adherenceScore = Math.round(adherence * 35);
+      const base = 55;
+      const score = clamp(base + weightBonus + adherenceScore + activityBonus + hydrationBonus - symptomPenalty, 0, 100);
+      const status = score >= 75 ? "green" : score >= 45 ? "yellow" : "red";
+
+      await petDoc.ref.collection("healthScores").doc(today).set(
+        {
+          petId,
+          score,
+          status,
+          computedAt: now,
+          inputs: {
+            symptomCount30d,
+            weightLogs30d,
+            completedTasks7d,
+            dueTasks7d,
+            activityLogs7d,
+            waterLogs7d,
+          },
+        },
+        { merge: true }
+      );
+    })
+  );
+});
+
 function agendaKindLabel(kind: string) {
   if (kind === "vet") return "Veterinario";
   if (kind === "grooming") return "Toelettatura";
