@@ -1,18 +1,22 @@
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { useEffect, useMemo, useState } from "react";
+import { usePetStore } from "@/stores/petStore";
 import { deletePushToken, savePushToken } from "@/data/pushTokens";
 import { disablePushNotifications, enablePushNotifications, getVapidKey, isPushSupported, subscribeForegroundMessages } from "@/lib/push";
 import { subscribeUserProfile, type UserProfile } from "@/data/users";
 import { billingCreateCheckoutSession, billingCreatePortalSession, getBillingStatus, type BillingStatus } from "@/data/billing";
+import { exportPetData } from "@/data/export";
+import { deleteAccountCascade } from "@/data/account";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Bell, Crown, LogOut } from "lucide-react";
+import { Bell, Crown, Download, LogOut, Trash2 } from "lucide-react";
 
 export default function Settings() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const pets = usePetStore((s) => s.pets);
   const navigate = useNavigate();
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
@@ -21,6 +25,8 @@ export default function Settings() {
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [privacyBusy, setPrivacyBusy] = useState(false);
+  const [privacyError, setPrivacyError] = useState<string | null>(null);
 
   const pushAvailable = useMemo(() => isPushSupported() && !!getVapidKey(), []);
 
@@ -80,6 +86,87 @@ export default function Settings() {
             </span>
           </button>
         </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Privacy & Dati</CardTitle>
+          <CardDescription>Esporta e gestisci i tuoi dati.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              disabled={!user || user.isDemo || privacyBusy}
+              onClick={async () => {
+                if (!user) return;
+                setPrivacyBusy(true);
+                setPrivacyError(null);
+                try {
+                  const range = { fromMs: Date.now() - 365 * 24 * 60 * 60 * 1000, toMs: Date.now() };
+                  const exportedPets = await Promise.all(pets.map((p) => exportPetData(p.id, range)));
+                  const payload = {
+                    schemaVersion: 1,
+                    exportedAt: Date.now(),
+                    user: { uid: user.uid, email: user.email },
+                    range,
+                    pets: exportedPets,
+                  };
+                  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `lifepet-account-${user.uid}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch (e) {
+                  setPrivacyError(e instanceof Error ? e.message : "Export fallito");
+                } finally {
+                  setPrivacyBusy(false);
+                }
+              }}
+              className="lp-btn-secondary"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Download className="w-4 h-4" />
+                {privacyBusy ? "Esportazione…" : "Esporta dati"}
+              </span>
+            </button>
+
+            <button
+              disabled={!user || user.isDemo || privacyBusy}
+              onClick={async () => {
+                if (!user) return;
+                const confirmText = prompt('Scrivi "ELIMINA" per cancellare definitivamente account e dati.');
+                if (confirmText !== "ELIMINA") return;
+                setPrivacyBusy(true);
+                setPrivacyError(null);
+                try {
+                  await deleteAccountCascade();
+                  await logout();
+                  navigate("/login", { replace: true });
+                } catch (e) {
+                  setPrivacyError(e instanceof Error ? e.message : "Cancellazione fallita");
+                } finally {
+                  setPrivacyBusy(false);
+                }
+              }}
+              className="rounded-xl bg-rose-500 text-white px-4 py-2 text-sm font-medium hover:bg-rose-400 disabled:opacity-60"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Trash2 className="w-4 h-4" />
+                Elimina account
+              </span>
+            </button>
+          </div>
+
+          {user?.isDemo ? <div className="mt-3 text-sm text-slate-600">Privacy non disponibile in demo.</div> : null}
+          {privacyError ? (
+            <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
+              {privacyError}
+            </div>
+          ) : null}
+          <div className="mt-3 text-xs text-slate-600">Export include dati principali degli ultimi 12 mesi (log, GPS, notifiche) + collezioni base.</div>
         </CardContent>
       </Card>
 

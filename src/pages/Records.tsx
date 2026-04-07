@@ -9,6 +9,7 @@ import { subscribeDocuments, getPetDocumentDownloadUrl } from "@/data/documents"
 import { subscribeTasks } from "@/data/tasks";
 import type { HealthEvent, PetDocument, PetLog, PetTask } from "@/types";
 import { getBillingStatus, type BillingStatus } from "@/data/billing";
+import { exportPetData } from "@/data/export";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -279,21 +280,16 @@ export default function Records() {
                 <button
                   disabled={!canExport}
                   onClick={() => {
-                    const payload = {
-                      petId: activePetId,
-                      exportedAt: Date.now(),
-                      health,
-                      logs,
-                      documents: docs,
-                      tasks,
-                    };
-                    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `lifepet-records-${activePetId}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    (async () => {
+                      const payload = await exportPetData(activePetId, range);
+                      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `lifepet-records-${activePetId}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    })();
                   }}
                   className={
                     canExport

@@ -1,4 +1,5 @@
 import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { getMessaging } from "firebase-admin/messaging";
@@ -16,6 +17,7 @@ initializeApp();
 
 const db = getFirestore();
 const bucket = getStorage().bucket();
+const adminAuth = getAuth();
 
 const SKIP_AI = process.env.SKIP_AI === "1";
 const OPENAI_API_KEY = SKIP_AI ? null : defineSecret("OPENAI_API_KEY");
@@ -863,12 +865,18 @@ export const deletePetCascade = onCall(async (req) => {
   const petId = String(req.data?.petId ?? "");
   if (!petId) throw new HttpsError("invalid-argument", "petId is required");
 
+  await performDeletePetCascade(uid, petId);
+
+  return { ok: true };
+});
+
+async function performDeletePetCascade(requestUid: string, petId: string) {
   const petRef = db.collection("pets").doc(petId);
   const petSnap = await petRef.get();
   if (!petSnap.exists) throw new HttpsError("not-found", "Pet not found");
   const pet = petSnap.data() as { ownerId?: unknown; photoPath?: unknown };
   const ownerId = typeof pet.ownerId === "string" ? pet.ownerId : null;
-  if (!ownerId || ownerId !== uid) throw new HttpsError("permission-denied", "Not allowed");
+  if (!ownerId || ownerId !== requestUid) throw new HttpsError("permission-denied", "Not allowed");
 
   const docsSnap = await petRef.collection("documents").limit(500).get();
   const docPaths = docsSnap.docs
@@ -897,7 +905,27 @@ export const deletePetCascade = onCall(async (req) => {
 
   await Promise.all(docPaths.map((p) => safeDeleteStoragePath(p)));
   if (photoPath) await safeDeleteStoragePath(photoPath);
+}
 
+export const deleteAccountCascade = onCall(async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const petsSnap = await db.collection("pets").where("ownerId", "==", uid).limit(50).get();
+  await Promise.all(petsSnap.docs.map((d) => performDeletePetCascade(uid, d.id)));
+
+  const userRef = db.collection("users").doc(uid);
+  await Promise.all([deleteCollection(userRef.collection("pushTokens"), 300), deleteCollection(userRef.collection("usage"), 300)]);
+  await userRef.delete().catch(() => null);
+
+  const membersSnap = await db.collectionGroup("members").where("uid", "==", uid).limit(500).get();
+  if (!membersSnap.empty) {
+    const batch = db.batch();
+    for (const d of membersSnap.docs) batch.delete(d.ref);
+    await batch.commit();
+  }
+
+  await adminAuth.deleteUser(uid);
   return { ok: true };
 });
 
