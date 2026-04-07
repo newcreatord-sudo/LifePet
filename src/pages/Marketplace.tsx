@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Mail, Phone, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Image as ImageIcon, Mail, Phone, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { createListing, deleteListing, subscribeListings, updateListing } from "@/data/marketplace";
+import { getListingPhotoUrl, uploadListingPhotos } from "@/data/marketplaceMedia";
 import { aiChat } from "@/data/ai";
 import { aiUserMessage } from "@/lib/aiErrors";
 import type { ListingCategory, MarketplaceListing } from "@/types";
@@ -33,14 +34,63 @@ export default function Marketplace() {
   const [category, setCategory] = useState<ListingCategory>("accessories");
   const [price, setPrice] = useState("");
   const [contact, setContact] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
   const [creating, setCreating] = useState(false);
+
+  const [queryText, setQueryText] = useState("");
+  const [filterCategory, setFilterCategory] = useState<ListingCategory | "all">("all");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [onlyWithPhotos, setOnlyWithPhotos] = useState(false);
+
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+
+  function parseCategory(v: string): ListingCategory | "all" {
+    if (v === "food" || v === "accessories" || v === "medicine" || v === "services" || v === "other") return v;
+    return "all";
+  }
 
   useEffect(() => {
     const unsub = subscribeListings(50, setItems);
     return () => unsub();
   }, []);
 
-  const filtered = useMemo(() => items, [items]);
+  const filtered = useMemo(() => {
+    const q = queryText.trim().toLowerCase();
+    const min = Number(minPrice);
+    const max = Number(maxPrice);
+    return items
+      .filter((it) => it.status === "active")
+      .filter((it) => (filterCategory === "all" ? true : it.category === filterCategory))
+      .filter((it) => (Number.isFinite(min) ? it.price >= min : true))
+      .filter((it) => (Number.isFinite(max) ? it.price <= max : true))
+      .filter((it) => (onlyWithPhotos ? (it.photoPaths?.length ?? 0) > 0 : true))
+      .filter((it) => (q ? `${it.title} ${it.description}`.toLowerCase().includes(q) : true));
+  }, [filterCategory, items, maxPrice, minPrice, onlyWithPhotos, queryText]);
+
+  useEffect(() => {
+    const paths = new Set<string>();
+    for (const it of items) for (const p of it.photoPaths ?? []) paths.add(p);
+    const missing = Array.from(paths).filter((p) => !photoUrls[p]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries: Array<[string, string]> = [];
+      for (const p of missing.slice(0, 30)) {
+        try {
+          const url = await getListingPhotoUrl(p);
+          entries.push([p, url]);
+        } catch {
+          continue;
+        }
+      }
+      if (cancelled) return;
+      if (entries.length) setPhotoUrls((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [items, photoUrls]);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -49,7 +99,7 @@ export default function Marketplace() {
     if (!Number.isFinite(v) || v < 0) return;
     setCreating(true);
     try {
-      await createListing({
+      const id = await createListing({
         sellerId: user.uid,
         createdAt: Date.now(),
         title: title.trim(),
@@ -60,11 +110,16 @@ export default function Marketplace() {
         status: "active",
         contact: contact.trim() || undefined,
       });
+      if (photos.length) {
+        const paths = await uploadListingPhotos(id, photos.slice(0, 6));
+        if (paths.length) await updateListing(id, { photoPaths: paths });
+      }
       setTitle("");
       setDescription("");
       setPrice("");
       setCategory("accessories");
       setContact("");
+      setPhotos([]);
     } finally {
       setCreating(false);
     }
@@ -117,20 +172,20 @@ export default function Marketplace() {
         <CardContent>
         <form onSubmit={onCreate} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
           <label className="lg:col-span-4 block">
-            <div className="text-xs text-slate-400 mb-1">Titolo</div>
+            <div className="text-xs text-slate-600 mb-1">Titolo</div>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
-              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+              className="lp-input"
             />
           </label>
           <label className="lg:col-span-3 block">
-            <div className="text-xs text-slate-400 mb-1">Categoria</div>
+            <div className="text-xs text-slate-600 mb-1">Categoria</div>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as ListingCategory)}
-              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+              className="lp-select"
             >
               <option value="food">Cibo</option>
               <option value="accessories">Accessori</option>
@@ -140,40 +195,51 @@ export default function Marketplace() {
             </select>
           </label>
           <label className="lg:col-span-2 block">
-            <div className="text-xs text-slate-400 mb-1">Prezzo (EUR)</div>
+            <div className="text-xs text-slate-600 mb-1">Prezzo (EUR)</div>
             <input
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               inputMode="decimal"
               required
-              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+              className="lp-input"
             />
           </label>
           <button
             disabled={creating}
-            className="lg:col-span-3 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+            className="lg:col-span-3 lp-btn-primary inline-flex items-center justify-center gap-2"
             type="submit"
           >
             <Plus className="w-4 h-4" />
             {creating ? "Creazione…" : "Pubblica"}
           </button>
           <label className="lg:col-span-12 block">
-            <div className="text-xs text-slate-400 mb-1">Descrizione</div>
+            <div className="text-xs text-slate-600 mb-1">Descrizione</div>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               required
-              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+              className="lp-textarea"
             />
           </label>
           <label className="lg:col-span-12 block">
-            <div className="text-xs text-slate-400 mb-1">Contatto (email o telefono, opzionale)</div>
+            <div className="text-xs text-slate-600 mb-1">Contatto (email o telefono, opzionale)</div>
             <input
               value={contact}
               onChange={(e) => setContact(e.target.value)}
               placeholder="es. nome@email.com oppure +39..."
-              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+              className="lp-input"
+            />
+          </label>
+
+          <label className="lg:col-span-12 block">
+            <div className="text-xs text-slate-600 mb-1">Foto (max 6)</div>
+            <input
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={(e) => setPhotos(Array.from(e.target.files ?? []).slice(0, 6))}
+              className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-fuchsia-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-fuchsia-500"
             />
           </label>
         </form>
@@ -190,7 +256,7 @@ export default function Marketplace() {
           <button
             onClick={onSuggest}
             disabled={aiLoading || !activePetId}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+            className="lp-btn-primary inline-flex items-center gap-2"
           >
             <Sparkles className="w-4 h-4" />
             {aiLoading ? "…" : "Suggerisci"}
@@ -198,7 +264,7 @@ export default function Marketplace() {
         </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm whitespace-pre-wrap min-h-20">
+          <div className="lp-panel p-3 text-sm whitespace-pre-wrap min-h-20">
             {activePetId ? aiSuggestions ?? "Genera suggerimenti su cibo, accessori e servizi." : "Seleziona un pet per personalizzare i suggerimenti."}
           </div>
         </CardContent>
@@ -210,27 +276,74 @@ export default function Marketplace() {
           <CardDescription>Contatta il venditore tramite email/telefono (se fornito).</CardDescription>
         </CardHeader>
         <CardContent>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end mb-4">
+          <div className="lg:col-span-5">
+            <div className="text-xs text-slate-600 mb-1">Cerca</div>
+            <div className="flex items-center gap-2 rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2">
+              <Search className="w-4 h-4 text-slate-600" />
+              <input value={queryText} onChange={(e) => setQueryText(e.target.value)} placeholder="titolo, descrizione…" className="w-full bg-transparent outline-none text-sm" />
+            </div>
+          </div>
+          <label className="lg:col-span-3 block">
+            <div className="text-xs text-slate-600 mb-1">Categoria</div>
+            <select value={filterCategory} onChange={(e) => setFilterCategory(parseCategory(e.target.value))} className="lp-select">
+              <option value="all">Tutte</option>
+              <option value="food">Cibo</option>
+              <option value="accessories">Accessori</option>
+              <option value="medicine">Farmaci</option>
+              <option value="services">Servizi</option>
+              <option value="other">Altro</option>
+            </select>
+          </label>
+          <label className="lg:col-span-2 block">
+            <div className="text-xs text-slate-600 mb-1">Min €</div>
+            <input value={minPrice} onChange={(e) => setMinPrice(e.target.value)} inputMode="decimal" className="lp-input" />
+          </label>
+          <label className="lg:col-span-2 block">
+            <div className="text-xs text-slate-600 mb-1">Max €</div>
+            <input value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} inputMode="decimal" className="lp-input" />
+          </label>
+          <label className="lg:col-span-12 inline-flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={onlyWithPhotos} onChange={(e) => setOnlyWithPhotos(e.target.checked)} />
+            Solo con foto
+          </label>
+        </div>
+
         {filtered.length === 0 ? (
           <EmptyState title="Nessun annuncio" description="Pubblica il primo annuncio per iniziare." />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {filtered.map((it) => (
-              <div key={it.id} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <div key={it.id} className="lp-card p-4">
+                {(it.photoPaths?.length ?? 0) > 0 ? (
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {(it.photoPaths ?? []).slice(0, 3).map((p) => {
+                      const url = photoUrls[p];
+                      return url ? (
+                        <img key={p} src={url} className="h-24 w-full object-cover rounded-xl border border-slate-200/70" />
+                      ) : (
+                        <div key={p} className="h-24 rounded-xl border border-slate-200/70 bg-slate-100/60 grid place-items-center">
+                          <ImageIcon className="w-5 h-5 text-slate-500" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 <div className="text-sm font-semibold">{it.title}</div>
-                <div className="text-xs text-slate-500 mt-0.5">{categoryLabel(it.category)} · € {it.price.toFixed(2)}</div>
-                <div className="text-sm text-slate-300 mt-2 whitespace-pre-wrap">{it.description}</div>
-                <div className="text-xs text-slate-500 mt-3">Pubblicato: {new Date(it.createdAt).toLocaleString()}</div>
+                <div className="text-xs text-slate-600 mt-0.5">{categoryLabel(it.category)} · € {it.price.toFixed(2)}</div>
+                <div className="text-sm text-slate-800 mt-2 whitespace-pre-wrap">{it.description}</div>
+                <div className="text-xs text-slate-600 mt-3">Pubblicato: {new Date(it.createdAt).toLocaleString()}</div>
                 <div className="mt-3 flex items-center gap-2">
                   {it.contact ? (
                     <a
                       href={contactHref(it.contact) ?? undefined}
-                      className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 inline-flex items-center gap-2"
+                      className="lp-btn-icon inline-flex items-center gap-2"
                     >
                       {it.contact.includes("@") ? <Mail className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
                       Contatta
                     </a>
                   ) : (
-                    <div className="text-xs text-slate-400">Contatto non disponibile.</div>
+                    <div className="text-xs text-slate-600">Contatto non disponibile.</div>
                   )}
 
                   {user && it.sellerId === user.uid ? (
@@ -239,7 +352,7 @@ export default function Marketplace() {
                         onClick={async () => {
                           await updateListing(it.id, { status: "sold" });
                         }}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="lp-btn-secondary"
                       >
                         Segna venduto
                       </button>
@@ -248,7 +361,7 @@ export default function Marketplace() {
                           if (!confirm("Eliminare questo annuncio?")) return;
                           await deleteListing(it.id);
                         }}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="lp-btn-icon"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Bell, Pencil, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
-import { createAgendaEvent, deleteAgendaEvent, subscribeAgendaRange, updateAgendaEvent } from "@/data/agenda";
-import type { AgendaEvent } from "@/types";
+import { createAgendaEvent, createAgendaSeries, deleteAgendaEvent, seedUpcomingAgendaFromSeries, subscribeAgendaRange, updateAgendaEvent } from "@/data/agenda";
+import type { AgendaEvent, AgendaSeries } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -17,6 +17,8 @@ export default function Agenda() {
   const [dueAt, setDueAt] = useState<string>("");
   const [kind, setKind] = useState<AgendaEvent["kind"]>("vet");
   const [reminder, setReminder] = useState("60");
+  const [recurrenceType, setRecurrenceType] = useState<"none" | "daily" | "weekly">("none");
+  const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -33,6 +35,11 @@ export default function Agenda() {
     return { fromMs: from.getTime(), toMs: to.getTime() };
   }, []);
 
+  function parseRecurrenceType(v: string): "none" | "daily" | "weekly" {
+    if (v === "daily" || v === "weekly") return v;
+    return "none";
+  }
+
   useEffect(() => {
     if (!activePetId) return;
     const unsub = subscribeAgendaRange(activePetId, range.fromMs, range.toMs, setEvents);
@@ -47,23 +54,61 @@ export default function Agenda() {
     setSaving(true);
     try {
       const reminderMinutesBefore = Math.max(0, Number(reminder) || 0);
-      await createAgendaEvent(activePetId, {
-        petId: activePetId,
-        title: title.trim(),
-        dueAt: dueMs,
-        kind,
-        reminderMinutesBefore,
-        createdAt: Date.now(),
-        createdBy: user.uid,
-      });
+      if (recurrenceType === "none") {
+        await createAgendaEvent(activePetId, {
+          petId: activePetId,
+          title: title.trim(),
+          dueAt: dueMs,
+          kind,
+          reminderMinutesBefore,
+          createdAt: Date.now(),
+          createdBy: user.uid,
+        });
+      } else {
+        const d = new Date(dueMs);
+        const timeOfDay = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        const seriesInput: Omit<AgendaSeries, "id"> = {
+          petId: activePetId,
+          title: title.trim(),
+          kind,
+          enabled: true,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          startAt: dueMs,
+          timeOfDay,
+          recurrence:
+            recurrenceType === "weekly"
+              ? { type: "weekly", weekdays: weekdays.length ? weekdays : [d.getDay()] }
+              : { type: "daily" },
+          reminderMinutesBefore,
+          createdAt: Date.now(),
+          createdBy: user.uid,
+        };
+        const seriesId = await createAgendaSeries(activePetId, seriesInput);
+        await seedUpcomingAgendaFromSeries(activePetId, { id: seriesId, ...seriesInput }, 30);
+      }
       setTitle("");
       setDueAt("");
       setKind("vet");
       setReminder("60");
+      setRecurrenceType("none");
     } finally {
       setSaving(false);
     }
   }
+
+  const weekdayOptions = useMemo(
+    () =>
+      [
+        { i: 1, label: "Lun" },
+        { i: 2, label: "Mar" },
+        { i: 3, label: "Mer" },
+        { i: 4, label: "Gio" },
+        { i: 5, label: "Ven" },
+        { i: 6, label: "Sab" },
+        { i: 0, label: "Dom" },
+      ] as const,
+    []
+  );
 
   return (
     <div className="space-y-6">
@@ -78,7 +123,7 @@ export default function Agenda() {
         {!activePetId ? (
           <EmptyState title="Seleziona un pet" description="Scegli un profilo per aggiungere eventi." />
         ) : (
-          <form onSubmit={onAdd} className="grid grid-cols-1 md:grid-cols-[1fr_220px_180px_180px_140px] gap-3 items-end">
+          <form onSubmit={onAdd} className="grid grid-cols-1 md:grid-cols-[1fr_220px_180px_180px_200px_140px] gap-3 items-end">
             <label className="block">
               <div className="text-xs text-slate-400 mb-1">Titolo</div>
               <input
@@ -129,6 +174,16 @@ export default function Agenda() {
                 </select>
               </div>
             </label>
+
+            <label className="block">
+              <div className="text-xs text-slate-400 mb-1">Ricorrenza</div>
+              <select value={recurrenceType} onChange={(e) => setRecurrenceType(parseRecurrenceType(e.target.value))} className="lp-select">
+                <option value="none">Nessuna</option>
+                <option value="daily">Giornaliera</option>
+                <option value="weekly">Settimanale</option>
+              </select>
+            </label>
+
             <button
               disabled={saving}
               className="lp-btn-primary"
@@ -136,6 +191,28 @@ export default function Agenda() {
             >
               {saving ? "…" : "Aggiungi"}
             </button>
+
+            {recurrenceType === "weekly" ? (
+              <div className="md:col-span-6">
+                <div className="text-xs text-slate-400 mb-1">Giorni</div>
+                <div className="flex flex-wrap gap-2">
+                  {weekdayOptions.map((w) => (
+                    <button
+                      key={w.i}
+                      type="button"
+                      onClick={() => setWeekdays((prev) => (prev.includes(w.i) ? prev.filter((x) => x !== w.i) : [...prev, w.i]))}
+                      className={
+                        weekdays.includes(w.i)
+                          ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                          : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
+                      }
+                    >
+                      {w.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </form>
         )}
         </CardContent>

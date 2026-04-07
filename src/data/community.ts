@@ -1,4 +1,4 @@
-import { addDoc, collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
@@ -38,7 +38,7 @@ export async function createPost(input: Omit<CommunityPost, "id" | "likeCount">)
     demoUpdate<CommunityPost[]>(DEMO_KEY, [], (prev) => [next, ...prev]);
     return id;
   }
-  const ref = await addDoc(postsCol(), { ...input, likeCount: 0 });
+  const ref = await addDoc(postsCol(), { ...input, likeCount: 0, status: "active", reportCount: 0 });
   return ref.id;
 }
 
@@ -78,6 +78,25 @@ export async function createComment(postId: string, input: Omit<CommunityComment
     demoUpdate<CommunityComment[]>(demoCommentsKey(postId), [], (prev) => [...prev, next]);
     return id;
   }
-  const ref = await addDoc(commentsCol(postId), { postId, ...input });
+  const ref = await addDoc(commentsCol(postId), { postId, ...input, status: "active", reportCount: 0 });
   return ref.id;
+}
+
+export async function reportPost(postId: string, reporterId: string, reason: string) {
+  if (shouldUseDemoData()) {
+    demoUpdate<CommunityPost[]>(DEMO_KEY, [], (prev) => prev.map((p) => (p.id === postId ? { ...p, reportCount: (p.reportCount ?? 0) + 1 } : p)));
+    return;
+  }
+  const { db } = getFirebase();
+  await setDoc(doc(db, "posts", postId, "reports", reporterId), { reporterId, reason: reason.trim(), createdAt: Date.now() }, { merge: true });
+}
+
+export async function reportComment(postId: string, commentId: string, reporterId: string, reason: string) {
+  if (shouldUseDemoData()) return;
+  const { db } = getFirebase();
+  await setDoc(
+    doc(db, "posts", postId, "comments", commentId, "reports", reporterId),
+    { reporterId, reason: reason.trim(), createdAt: Date.now() },
+    { merge: true }
+  );
 }

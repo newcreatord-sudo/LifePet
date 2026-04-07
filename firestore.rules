@@ -53,6 +53,10 @@ service cloud.firestore {
         allow read, write: if isSignedIn() && isOwner(petId);
       }
 
+      match /agendaSeries/{seriesId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
       match /gpsPoints/{pointId} {
         allow read, write: if isSignedIn() && isOwner(petId);
       }
@@ -98,13 +102,33 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
-      allow update: if false;
+      allow update: if isSignedIn() && (resource.data.authorId == request.auth.uid || request.auth.token.role in ['admin','moderator']);
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+        allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+        allow update: if false;
+
+        match /reports/{reportId} {
+          allow create: if isSignedIn() && reportId == request.auth.uid;
+          allow read: if isSignedIn() && request.auth.token.role in ['admin','moderator'];
+          allow update, delete: if false;
+        }
+      }
+
+      match /reports/{reportId} {
+        allow create: if isSignedIn() && reportId == request.auth.uid;
+        allow read: if isSignedIn() && request.auth.token.role in ['admin','moderator'];
+        allow update, delete: if false;
+      }
     }
 
     match /listings/{listingId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.sellerId == request.auth.uid && request.resource.data.sellerId == resource.data.sellerId;
+      allow delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
     }
 
     match /providers/{providerId} {
@@ -117,6 +141,11 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
       allow update, delete: if false;
+
+      match /members/{memberId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isSignedIn() && request.auth.uid == memberId;
+      }
 
       match /messages/{messageId} {
         allow read: if isSignedIn();

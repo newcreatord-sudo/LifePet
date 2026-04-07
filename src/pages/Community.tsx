@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Heart, MessageSquare, Plus } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
-import { createComment, createPost, likePost, subscribeComments, subscribePosts } from "@/data/community";
+import { createComment, createPost, likePost, reportComment, reportPost, subscribeComments, subscribePosts } from "@/data/community";
 import { ensureDefaultGroups, joinGroup, leaveGroup, sendGroupMessage, subscribeGroupMembership, subscribeGroupMessages, subscribeGroups } from "@/data/groups";
 import type { CommunityComment, CommunityGroup, CommunityGroupMessage, CommunityPost } from "@/types";
 import { subscribeUserProfile } from "@/data/users";
@@ -293,11 +293,13 @@ export default function Community() {
               <CardDescription>Consigli e domande dalla community.</CardDescription>
             </CardHeader>
             <CardContent>
-            {posts.length === 0 ? (
+            {posts.filter((p) => p.status !== "hidden" && p.status !== "removed").length === 0 ? (
               <EmptyState title="Nessun post" description="Pubblica il primo messaggio per iniziare." />
             ) : (
               <div className="space-y-3">
-                {posts.map((p) => (
+                {posts
+                  .filter((p) => p.status !== "hidden" && p.status !== "removed")
+                  .map((p) => (
                   <div key={p.id} className="lp-card p-4">
                     <div className="text-sm whitespace-pre-wrap">{p.text}</div>
                     <div className="mt-3 flex items-center justify-between gap-3">
@@ -317,6 +319,17 @@ export default function Community() {
                           <MessageSquare className="w-4 h-4" />
                           Commenti
                         </button>
+                        {user ? (
+                          <button
+                            onClick={async () => {
+                              const reason = prompt("Motivo segnalazione (opzionale):") ?? "";
+                              await reportPost(p.id, user.uid, reason);
+                            }}
+                            className="inline-flex items-center gap-1 lp-btn-icon"
+                          >
+                            Segnala
+                          </button>
+                        ) : null}
                       </div>
                     </div>
 
@@ -324,12 +337,28 @@ export default function Community() {
                       <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                         <div className="text-sm font-semibold">Commenti</div>
                         <div className="mt-2 space-y-2">
-                          {(comments[p.id] ?? []).length === 0 ? (
+                          {(comments[p.id] ?? []).filter((c) => c.status !== "hidden" && c.status !== "removed").length === 0 ? (
                             <div className="text-sm text-slate-400">Nessun commento. Inizia tu.</div>
                           ) : (
-                            (comments[p.id] ?? []).map((c) => (
+                            (comments[p.id] ?? [])
+                              .filter((c) => c.status !== "hidden" && c.status !== "removed")
+                              .map((c) => (
                               <div key={c.id} className="lp-panel px-3 py-2">
-                                <div className="text-sm whitespace-pre-wrap">{c.text}</div>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="text-sm whitespace-pre-wrap">{c.text}</div>
+                                  {user ? (
+                                    <button
+                                      onClick={async () => {
+                                        const reason = prompt("Motivo segnalazione (opzionale):") ?? "";
+                                        await reportComment(p.id, c.id, user.uid, reason);
+                                      }}
+                                      className="lp-btn-icon"
+                                      type="button"
+                                    >
+                                      Segnala
+                                    </button>
+                                  ) : null}
+                                </div>
                                 <div className="text-[10px] text-slate-600 mt-1">{new Date(c.createdAt).toLocaleString()}</div>
                               </div>
                             ))

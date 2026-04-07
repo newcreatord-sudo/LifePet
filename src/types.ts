@@ -164,6 +164,22 @@ export type AgendaEvent = {
   dueAt: number;
   kind: "vet" | "grooming" | "training" | "cleaning" | "other";
   reminderMinutesBefore?: number;
+  seriesId?: string;
+  createdAt: number;
+  createdBy: string;
+};
+
+export type AgendaSeries = {
+  id: string;
+  petId: PetId;
+  title: string;
+  kind: AgendaEvent["kind"];
+  enabled: boolean;
+  timezone?: string;
+  startAt: number;
+  recurrence: { type: "daily" } | { type: "weekly"; weekdays: number[] };
+  timeOfDay?: string;
+  reminderMinutesBefore?: number;
   createdAt: number;
   createdBy: string;
 };
@@ -238,6 +254,8 @@ export type CommunityPost = {
   text: string;
   petTag?: { species?: string };
   likeCount: number;
+  status?: "active" | "hidden" | "removed";
+  reportCount?: number;
 };
 
 export type CommunityComment = {
@@ -246,6 +264,8 @@ export type CommunityComment = {
   authorId: string;
   createdAt: number;
   text: string;
+  status?: "active" | "hidden" | "removed";
+  reportCount?: number;
 };
 
 export type CommunityGroup = {

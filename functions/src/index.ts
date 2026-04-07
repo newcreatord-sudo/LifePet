@@ -6,7 +6,7 @@ import { getMessaging } from "firebase-admin/messaging";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentDeleted } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import OpenAI from "openai";
 import Stripe from "stripe";
@@ -838,6 +838,107 @@ export const agendaReminderSweep = onSchedule("every 5 minutes", async () => {
   );
 });
 
+type AgendaSeriesDoc = {
+  petId?: unknown;
+  title?: unknown;
+  kind?: unknown;
+  enabled?: unknown;
+  startAt?: unknown;
+  timeOfDay?: unknown;
+  reminderMinutesBefore?: unknown;
+  recurrence?: unknown;
+  createdBy?: unknown;
+};
+
+function parseTimeOfDay(v: unknown) {
+  const s = String(v ?? "").trim();
+  if (!/^\d{2}:\d{2}$/.test(s)) return null;
+  const [hh, mm] = s.split(":").map((x) => Number(x));
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return { hh, mm };
+}
+
+function computeAgendaSeriesDueAts(input: {
+  startAt: number;
+  recurrence: { type: "daily" } | { type: "weekly"; weekdays: number[] };
+  timeOfDay?: string | null;
+  fromMs: number;
+  toMs: number;
+}) {
+  const out: number[] = [];
+  const start = Math.max(input.startAt, input.fromMs);
+  const t = parseTimeOfDay(input.timeOfDay);
+  const cur = new Date(start);
+  cur.setSeconds(0, 0);
+  if (t) cur.setHours(t.hh, t.mm, 0, 0);
+  if (cur.getTime() < start) cur.setTime(cur.getTime() + 24 * 60 * 60 * 1000);
+  const end = new Date(input.toMs);
+  while (cur <= end) {
+    if (input.recurrence.type === "daily") {
+      out.push(cur.getTime());
+      cur.setDate(cur.getDate() + 1);
+      continue;
+    }
+    const wd = cur.getDay();
+    if (input.recurrence.weekdays.includes(wd)) out.push(cur.getTime());
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+export const agendaSeriesSweep = onSchedule("every 12 hours", async () => {
+  const now = Date.now();
+  const horizonMs = now + 30 * 24 * 60 * 60 * 1000;
+
+  const seriesSnap = await db.collectionGroup("agendaSeries").where("enabled", "==", true).limit(300).get();
+  if (seriesSnap.empty) return;
+
+  await Promise.all(
+    seriesSnap.docs.map(async (s) => {
+      const data = s.data() as AgendaSeriesDoc;
+      const petId = typeof data.petId === "string" ? data.petId : null;
+      const title = typeof data.title === "string" ? data.title : null;
+      const kind = typeof data.kind === "string" ? data.kind : "other";
+      const startAt = typeof data.startAt === "number" ? data.startAt : null;
+      const createdBy = typeof data.createdBy === "string" ? data.createdBy : null;
+      if (!petId || !title || !startAt || !createdBy) return;
+
+      const reminderMinutesBefore = typeof data.reminderMinutesBefore === "number" ? data.reminderMinutesBefore : 0;
+      const timeOfDay = typeof data.timeOfDay === "string" ? data.timeOfDay : null;
+
+      const rec = data.recurrence as { type?: unknown; weekdays?: unknown } | undefined;
+      const recurrence =
+        rec?.type === "weekly" && Array.isArray(rec.weekdays)
+          ? { type: "weekly" as const, weekdays: rec.weekdays.map((x) => Number(x)).filter((n) => Number.isFinite(n)) }
+          : { type: "daily" as const };
+
+      const dueAts = computeAgendaSeriesDueAts({ startAt, recurrence, timeOfDay, fromMs: now, toMs: horizonMs });
+      if (dueAts.length === 0) return;
+
+      const batch = db.batch();
+      for (const dueAt of dueAts) {
+        const eventId = `${s.id}_${dueAt}`;
+        batch.set(
+          db.collection("pets").doc(petId).collection("agendaEvents").doc(eventId),
+          {
+            petId,
+            title,
+            dueAt,
+            kind,
+            reminderMinutesBefore,
+            seriesId: s.id,
+            createdAt: now,
+            createdBy,
+          },
+          { merge: true }
+        );
+      }
+      await batch.commit();
+    })
+  );
+});
+
 export const taskReminderSweep = onSchedule("every 10 minutes", async () => {
   const now = Date.now();
   const windowAheadMs = 60 * 60 * 1000;
@@ -908,6 +1009,12 @@ export const onGroupMessageCreated = onDocumentCreated("groups/{groupId}/message
       })
     )
   );
+});
+
+export const onListingDeleted = onDocumentDeleted("listings/{listingId}", async (event) => {
+  const data = event.data?.data() as { photoPaths?: unknown } | undefined;
+  const paths = Array.isArray(data?.photoPaths) ? data?.photoPaths.map((p) => String(p)) : [];
+  await Promise.all(paths.filter(Boolean).map((p) => safeDeleteStoragePath(p)));
 });
 
 export const deletePetCascade = onCall(async (req) => {

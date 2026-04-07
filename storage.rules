@@ -13,6 +13,10 @@ service firebase.storage {
       return request.resource.contentType.matches('application/pdf') || request.resource.contentType.matches('image/.*');
     }
 
+    function isListingSeller(listingId) {
+      return firestore.get(/databases/(default)/documents/listings/$(listingId)).data.sellerId == request.auth.uid;
+    }
+
     match /pets/{petId}/{allPaths=**} {
       allow read, write: if false;
     }
@@ -27,6 +31,12 @@ service firebase.storage {
       allow read: if isSignedIn() && isOwner(petId);
       allow create, update: if isSignedIn() && isOwner(petId) && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
       allow delete: if isSignedIn() && isOwner(petId);
+    }
+
+    match /marketplace/listings/{listingId}/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isListingSeller(listingId) && request.resource.size < 8 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && isListingSeller(listingId);
     }
   }
 }
