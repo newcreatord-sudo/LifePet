@@ -1,0 +1,683 @@
+import { initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { getMessaging } from "firebase-admin/messaging";
+import { setGlobalOptions } from "firebase-functions/v2";
+import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import OpenAI from "openai";
+import Stripe from "stripe";
+
+setGlobalOptions({ region: "us-central1" });
+
+initializeApp();
+
+const db = getFirestore();
+
+const SKIP_AI = process.env.SKIP_AI === "1";
+const OPENAI_API_KEY = SKIP_AI ? null : defineSecret("OPENAI_API_KEY");
+
+const BILLING_DISABLED = process.env.BILLING_DISABLED !== "0";
+const BETA_PRO_UNTIL_MS = Number(process.env.BETA_PRO_UNTIL_MS || "0") || 0;
+const APP_URL = process.env.APP_URL || "https://trae67p1lnc4.vercel.app";
+const STRIPE_TRIAL_DAYS = Number(process.env.STRIPE_TRIAL_DAYS || "30") || 30;
+const STRIPE_PRICE_PRO = process.env.STRIPE_PRICE_PRO || "";
+
+const STRIPE_SECRET_KEY = BILLING_DISABLED ? null : defineSecret("STRIPE_SECRET_KEY");
+const STRIPE_WEBHOOK_SECRET = BILLING_DISABLED ? null : defineSecret("STRIPE_WEBHOOK_SECRET");
+
+type UserDoc = {
+  plan?: unknown;
+  email?: unknown;
+  stripeCustomerId?: unknown;
+};
+
+type UsageDoc = {
+  aiCalls?: unknown;
+};
+
+type NotificationDoc = {
+  type?: unknown;
+};
+
+function parsePlan(v: unknown): "free" | "pro" {
+  return v === "pro" ? "pro" : "free";
+}
+
+function isBetaProEnabled(nowMs: number) {
+  if (BILLING_DISABLED) return true;
+  if (!BETA_PRO_UNTIL_MS) return false;
+  return nowMs <= BETA_PRO_UNTIL_MS;
+}
+
+function getStripe(secretKey: string) {
+  return new Stripe(secretKey, { apiVersion: "2025-02-24.acacia" });
+}
+
+async function getOrCreateStripeCustomer(stripe: Stripe, uid: string, email?: string | null) {
+  const userRef = db.collection("users").doc(uid);
+  const snap = await userRef.get();
+  const existing = snap.exists ? (snap.data() as UserDoc).stripeCustomerId : null;
+  if (existing) return String(existing);
+
+  const customer = await stripe.customers.create({
+    email: email ?? undefined,
+    metadata: { firebaseUID: uid },
+  });
+  await userRef.set({ stripeCustomerId: customer.id, updatedAt: Date.now() }, { merge: true });
+  return customer.id;
+}
+
+async function setUserPlanFromSubscription(uid: string, input: { plan: "free" | "pro"; stripeCustomerId?: string; stripeSubscriptionId?: string; subscriptionStatus?: string; currentPeriodEnd?: number }) {
+  await db
+    .collection("users")
+    .doc(uid)
+    .set(
+      {
+        plan: input.plan,
+        stripeCustomerId: input.stripeCustomerId ?? null,
+        stripeSubscriptionId: input.stripeSubscriptionId ?? null,
+        subscriptionStatus: input.subscriptionStatus ?? null,
+        currentPeriodEnd: input.currentPeriodEnd ?? null,
+        planUpdatedAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    );
+}
+
+function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const s1 = Math.sin(dLat / 2);
+  const s2 = Math.sin(dLng / 2);
+  const x = s1 * s1 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * s2 * s2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+}
+
+async function createPetNotification(petId: string, input: { type: string; title: string; body: string; severity: "info" | "warning" | "danger" }) {
+  await db.collection("pets").doc(petId).collection("notifications").add({
+    petId,
+    type: input.type,
+    title: input.title,
+    body: input.body,
+    severity: input.severity,
+    createdAt: Date.now(),
+    read: false,
+  });
+
+  const ownerId = await getPetOwnerId(petId);
+  if (ownerId) {
+    await sendPushToUser(ownerId, {
+      title: input.title,
+      body: input.body,
+      data: { petId, type: input.type, severity: input.severity },
+    });
+  }
+}
+
+async function hasRecentNotification(petId: string, type: string, sinceMs: number) {
+  const snap = await db
+    .collection("pets")
+    .doc(petId)
+    .collection("notifications")
+    .where("createdAt", ">=", sinceMs)
+    .orderBy("createdAt", "desc")
+    .limit(50)
+    .get();
+  return snap.docs.some((d) => String((d.data() as NotificationDoc).type ?? "") === type);
+}
+
+async function fetchRecentLogsSince(petId: string, fromMs: number, limitCount: number) {
+  const snap = await db
+    .collection("pets")
+    .doc(petId)
+    .collection("logs")
+    .where("occurredAt", ">=", fromMs)
+    .orderBy("occurredAt", "desc")
+    .limit(limitCount)
+    .get();
+  return snap.docs.map((d) => d.data() as { type?: string; occurredAt?: number; note?: string });
+}
+
+function ymd(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
+async function enforceAiQuota(uid: string) {
+  const userRef = db.collection("users").doc(uid);
+  const today = ymd(new Date());
+  const usageRef = userRef.collection("usage").doc(today);
+
+  const now = Date.now();
+  const betaPro = isBetaProEnabled(now);
+
+  const { plan, used } = await db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const plan = parsePlan(userSnap.exists ? (userSnap.data() as UserDoc).plan : "free");
+    const usageSnap = await tx.get(usageRef);
+    const used = usageSnap.exists ? Number((usageSnap.data() as UsageDoc).aiCalls ?? 0) : 0;
+    const nextUsed = used + 1;
+    tx.set(usageRef, { aiCalls: nextUsed, updatedAt: Date.now() }, { merge: true });
+    return { plan, used: nextUsed };
+  });
+
+  const effectivePlan: "free" | "pro" = betaPro ? "pro" : plan;
+  const limit = effectivePlan === "pro" ? 200 : 20;
+  if (used > limit) {
+    throw new HttpsError("resource-exhausted", "Daily AI limit reached. Upgrade to Pro for higher limits.");
+  }
+}
+
+export const billingStatus = onCall(async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const userSnap = await db.collection("users").doc(uid).get();
+  const plan = parsePlan(userSnap.exists ? (userSnap.data() as UserDoc).plan : "free");
+  const now = Date.now();
+  const betaPro = isBetaProEnabled(now);
+
+  return {
+    billingEnabled: !BILLING_DISABLED,
+    betaProEnabled: betaPro,
+    betaProUntilMs: BETA_PRO_UNTIL_MS || null,
+    plan,
+    effectivePlan: betaPro ? "pro" : plan,
+  };
+});
+
+export const billingCreateCheckoutSession = BILLING_DISABLED
+  ? onCall(async () => {
+      throw new HttpsError("failed-precondition", "Billing is disabled (beta mode).");
+    })
+  : onCall({ secrets: [STRIPE_SECRET_KEY!] }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const now = Date.now();
+  if (BILLING_DISABLED || isBetaProEnabled(now)) throw new HttpsError("failed-precondition", "Billing is disabled (beta mode).");
+  if (!STRIPE_PRICE_PRO) throw new HttpsError("failed-precondition", "STRIPE_PRICE_PRO is not configured.");
+
+  const stripe = getStripe(STRIPE_SECRET_KEY!.value());
+  const userSnap = await db.collection("users").doc(uid).get();
+  const email = userSnap.exists ? (userSnap.data() as UserDoc).email : null;
+  const emailStr = typeof email === "string" ? email : null;
+  const customerId = await getOrCreateStripeCustomer(stripe, uid, emailStr);
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer: customerId,
+    line_items: [{ price: STRIPE_PRICE_PRO, quantity: 1 }],
+    allow_promotion_codes: true,
+    subscription_data: { trial_period_days: STRIPE_TRIAL_DAYS, metadata: { firebaseUID: uid } },
+    metadata: { firebaseUID: uid },
+    success_url: `${APP_URL}/app/settings?checkout=success`,
+    cancel_url: `${APP_URL}/app/settings?checkout=cancel`,
+  });
+
+  return { url: session.url };
+  });
+
+export const billingCreatePortalSession = BILLING_DISABLED
+  ? onCall(async () => {
+      throw new HttpsError("failed-precondition", "Billing is disabled (beta mode).");
+    })
+  : onCall({ secrets: [STRIPE_SECRET_KEY!] }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  if (BILLING_DISABLED) throw new HttpsError("failed-precondition", "Billing is disabled (beta mode).");
+
+  const stripe = getStripe(STRIPE_SECRET_KEY!.value());
+  const userSnap = await db.collection("users").doc(uid).get();
+  const customerId = userSnap.exists ? String((userSnap.data() as UserDoc).stripeCustomerId ?? "") : "";
+  if (!customerId) throw new HttpsError("failed-precondition", "No Stripe customer.");
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: customerId,
+    return_url: `${APP_URL}/app/settings`,
+  });
+
+  return { url: session.url };
+  });
+
+export const stripeWebhook = BILLING_DISABLED
+  ? onRequest(async (_req, res) => {
+      res.status(404).send("Billing disabled");
+    })
+  : onRequest({ secrets: [STRIPE_SECRET_KEY!, STRIPE_WEBHOOK_SECRET!] }, async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  if (!sig || typeof sig !== "string") {
+    res.status(400).send("Missing Stripe signature");
+    return;
+  }
+
+  let event: Stripe.Event;
+  try {
+    const stripe = getStripe(STRIPE_SECRET_KEY!.value());
+    event = stripe.webhooks.constructEvent(req.rawBody, sig, STRIPE_WEBHOOK_SECRET!.value());
+  } catch {
+    res.status(400).send("Invalid signature");
+    return;
+  }
+
+  try {
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const uid = String(session.metadata?.firebaseUID ?? "");
+      if (uid) {
+        const customerId = typeof session.customer === "string" ? session.customer : undefined;
+        const subscriptionId = typeof session.subscription === "string" ? session.subscription : undefined;
+        await setUserPlanFromSubscription(uid, {
+          plan: "pro",
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subscriptionId,
+          subscriptionStatus: "active",
+        });
+      }
+    }
+
+    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+      const sub = event.data.object as Stripe.Subscription;
+      const uid = String(sub.metadata?.firebaseUID ?? "");
+      if (uid) {
+        const status = sub.status;
+        const plan: "free" | "pro" = status === "active" || status === "trialing" ? "pro" : "free";
+        const customerId = typeof sub.customer === "string" ? sub.customer : undefined;
+        const currentPeriodEnd = typeof sub.current_period_end === "number" ? sub.current_period_end * 1000 : undefined;
+        await setUserPlanFromSubscription(uid, {
+          plan,
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: sub.id,
+          subscriptionStatus: status,
+          currentPeriodEnd,
+        });
+      }
+    }
+
+    res.json({ received: true });
+  } catch {
+    res.status(500).send("Webhook handler failed");
+  }
+  });
+
+async function getPetOwnerId(petId: string) {
+  const snap = await db.collection("pets").doc(petId).get();
+  if (!snap.exists) return null;
+  const pet = snap.data() as { ownerId?: string };
+  return pet.ownerId ?? null;
+}
+
+async function sendPushToUser(userId: string, payload: { title: string; body: string; data: Record<string, string> }) {
+  const tokensSnap = await db.collection("users").doc(userId).collection("pushTokens").get();
+  const tokens = tokensSnap.docs.map((d) => String((d.data() as { token?: string }).token ?? d.id)).filter(Boolean);
+  if (tokens.length === 0) return;
+
+  try {
+    const res = await getMessaging().sendEachForMulticast({
+      tokens,
+      notification: { title: payload.title, body: payload.body },
+      data: payload.data,
+    });
+
+    const toDelete: string[] = [];
+    res.responses.forEach((r, idx) => {
+      if (r.success) return;
+      const code = (r.error as { code?: string } | undefined)?.code;
+      if (code === "messaging/invalid-registration-token" || code === "messaging/registration-token-not-registered") {
+        toDelete.push(tokens[idx]);
+      }
+    });
+
+    await Promise.all(toDelete.map((t) => db.collection("users").doc(userId).collection("pushTokens").doc(t).delete()));
+  } catch {
+    return;
+  }
+}
+
+function getOpenAi(apiKey: string) {
+  if (!apiKey) throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured");
+  return new OpenAI({ apiKey });
+}
+
+async function assertPetAccess(petId: string, uid: string) {
+  const petRef = db.collection("pets").doc(petId);
+  const petSnap = await petRef.get();
+  if (!petSnap.exists) {
+    throw new HttpsError("not-found", "Pet not found");
+  }
+  const pet = petSnap.data() as { ownerId?: string };
+  if (!pet.ownerId || pet.ownerId !== uid) {
+    throw new HttpsError("permission-denied", "No access to this pet");
+  }
+}
+
+async function fetchRecentLogs(petId: string, fromMs: number, limitCount: number) {
+  const snap = await db
+    .collection("pets")
+    .doc(petId)
+    .collection("logs")
+    .where("occurredAt", ">=", fromMs)
+    .orderBy("occurredAt", "desc")
+    .limit(limitCount)
+    .get();
+
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
+}
+
+export const aiGenerateSummary = SKIP_AI
+  ? onCall(async () => {
+      throw new HttpsError("failed-precondition", "AI is not configured");
+    })
+  : onCall({ secrets: [OPENAI_API_KEY!] }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  await enforceAiQuota(uid);
+
+  const petId = String(req.data?.petId ?? "");
+  const days = Number(req.data?.days ?? 7);
+  if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+  if (!Number.isFinite(days) || days <= 0 || days > 365) {
+    throw new HttpsError("invalid-argument", "days must be between 1 and 365");
+  }
+
+  await assertPetAccess(petId, uid);
+
+  const fromMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const logs = await fetchRecentLogs(petId, fromMs, 200);
+  const citations = logs.slice(0, 30).map((l) => ({ kind: "log" as const, id: l.id }));
+
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const client = getOpenAi(OPENAI_API_KEY!.value());
+
+  const prompt = [
+    "You are LifePet AI.",
+    "You summarize pet care logs for the owner.",
+    "You must be practical and cautious.",
+    "You must include a short non-medical disclaimer.",
+    "If symptoms look urgent, advise contacting a veterinarian.",
+    "Return plain text with these sections:",
+    "1) Highlights",
+    "2) Patterns",
+    "3) Suggested actions (owner-approved)",
+    "4) Disclaimer",
+    "",
+    `Time window: last ${days} days.`,
+    "Logs (most recent first):",
+    JSON.stringify(logs),
+  ].join("\n");
+
+  const completion = await client.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.4,
+  });
+
+  const summary = completion.choices[0]?.message?.content ?? "";
+
+  return { summary, citations };
+  });
+
+export const aiChat = SKIP_AI
+  ? onCall(async () => {
+      throw new HttpsError("failed-precondition", "AI is not configured");
+    })
+  : onCall({ secrets: [OPENAI_API_KEY!] }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  await enforceAiQuota(uid);
+
+  const petId = String(req.data?.petId ?? "");
+  const conversationId = String(req.data?.conversationId ?? "").trim() || `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const message = String(req.data?.message ?? "").trim();
+  if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+  if (!message) throw new HttpsError("invalid-argument", "message is required");
+
+  await assertPetAccess(petId, uid);
+
+  const fromMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const logs = await fetchRecentLogs(petId, fromMs, 120);
+  const citations = logs.slice(0, 20).map((l) => ({ kind: "log" as const, id: l.id }));
+
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const client = getOpenAi(OPENAI_API_KEY!.value());
+
+  const system = [
+    "You are LifePet AI.",
+    "Answer questions grounded in provided logs.",
+    "If you are unsure, say what is missing.",
+    "Do not diagnose; suggest contacting a veterinarian when appropriate.",
+    "Keep answers short and actionable.",
+  ].join("\n");
+
+  const userPrompt = [
+    `Question: ${message}`,
+    "",
+    "Context logs (most recent first):",
+    JSON.stringify(logs),
+  ].join("\n");
+
+  const completion = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0.4,
+  });
+
+  const answer = completion.choices[0]?.message?.content ?? "";
+
+  return { answer, citations, conversationId };
+  });
+
+export const likePost = onCall(async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  const postId = String(req.data?.postId ?? "");
+  if (!postId) throw new HttpsError("invalid-argument", "postId is required");
+  const ref = db.collection("posts").doc(postId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Post not found");
+    const prev = Number((snap.data() as { likeCount?: number }).likeCount ?? 0);
+    tx.update(ref, { likeCount: prev + 1 });
+  });
+  return { ok: true };
+});
+
+export const onHealthEventCreated = onDocumentCreated("pets/{petId}/healthEvents/{eventId}", async (event) => {
+  const petId = event.params.petId as string;
+  const data = event.data?.data() as { type?: string; title?: string; severity?: string; occurredAt?: number } | undefined;
+  if (!data) return;
+  if (data.type === "symptom" && data.severity === "high") {
+    await createPetNotification(petId, {
+      type: "health_symptom_high",
+      title: "High-severity symptom logged",
+      body: data.title ? `Symptom: ${data.title}` : "A high-severity symptom was logged.",
+      severity: "danger",
+    });
+  }
+});
+
+export const onGpsPointCreated = onDocumentCreated("pets/{petId}/gpsPoints/{pointId}", async (event) => {
+  const petId = event.params.petId as string;
+  const p = event.data?.data() as { lat?: number; lng?: number; recordedAt?: number } | undefined;
+  if (!p || typeof p.lat !== "number" || typeof p.lng !== "number") return;
+
+  const petSnap = await db.collection("pets").doc(petId).get();
+  if (!petSnap.exists) return;
+  const pet = petSnap.data() as { geofence?: { enabled?: boolean; centerLat?: number; centerLng?: number; radiusM?: number } };
+  const g = pet.geofence;
+  if (!g?.enabled || typeof g.centerLat !== "number" || typeof g.centerLng !== "number" || typeof g.radiusM !== "number") return;
+
+  const dist = haversineMeters({ lat: g.centerLat, lng: g.centerLng }, { lat: p.lat, lng: p.lng });
+  if (dist > g.radiusM) {
+    await createPetNotification(petId, {
+      type: "gps_outside_geofence",
+      title: "Outside safe area",
+      body: `Latest point is ~${Math.round(dist)} m from the safe center (radius ${Math.round(g.radiusM)} m).`,
+      severity: "warning",
+    });
+  }
+});
+
+export const onBookingCreated = onDocumentCreated("pets/{petId}/bookings/{bookingId}", async (event) => {
+  const petId = event.params.petId as string;
+  const data = event.data?.data() as { providerName?: string; providerKind?: string; scheduledAt?: number; confirmBy?: number; status?: string } | undefined;
+  if (!data) return;
+  const when = typeof data.scheduledAt === "number" ? new Date(data.scheduledAt).toLocaleString() : "";
+  const confirm = typeof data.confirmBy === "number" ? new Date(data.confirmBy).toLocaleString() : null;
+  await createPetNotification(petId, {
+    type: "booking_requested",
+    title: "Booking created",
+    body: `${data.providerName ?? "Provider"} (${data.providerKind ?? "service"}) · ${when}${confirm ? ` · Confirm by ${confirm}` : ""}`,
+    severity: "info",
+  });
+});
+
+export const bookingNoShowSweep = onSchedule("every 10 minutes", async () => {
+  const now = Date.now();
+
+  const requestedSnap = await db
+    .collectionGroup("bookings")
+    .where("status", "==", "requested")
+    .where("confirmBy", "<=", now)
+    .limit(50)
+    .get();
+
+  await Promise.all(
+    requestedSnap.docs.map(async (d) => {
+      const data = d.data() as { petId?: string; providerName?: string; scheduledAt?: number };
+      await d.ref.set({ status: "cancelled", cancelReason: "no_confirm", updatedAt: Date.now() }, { merge: true });
+      if (data.petId) {
+        await createPetNotification(String(data.petId), {
+          type: "booking_cancelled_no_confirm",
+          title: "Booking auto-cancelled",
+          body: `Not confirmed in time${data.providerName ? `: ${data.providerName}` : ""}.`,
+          severity: "warning",
+        });
+      }
+    })
+  );
+
+  const graceMs = 15 * 60 * 1000;
+  const lateSnap = await db
+    .collectionGroup("bookings")
+    .where("status", "==", "confirmed")
+    .where("scheduledAt", "<=", now - graceMs)
+    .limit(50)
+    .get();
+
+  await Promise.all(
+    lateSnap.docs.map(async (d) => {
+      const data = d.data() as { petId?: string; providerName?: string };
+      await d.ref.set({ status: "no_show", updatedAt: Date.now() }, { merge: true });
+      if (data.petId) {
+        await createPetNotification(String(data.petId), {
+          type: "booking_no_show",
+          title: "Marked as no-show",
+          body: data.providerName ? `Booking with ${data.providerName} missed.` : "A booking was missed.",
+          severity: "warning",
+        });
+      }
+    })
+  );
+});
+
+export const smartCareSweep = onSchedule("every 6 hours", async () => {
+  const now = Date.now();
+  const from24h = now - 24 * 60 * 60 * 1000;
+  const from48h = now - 48 * 60 * 60 * 1000;
+  const from30d = now - 30 * 24 * 60 * 60 * 1000;
+  const dedupeFrom = now - 12 * 60 * 60 * 1000;
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+  const petsSnap = await db.collection("pets").orderBy("createdAt", "desc").limit(300).get();
+  await Promise.all(
+    petsSnap.docs.map(async (petDoc) => {
+      const petId = petDoc.id;
+      const logs48h = await fetchRecentLogsSince(petId, from48h, 120);
+      const hasFood24h = logs48h.some((l) => l.type === "food" && (l.occurredAt ?? 0) >= from24h);
+      const hasWater24h = logs48h.some((l) => l.type === "water" && (l.occurredAt ?? 0) >= from24h);
+      const hasActivity48h = logs48h.some((l) => l.type === "activity" && (l.occurredAt ?? 0) >= from48h);
+
+      if (!hasWater24h) {
+        const type = "hydration";
+        if (!(await hasRecentNotification(petId, type, dedupeFrom))) {
+          await createPetNotification(petId, {
+            type,
+            title: "Hydration check",
+            body: "No water log in the last 24h. Refresh the bowl and observe.",
+            severity: "warning",
+          });
+        }
+      }
+
+      if (!hasActivity48h) {
+        const type = "activity";
+        if (!(await hasRecentNotification(petId, type, dedupeFrom))) {
+          await createPetNotification(petId, {
+            type,
+            title: "Activity reminder",
+            body: "No activity logs in the last 48h. Add a short play/walk session.",
+            severity: "info",
+          });
+        }
+      }
+
+      if (!hasFood24h) {
+        const type = "nutrition";
+        if (!(await hasRecentNotification(petId, type, dedupeFrom))) {
+          await createPetNotification(petId, {
+            type,
+            title: "Meal reminder",
+            body: "No food logs in the last 24h. Check meals and appetite.",
+            severity: "warning",
+          });
+        }
+      }
+
+      const logs30d = await fetchRecentLogsSince(petId, from30d, 220);
+      const hasWeight30d = logs30d.some((l) => l.type === "weight");
+      if (!hasWeight30d) {
+        const type = "weight";
+        if (!(await hasRecentNotification(petId, type, weekAgo))) {
+          await createPetNotification(petId, {
+            type,
+            title: "Weight check",
+            body: "No weight logs in the last 30 days. Add a quick weight entry.",
+            severity: "info",
+          });
+        }
+      }
+
+      const vaxSnap = await petDoc.ref.collection("vaccines").orderBy("nextDueAt", "asc").limit(10).get();
+      for (const v of vaxSnap.docs) {
+        const data = v.data() as { name?: string; nextDueAt?: number; reminderDaysBefore?: number };
+        const nextDueAt = typeof data.nextDueAt === "number" ? data.nextDueAt : null;
+        if (!nextDueAt) continue;
+        const reminderDaysBefore = typeof data.reminderDaysBefore === "number" ? data.reminderDaysBefore : 14;
+        const remindAt = nextDueAt - reminderDaysBefore * 24 * 60 * 60 * 1000;
+        if (now < remindAt) continue;
+
+        const type = `vaccine_due:${v.id}`;
+        if (await hasRecentNotification(petId, type, weekAgo)) continue;
+        await createPetNotification(petId, {
+          type,
+          title: "Vaccine due soon",
+          body: `${data.name ?? "Vaccine"} due on ${new Date(nextDueAt).toLocaleDateString()}.`,
+          severity: "info",
+        });
+      }
+    })
+  );
+});

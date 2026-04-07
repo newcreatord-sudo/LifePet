@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(petId) {
+      return firestore.get(/databases/(default)/documents/pets/$(petId)).data.ownerId == request.auth.uid;
+    }
+
+    function isAllowedContentType() {
+      return request.resource.contentType.matches('application/pdf') || request.resource.contentType.matches('image/.*');
+    }
+
+    match /pets/{petId}/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /pets/{petId}/documents/{fileName} {
+      allow read: if isSignedIn() && isOwner(petId);
+      allow create, update: if isSignedIn() && isOwner(petId) && request.resource.size < 10 * 1024 * 1024 && isAllowedContentType();
+      allow delete: if isSignedIn() && isOwner(petId);
+    }
+
+    match /pets/{petId}/profile/{fileName} {
+      allow read: if isSignedIn() && isOwner(petId);
+      allow create, update: if isSignedIn() && isOwner(petId) && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && isOwner(petId);
+    }
+  }
+}

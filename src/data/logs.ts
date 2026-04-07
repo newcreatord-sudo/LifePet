@@ -1,0 +1,75 @@
+import {
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  limit,
+  where,
+  type QueryConstraint,
+} from "firebase/firestore";
+import { getFirebase } from "@/lib/firebase";
+import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
+import { shouldUseDemoData } from "@/lib/runtimeMode";
+import type { PetLog } from "@/types";
+
+function demoKey(petId: string) {
+  return `lifepet:demo:pet:${petId}:logs`;
+}
+
+export function logsCol(petId: string) {
+  const { db } = getFirebase();
+  return collection(db, "pets", petId, "logs");
+}
+
+export function subscribeRecentLogs(petId: string, limitCount: number, onData: (logs: PetLog[]) => void) {
+  if (shouldUseDemoData()) {
+    return demoSubscribe<PetLog[]>(demoKey(petId), [], (all) => {
+      const logs = all.slice().sort((a, b) => b.occurredAt - a.occurredAt).slice(0, limitCount);
+      onData(logs);
+    });
+  }
+  const q = query(logsCol(petId), orderBy("occurredAt", "desc"), limit(limitCount));
+  return onSnapshot(q, (snap) => {
+    const logs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetLog, "id">) }));
+    onData(logs);
+  });
+}
+
+export function subscribeLogsRange(
+  petId: string,
+  fromMs: number,
+  toMs: number,
+  onData: (logs: PetLog[]) => void
+) {
+  if (shouldUseDemoData()) {
+    return demoSubscribe<PetLog[]>(demoKey(petId), [], (all) => {
+      const logs = all
+        .filter((l) => l.occurredAt >= fromMs && l.occurredAt <= toMs)
+        .slice()
+        .sort((a, b) => b.occurredAt - a.occurredAt);
+      onData(logs);
+    });
+  }
+  const constraints: QueryConstraint[] = [
+    where("occurredAt", ">=", fromMs),
+    where("occurredAt", "<=", toMs),
+    orderBy("occurredAt", "desc"),
+  ];
+  const q = query(logsCol(petId), ...constraints);
+  return onSnapshot(q, (snap) => {
+    const logs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetLog, "id">) }));
+    onData(logs);
+  });
+}
+
+export async function createLog(petId: string, input: Omit<PetLog, "id">) {
+  if (shouldUseDemoData()) {
+    const id = demoId();
+    const next = { id, ...(input as Omit<PetLog, "id">) } as PetLog;
+    demoUpdate<PetLog[]>(demoKey(petId), [], (prev) => [next, ...prev]);
+    return id;
+  }
+  const ref = await addDoc(logsCol(petId), input);
+  return ref.id;
+}

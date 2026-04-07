@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(petId) {
+      return get(/databases/$(database)/documents/pets/$(petId)).data.ownerId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId && request.resource.data.plan == 'free';
+      allow update: if isSignedIn() && request.auth.uid == userId && request.resource.data.plan == resource.data.plan;
+      allow delete: if false;
+
+      match /pushTokens/{tokenId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /usage/{usageId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+    }
+
+    match /pets/{petId} {
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow read, update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      match /logs/{logId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /tasks/{taskId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /routines/{routineId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /documents/{docId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /healthEvents/{eventId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /agendaEvents/{eventId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /gpsPoints/{pointId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /expenses/{expenseId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /notifications/{notificationId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /healthScores/{scoreId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /bookings/{bookingId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /medications/{medId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /vaccines/{vaxId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+
+      match /conversations/{conversationId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+
+        match /messages/{messageId} {
+          allow read, write: if isSignedIn() && isOwner(petId);
+        }
+      }
+
+      match /ai_jobs/{jobId} {
+        allow read, write: if isSignedIn() && isOwner(petId);
+      }
+    }
+
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /listings/{listingId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+    }
+
+    match /providers/{providerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /groups/{groupId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

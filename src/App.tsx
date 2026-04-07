@@ -1,0 +1,77 @@
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
+import Home from "@/pages/Home";
+import Login from "@/pages/Login";
+import Dashboard from "@/pages/Dashboard";
+import Pets from "@/pages/Pets";
+import Health from "@/pages/Health";
+import Symptoms from "@/pages/Symptoms";
+import Nutrition from "@/pages/Nutrition";
+import Wellness from "@/pages/Wellness";
+import Status from "@/pages/Status";
+import Agenda from "@/pages/Agenda";
+import Planner from "@/pages/Planner";
+import Training from "@/pages/Training";
+import Bookings from "@/pages/Bookings";
+import Records from "@/pages/Records";
+import Documents from "@/pages/Documents";
+import Medications from "@/pages/Medications";
+import Vaccines from "@/pages/Vaccines";
+import Gps from "@/pages/Gps";
+import Expenses from "@/pages/Expenses";
+import Community from "@/pages/Community";
+import Marketplace from "@/pages/Marketplace";
+import Insights from "@/pages/Insights";
+import Settings from "@/pages/Settings";
+import { RequireAuth } from "@/components/RequireAuth";
+import { AppShellLayout } from "@/components/AppShellLayout";
+import { useAuthStore } from "@/stores/authStore";
+
+export default function App() {
+  const start = useAuthStore((s) => s.start);
+  useEffect(() => {
+    const unsub = start();
+    return () => unsub();
+  }, [start]);
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/app"
+          element={
+            <RequireAuth>
+              <AppShellLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<Navigate to="/app/dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="pets" element={<Pets />} />
+          <Route path="health" element={<Health />} />
+          <Route path="symptoms" element={<Symptoms />} />
+          <Route path="nutrition" element={<Nutrition />} />
+          <Route path="wellness" element={<Wellness />} />
+          <Route path="status" element={<Status />} />
+          <Route path="agenda" element={<Agenda />} />
+          <Route path="planner" element={<Planner />} />
+          <Route path="training" element={<Training />} />
+          <Route path="bookings" element={<Bookings />} />
+          <Route path="records" element={<Records />} />
+          <Route path="documents" element={<Documents />} />
+          <Route path="medications" element={<Medications />} />
+          <Route path="vaccines" element={<Vaccines />} />
+          <Route path="gps" element={<Gps />} />
+          <Route path="expenses" element={<Expenses />} />
+          <Route path="community" element={<Community />} />
+          <Route path="marketplace" element={<Marketplace />} />
+          <Route path="insights" element={<Insights />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
+  );
+}

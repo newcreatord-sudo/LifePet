@@ -1,0 +1,253 @@
+import { useEffect, useMemo, useState } from "react";
+import { Heart, MessageSquare, Plus } from "lucide-react";
+import { useAuthStore } from "@/stores/authStore";
+import { createPost, likePost, subscribePosts } from "@/data/community";
+import { ensureDefaultGroups, sendGroupMessage, subscribeGroupMessages, subscribeGroups } from "@/data/groups";
+import type { CommunityGroup, CommunityGroupMessage, CommunityPost } from "@/types";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+
+export default function Community() {
+  const user = useAuthStore((s) => s.user);
+  const [tab, setTab] = useState<"feed" | "groups">("feed");
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [text, setText] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  const [groups, setGroups] = useState<CommunityGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string>("dogs");
+  const [messages, setMessages] = useState<CommunityGroupMessage[]>([]);
+  const [chatText, setChatText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    const unsub = subscribePosts(50, setPosts);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    ensureDefaultGroups();
+    const unsub = subscribeGroups((g) => {
+      setGroups(g);
+      if (!g.some((x) => x.id === activeGroupId) && g[0]?.id) setActiveGroupId(g[0].id);
+    });
+    return () => unsub();
+  }, [activeGroupId]);
+
+  useEffect(() => {
+    if (!activeGroupId) return;
+    const unsub = subscribeGroupMessages(activeGroupId, setMessages);
+    return () => unsub();
+  }, [activeGroupId]);
+
+  const activeGroup = useMemo(() => groups.find((g) => g.id === activeGroupId) ?? null, [activeGroupId, groups]);
+
+  async function onPost(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user) return;
+    const t = text.trim();
+    if (!t) return;
+    setPosting(true);
+    try {
+      await createPost({ authorId: user.uid, createdAt: Date.now(), text: t });
+      setText("");
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  async function onSend(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !activeGroupId) return;
+    const t = chatText.trim();
+    if (!t) return;
+    setSending(true);
+    try {
+      await sendGroupMessage(activeGroupId, {
+        groupId: activeGroupId,
+        authorId: user.uid,
+        createdAt: Date.now(),
+        text: t,
+      });
+      setChatText("");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Community" description="Condividi consigli, fai domande e supporta altri proprietari." />
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setTab("feed")}
+          className={
+            tab === "feed"
+              ? "px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm"
+              : "px-3 py-1.5 rounded-xl text-sm text-slate-300 hover:bg-slate-950/30"
+          }
+        >
+          Feed
+        </button>
+        <button
+          onClick={() => setTab("groups")}
+          className={
+            tab === "groups"
+              ? "px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm"
+              : "px-3 py-1.5 rounded-xl text-sm text-slate-300 hover:bg-slate-950/30"
+          }
+        >
+          Groups
+        </button>
+      </div>
+
+      {tab === "groups" ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <Card className="lg:col-span-4">
+            <CardHeader>
+              <CardTitle>Gruppi</CardTitle>
+              <CardDescription>Chat tematiche, rispetto e gentilezza.</CardDescription>
+            </CardHeader>
+            <CardContent>
+            {groups.length === 0 ? (
+              <div className="text-sm text-slate-400">Caricamento gruppi…</div>
+            ) : (
+              <div className="space-y-2">
+                {groups.map((g) => (
+                  <button
+                    key={g.id}
+                    onClick={() => setActiveGroupId(g.id)}
+                    className={
+                      g.id === activeGroupId
+                        ? "w-full text-left rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2"
+                        : "w-full text-left rounded-xl border border-slate-800 px-3 py-2 hover:bg-slate-900"
+                    }
+                  >
+                    <div className="text-sm font-medium">{g.name}</div>
+                    {g.topic ? <div className="text-xs text-slate-400 mt-0.5">{g.topic}</div> : null}
+                  </button>
+                ))}
+              </div>
+            )}
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-8">
+            <CardHeader>
+              <div>
+                <div className="font-semibold">{activeGroup?.name ?? "Chat"}</div>
+                <div className="text-xs text-slate-500">Sii rispettoso. Nessuna diagnosi medica.</div>
+              </div>
+            </CardHeader>
+            <CardContent>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 h-72 overflow-auto space-y-2">
+              {messages.length === 0 ? (
+                <div className="text-sm text-slate-400">Nessun messaggio. Inizia tu.</div>
+              ) : (
+                messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={
+                      m.authorId === user?.uid
+                        ? "ml-auto max-w-[85%] rounded-xl bg-emerald-300/15 border border-emerald-300/20 px-3 py-2 text-sm"
+                        : "mr-auto max-w-[85%] rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-sm"
+                    }
+                  >
+                    <div className="whitespace-pre-wrap">{m.text}</div>
+                    <div className="text-[10px] text-slate-500 mt-1">{new Date(m.createdAt).toLocaleString()}</div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <form onSubmit={onSend} className="mt-3 flex items-center gap-2">
+              <input
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+                placeholder="Scrivi un messaggio…"
+                className="flex-1 rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+              />
+              <button
+                disabled={sending}
+                className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                type="submit"
+              >
+                {sending ? "…" : "Invia"}
+              </button>
+            </form>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {tab === "feed" ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Crea post</CardTitle>
+              <CardDescription>Condividi qualcosa di utile e rispettoso.</CardDescription>
+            </CardHeader>
+            <CardContent>
+            <form onSubmit={onPost} className="flex flex-col gap-3">
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={3}
+                placeholder="Scrivi qualcosa di utile…"
+                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+              />
+              <button
+                disabled={posting}
+                className="self-start inline-flex items-center gap-2 rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                type="submit"
+              >
+                <Plus className="w-4 h-4" />
+                {posting ? "Pubblicazione…" : "Pubblica"}
+              </button>
+            </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Feed</CardTitle>
+              <CardDescription>Consigli e domande dalla community.</CardDescription>
+            </CardHeader>
+            <CardContent>
+            {posts.length === 0 ? (
+              <EmptyState title="Nessun post" description="Pubblica il primo messaggio per iniziare." />
+            ) : (
+              <div className="space-y-3">
+                {posts.map((p) => (
+                  <div key={p.id} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+                    <div className="text-sm whitespace-pre-wrap">{p.text}</div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="text-xs text-slate-500">{new Date(p.createdAt).toLocaleString()}</div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => likePost(p.id)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        >
+                          <Heart className="w-4 h-4" />
+                          {p.likeCount}
+                        </button>
+                        <div className="inline-flex items-center gap-1 rounded-xl border border-slate-800 px-3 py-2 text-xs text-slate-400">
+                          <MessageSquare className="w-4 h-4" />
+                          Commenti in arrivo
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
+    </div>
+  );
+}
