@@ -52,11 +52,23 @@ export default function Nutrition() {
   const [creatingRoutine, setCreatingRoutine] = useState(false);
   const [routines, setRoutines] = useState<Array<{ id: string; title: string; kind: string }>>([]);
 
+  const [mealsPerDay, setMealsPerDay] = useState("2");
+  const [mealTimes, setMealTimes] = useState("08:00,19:00");
+
   useEffect(() => {
     if (!activePetId) return;
     const unsub = subscribeRoutines(activePetId, (items) => setRoutines(items.map((r) => ({ id: r.id, title: r.title, kind: r.kind }))));
     return () => unsub();
   }, [activePetId]);
+
+  useEffect(() => {
+    if (!pet) return;
+    const isCat = pet.species?.toLowerCase().includes("cat");
+    setMealsPerDay(isCat ? "3" : "2");
+    setMealTimes(isCat ? "08:00,13:00,19:00" : "08:00,19:00");
+    const a = pet.activityLevel;
+    setActivity(a === "low" ? "low" : a === "high" ? "high" : "normal");
+  }, [pet]);
 
   const hasMealRoutine = useMemo(() => routines.some((r) => r.kind === "food" && r.title.toLowerCase().includes("pasto")), [routines]);
 
@@ -66,10 +78,10 @@ export default function Nutrition() {
     if (!Number.isFinite(w) || w <= 0) return null;
     const dailyKcal = estimateDailyCalories(pet, w, activity);
     const gramsPerDay = Number.isFinite(kcalg) && kcalg > 0 ? Math.round(dailyKcal / kcalg) : null;
-    const meals = clamp(pet?.species?.toLowerCase().includes("cat") ? 3 : 2, 2, 4);
+    const meals = clamp(Number(mealsPerDay) || 2, 1, 6);
     const gramsPerMeal = gramsPerDay ? Math.round(gramsPerDay / meals) : null;
     return { dailyKcal, gramsPerDay, gramsPerMeal, meals };
-  }, [activity, kcalPerG, pet, weightKg]);
+  }, [activity, kcalPerG, mealsPerDay, pet, weightKg]);
 
   const ageYears = useMemo(() => yearsFromDob(pet?.dob), [pet?.dob]);
 
@@ -129,10 +141,16 @@ export default function Nutrition() {
     if (!user || !activePetId) return;
     setCreatingRoutine(true);
     try {
-      const times = pet?.species?.toLowerCase().includes("cat") ? ["08:00", "13:00", "19:00"] : ["08:00", "19:00"];
+      const times = mealTimes
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      if (times.length === 0) return;
+      const grams = derived?.gramsPerMeal;
+      const title = grams ? `Pasto — ${grams} g` : "Pasto";
       await createRoutine(activePetId, {
         petId: activePetId,
-        title: "Pasto",
+        title,
         kind: "food",
         enabled: true,
         times,
@@ -162,20 +180,20 @@ export default function Nutrition() {
             <CardContent className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Peso (kg)</div>
+                <div className="text-xs text-slate-600 mb-1">Peso (kg)</div>
                 <input
                   value={weightKg}
                   onChange={(e) => setWeightKg(e.target.value)}
                   inputMode="decimal"
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Attività</div>
+                <div className="text-xs text-slate-600 mb-1">Attività</div>
                 <select
                   value={activity}
                   onChange={(e) => setActivity(e.target.value as "low" | "normal" | "high")}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-select"
                 >
                   <option value="low">Bassa</option>
                   <option value="normal">Normale</option>
@@ -183,53 +201,70 @@ export default function Nutrition() {
                 </select>
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Cibo (marca/ricetta)</div>
+                <div className="text-xs text-slate-600 mb-1">Cibo (marca/ricetta)</div>
                 <input
                   value={foodLabel}
                   onChange={(e) => setFoodLabel(e.target.value)}
                   placeholder="Marca / ricetta"
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">kcal per grammo (circa)</div>
+                <div className="text-xs text-slate-600 mb-1">kcal per grammo (circa)</div>
                 <input
                   value={kcalPerG}
                   onChange={(e) => setKcalPerG(e.target.value)}
                   inputMode="decimal"
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
             </div>
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Note</div>
+              <div className="text-xs text-slate-600 mb-1">Note</div>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-textarea"
               />
             </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block">
+                <div className="text-xs text-slate-600 mb-1">Pasti al giorno</div>
+                <select value={mealsPerDay} onChange={(e) => setMealsPerDay(e.target.value)} className="lp-select">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+              </label>
+              <label className="block">
+                <div className="text-xs text-slate-600 mb-1">Orari (HH:MM, separati da virgola)</div>
+                <input value={mealTimes} onChange={(e) => setMealTimes(e.target.value)} className="lp-input" />
+              </label>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 onClick={onSaveProfile}
                 disabled={saving}
-                className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                className="lp-btn-primary"
               >
                 {saving ? "Salvataggio…" : "Salva nel profilo"}
               </button>
               <button
                 onClick={onCreateMealRoutine}
                 disabled={creatingRoutine || hasMealRoutine}
-                className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
+                className="lp-btn-secondary"
               >
                 {hasMealRoutine ? "Promemoria già presenti" : creatingRoutine ? "Creazione…" : "Crea promemoria pasti"}
               </button>
-              <Link to="/app/planner" className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900 text-center">
+              <Link to="/app/planner" className="lp-btn-secondary inline-flex items-center justify-center">
                 Planner
               </Link>
             </div>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-slate-600">
               Stime generiche. Conferma cambi alimentari con il veterinario, soprattutto in presenza di allergie/condizioni.
             </div>
             </CardContent>
@@ -243,20 +278,20 @@ export default function Nutrition() {
             <CardContent className="space-y-4">
             {derived ? (
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                  <div className="text-xs text-slate-500">Calorie giornaliere</div>
+                <div className="lp-panel p-3">
+                  <div className="text-xs text-slate-600">Calorie giornaliere</div>
                   <div className="text-sm font-medium">{derived.dailyKcal} kcal</div>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                  <div className="text-xs text-slate-500">Pasti al giorno</div>
+                <div className="lp-panel p-3">
+                  <div className="text-xs text-slate-600">Pasti al giorno</div>
                   <div className="text-sm font-medium">{derived.meals}</div>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                  <div className="text-xs text-slate-500">Grammi al giorno</div>
+                <div className="lp-panel p-3">
+                  <div className="text-xs text-slate-600">Grammi al giorno</div>
                   <div className="text-sm font-medium">{derived.gramsPerDay ? `${derived.gramsPerDay} g` : "Imposta kcal/g"}</div>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                  <div className="text-xs text-slate-500">Grammi per pasto</div>
+                <div className="lp-panel p-3">
+                  <div className="text-xs text-slate-600">Grammi per pasto</div>
                   <div className="text-sm font-medium">{derived.gramsPerMeal ? `${derived.gramsPerMeal} g` : "—"}</div>
                 </div>
               </div>
@@ -264,22 +299,22 @@ export default function Nutrition() {
               <EmptyState title="Inserisci un peso valido" description="Per vedere le stime serve almeno il peso." />
             )}
 
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="font-semibold">Supporto AI</div>
-                  <div className="text-xs text-slate-500">Suggerimenti personalizzati da profilo e attività</div>
+                  <div className="text-xs text-slate-600">Suggerimenti personalizzati da profilo e attività</div>
                 </div>
                 <button
                   onClick={onAskAi}
                   disabled={aiLoading}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                  className="lp-btn-primary inline-flex items-center gap-2"
                 >
                   <Sparkles className="w-4 h-4" />
                   {aiLoading ? "…" : "Chiedi all’AI"}
                 </button>
               </div>
-              <div className="mt-3 text-sm whitespace-pre-wrap text-slate-200 min-h-20">
+              <div className="mt-3 text-sm whitespace-pre-wrap text-slate-800 min-h-20">
                 {aiText ?? "Chiedi un piano, una lista da evitare e cosa monitorare."}
               </div>
             </div>

@@ -6,7 +6,7 @@ import { getPetDocumentDownloadUrl, subscribeDocuments, uploadPetDocument } from
 import { deletePetPhoto, uploadPetPhoto } from "@/data/profilePhotos";
 import { PetAvatar } from "@/components/PetAvatar";
 import { useEffect } from "react";
-import type { PetDocument } from "@/types";
+import type { Pet, PetDocument } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -23,6 +23,11 @@ export default function Pets() {
   const [breed, setBreed] = useState(activePet?.breed ?? "");
   const [dob, setDob] = useState(activePet?.dob ?? "");
   const [weightKg, setWeightKg] = useState(activePet?.weightKg?.toString() ?? "");
+  const [sex, setSex] = useState(activePet?.sex ?? "unknown");
+  const [neutered, setNeutered] = useState(Boolean(activePet?.neutered));
+  const [activityLevel, setActivityLevel] = useState(activePet?.activityLevel ?? "medium");
+  const [bodyConditionScore, setBodyConditionScore] = useState(activePet?.bodyConditionScore?.toString() ?? "");
+  const [heightCm, setHeightCm] = useState(activePet?.heightCm?.toString() ?? "");
   const [temperamentTags, setTemperamentTags] = useState((activePet?.temperamentTags ?? []).join(", "));
   const [allergies, setAllergies] = useState((activePet?.healthProfile?.allergies ?? []).join(", "));
   const [conditions, setConditions] = useState((activePet?.healthProfile?.conditions ?? []).join(", "));
@@ -32,7 +37,12 @@ export default function Pets() {
   const [vetEmergencyPhone, setVetEmergencyPhone] = useState(activePet?.vetContact?.emergencyPhone ?? "");
   const [vetAddress, setVetAddress] = useState(activePet?.vetContact?.address ?? "");
   const [microchipId, setMicrochipId] = useState(activePet?.microchipId ?? "");
+  const [passportId, setPassportId] = useState(activePet?.identification?.passportId ?? "");
+  const [registry, setRegistry] = useState(activePet?.identification?.registry ?? "");
   const [dietNotes, setDietNotes] = useState(activePet?.dietNotes ?? "");
+  const [foodLabel, setFoodLabel] = useState(activePet?.currentFood?.label ?? "");
+  const [foodKcalPerG, setFoodKcalPerG] = useState(activePet?.currentFood?.kcalPerG?.toString() ?? "");
+  const [foodNotes, setFoodNotes] = useState(activePet?.currentFood?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [docs, setDocs] = useState<PetDocument[]>([]);
@@ -43,6 +53,11 @@ export default function Pets() {
     setBreed(activePet?.breed ?? "");
     setDob(activePet?.dob ?? "");
     setWeightKg(activePet?.weightKg?.toString() ?? "");
+    setSex(activePet?.sex ?? "unknown");
+    setNeutered(Boolean(activePet?.neutered));
+    setActivityLevel(activePet?.activityLevel ?? "medium");
+    setBodyConditionScore(activePet?.bodyConditionScore?.toString() ?? "");
+    setHeightCm(activePet?.heightCm?.toString() ?? "");
     setTemperamentTags((activePet?.temperamentTags ?? []).join(", "));
     setAllergies((activePet?.healthProfile?.allergies ?? []).join(", "));
     setConditions((activePet?.healthProfile?.conditions ?? []).join(", "));
@@ -52,17 +67,29 @@ export default function Pets() {
     setVetEmergencyPhone(activePet?.vetContact?.emergencyPhone ?? "");
     setVetAddress(activePet?.vetContact?.address ?? "");
     setMicrochipId(activePet?.microchipId ?? "");
+    setPassportId(activePet?.identification?.passportId ?? "");
+    setRegistry(activePet?.identification?.registry ?? "");
     setDietNotes(activePet?.dietNotes ?? "");
+    setFoodLabel(activePet?.currentFood?.label ?? "");
+    setFoodKcalPerG(activePet?.currentFood?.kcalPerG?.toString() ?? "");
+    setFoodNotes(activePet?.currentFood?.notes ?? "");
   }, [
     activePet?.breed,
+    activePet?.bodyConditionScore,
+    activePet?.activityLevel,
     activePet?.dietNotes,
     activePet?.dob,
+    activePet?.heightCm,
+    activePet?.identification,
     activePet?.microchipId,
     activePet?.name,
+    activePet?.neutered,
+    activePet?.sex,
     activePet?.weightKg,
     activePet?.temperamentTags,
     activePet?.healthProfile,
     activePet?.vetContact,
+    activePet?.currentFood,
   ]);
 
   useEffect(() => {
@@ -76,13 +103,30 @@ export default function Pets() {
     setSaving(true);
     try {
       const weight = Number(weightKg);
+      const bcs = Number(bodyConditionScore);
+      const height = Number(heightCm);
+      const kcalPerG = Number(foodKcalPerG);
       const toList = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
       await updatePet(activePetId, {
         name: name.trim(),
         breed: breed.trim() || undefined,
         dob: dob.trim() || undefined,
         weightKg: Number.isFinite(weight) && weight > 0 ? weight : undefined,
+        sex: sex as Pet["sex"],
+        neutered,
+        activityLevel: activityLevel as Pet["activityLevel"],
+        bodyConditionScore: Number.isFinite(bcs) && bcs >= 1 && bcs <= 9 ? bcs : undefined,
+        heightCm: Number.isFinite(height) && height > 0 ? height : undefined,
         temperamentTags: toList(temperamentTags),
+        identification: {
+          passportId: passportId.trim() || undefined,
+          registry: registry.trim() || undefined,
+        },
+        currentFood: {
+          label: foodLabel.trim() || undefined,
+          kcalPerG: Number.isFinite(kcalPerG) && kcalPerG > 0 ? kcalPerG : undefined,
+          notes: foodNotes.trim() || undefined,
+        },
         healthProfile: {
           allergies: toList(allergies),
           conditions: toList(conditions),
@@ -145,7 +189,7 @@ export default function Pets() {
         action={
           <Link
             to="/app/dashboard#create-pet"
-            className="inline-flex items-center justify-center rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300"
+            className="lp-btn-primary inline-flex items-center justify-center"
           >
             Vai al Dashboard
           </Link>
@@ -167,99 +211,163 @@ export default function Pets() {
           <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Nome</div>
+              <div className="text-xs text-slate-600 mb-1">Nome</div>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                className="lp-input"
               />
             </label>
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Razza</div>
+              <div className="text-xs text-slate-600 mb-1">Razza</div>
               <input
                 value={breed}
                 onChange={(e) => setBreed(e.target.value)}
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                className="lp-input"
               />
             </label>
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Data di nascita</div>
+              <div className="text-xs text-slate-600 mb-1">Data di nascita</div>
               <input
                 value={dob}
                 onChange={(e) => setDob(e.target.value)}
                 placeholder="AAAA-MM-GG"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                className="lp-input"
               />
             </label>
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Peso (kg)</div>
+              <div className="text-xs text-slate-600 mb-1">Peso (kg)</div>
               <input
                 value={weightKg}
                 onChange={(e) => setWeightKg(e.target.value)}
                 inputMode="decimal"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                className="lp-input"
               />
             </label>
+
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Microchip</div>
+              <div className="text-xs text-slate-600 mb-1">Sesso</div>
+              <select value={sex} onChange={(e) => setSex(e.target.value as Pet["sex"])} className="lp-select">
+                <option value="unknown">Non specificato</option>
+                <option value="male">Maschio</option>
+                <option value="female">Femmina</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <div className="text-xs text-slate-600 mb-1">Attività</div>
+              <select value={activityLevel} onChange={(e) => setActivityLevel(e.target.value as Pet["activityLevel"])} className="lp-select">
+                <option value="low">Bassa</option>
+                <option value="medium">Media</option>
+                <option value="high">Alta</option>
+              </select>
+            </label>
+
+            <label className="inline-flex items-center gap-2 text-sm md:col-span-2">
+              <input type="checkbox" checked={neutered} onChange={(e) => setNeutered(e.target.checked)} />
+              Sterilizzato/a
+            </label>
+
+            <label className="block">
+              <div className="text-xs text-slate-600 mb-1">BCS (1–9)</div>
+              <input value={bodyConditionScore} onChange={(e) => setBodyConditionScore(e.target.value)} inputMode="numeric" className="lp-input" />
+            </label>
+
+            <label className="block">
+              <div className="text-xs text-slate-600 mb-1">Altezza (cm)</div>
+              <input value={heightCm} onChange={(e) => setHeightCm(e.target.value)} inputMode="decimal" className="lp-input" />
+            </label>
+
+            <label className="block">
+              <div className="text-xs text-slate-600 mb-1">Microchip</div>
               <input
                 value={microchipId}
                 onChange={(e) => setMicrochipId(e.target.value)}
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                className="lp-input"
               />
             </label>
+
+            <label className="block">
+              <div className="text-xs text-slate-600 mb-1">Passaporto (opz.)</div>
+              <input value={passportId} onChange={(e) => setPassportId(e.target.value)} className="lp-input" />
+            </label>
+
             <label className="block md:col-span-2">
-              <div className="text-xs text-slate-400 mb-1">Carattere (tag separati da virgola)</div>
+              <div className="text-xs text-slate-600 mb-1">Registro / Identificazione (opz.)</div>
+              <input value={registry} onChange={(e) => setRegistry(e.target.value)} className="lp-input" />
+            </label>
+
+            <label className="block md:col-span-2">
+              <div className="text-xs text-slate-600 mb-1">Carattere (tag separati da virgola)</div>
               <input
                 value={temperamentTags}
                 onChange={(e) => setTemperamentTags(e.target.value)}
                 placeholder="socievole, ansioso, energico"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+                className="lp-input"
               />
             </label>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+            <div className="font-semibold">Alimentazione attuale</div>
+            <div className="text-xs text-slate-600 mt-1">Serve anche per stimare quantità e reminder pasti.</div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className="block">
+                <div className="text-xs text-slate-600 mb-1">Cibo (nome)</div>
+                <input value={foodLabel} onChange={(e) => setFoodLabel(e.target.value)} className="lp-input" />
+              </label>
+              <label className="block">
+                <div className="text-xs text-slate-600 mb-1">Kcal per grammo</div>
+                <input value={foodKcalPerG} onChange={(e) => setFoodKcalPerG(e.target.value)} inputMode="decimal" className="lp-input" />
+              </label>
+              <label className="block md:col-span-2">
+                <div className="text-xs text-slate-600 mb-1">Note cibo</div>
+                <input value={foodNotes} onChange={(e) => setFoodNotes(e.target.value)} className="lp-input" />
+              </label>
+            </div>
           </div>
 
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Allergie (separate da virgola)</div>
+              <div className="text-xs text-slate-600 mb-1">Allergie (separate da virgola)</div>
               <input
                 value={allergies}
                 onChange={(e) => setAllergies(e.target.value)}
                 placeholder="pollo, polline"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Condizioni (separate da virgola)</div>
+              <div className="text-xs text-slate-600 mb-1">Condizioni (separate da virgola)</div>
               <input
                 value={conditions}
                 onChange={(e) => setConditions(e.target.value)}
                 placeholder="artrite, dermatite"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
             <label className="block md:col-span-2">
-              <div className="text-xs text-slate-400 mb-1">Farmaci (separati da virgola)</div>
+              <div className="text-xs text-slate-600 mb-1">Farmaci (separati da virgola)</div>
               <input
                 value={medications}
                 onChange={(e) => setMedications(e.target.value)}
                 placeholder="nome farmaco, dosaggio"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/30 p-3">
+          <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="font-semibold">Contatti veterinario</div>
-                <div className="text-xs text-slate-500 mt-1">Utili anche in emergenza.</div>
+                <div className="text-xs text-slate-600 mt-1">Utili anche in emergenza.</div>
               </div>
               <div className="flex items-center gap-2">
                 {vetPhone.trim() ? (
                   <a
                     href={`tel:${vetPhone.trim()}`}
-                    className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 inline-flex items-center gap-2"
+                    className="lp-btn-icon inline-flex items-center gap-2"
                   >
                     <PhoneCall className="w-4 h-4" />
                     Chiama
@@ -268,7 +376,7 @@ export default function Pets() {
                 {vetEmergencyPhone.trim() ? (
                   <a
                     href={`tel:${vetEmergencyPhone.trim()}`}
-                    className="rounded-xl bg-rose-400/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-rose-400 inline-flex items-center gap-2"
+                    className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-medium hover:bg-rose-400 inline-flex items-center gap-2"
                   >
                     <PhoneCall className="w-4 h-4" />
                     Emergenza
@@ -278,37 +386,37 @@ export default function Pets() {
             </div>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Clinica</div>
+                <div className="text-xs text-slate-600 mb-1">Clinica</div>
                 <input
                   value={vetClinicName}
                   onChange={(e) => setVetClinicName(e.target.value)}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Telefono</div>
+                <div className="text-xs text-slate-600 mb-1">Telefono</div>
                 <input
                   value={vetPhone}
                   onChange={(e) => setVetPhone(e.target.value)}
                   placeholder="+39..."
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Telefono emergenza</div>
+                <div className="text-xs text-slate-600 mb-1">Telefono emergenza</div>
                 <input
                   value={vetEmergencyPhone}
                   onChange={(e) => setVetEmergencyPhone(e.target.value)}
                   placeholder="+39..."
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Indirizzo</div>
+                <div className="text-xs text-slate-600 mb-1">Indirizzo</div>
                 <input
                   value={vetAddress}
                   onChange={(e) => setVetAddress(e.target.value)}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
             </div>
@@ -318,7 +426,7 @@ export default function Pets() {
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(vetAddress.trim())}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                  className="lp-btn-icon inline-flex items-center gap-2"
                 >
                   <ExternalLink className="w-4 h-4" />
                   Apri su Maps
@@ -327,18 +435,18 @@ export default function Pets() {
             ) : null}
           </div>
           <label className="block mt-3">
-            <div className="text-xs text-slate-400 mb-1">Note alimentazione</div>
+            <div className="text-xs text-slate-600 mb-1">Note alimentazione</div>
             <textarea
               value={dietNotes}
               onChange={(e) => setDietNotes(e.target.value)}
               rows={4}
-              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-300/40"
+              className="lp-textarea"
             />
           </label>
           <button
             onClick={onSave}
             disabled={saving}
-            className="mt-4 rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+            className="mt-4 lp-btn-primary"
           >
             <span className="inline-flex items-center gap-2">
               <Save className="w-4 h-4" />

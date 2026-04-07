@@ -1,4 +1,4 @@
-import { addDoc, collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, writeBatch } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
@@ -51,4 +51,26 @@ export async function createGpsPoint(petId: string, input: Omit<GpsPoint, "id">)
   }
   const ref = await addDoc(gpsPointsCol(petId), input);
   return ref.id;
+}
+
+export async function deleteGpsPoint(petId: string, pointId: string) {
+  if (shouldUseDemoData()) {
+    demoUpdate<GpsPoint[]>(demoKey(petId), [], (prev) => prev.filter((p) => p.id !== pointId));
+    return;
+  }
+  const { db } = getFirebase();
+  await deleteDoc(doc(db, "pets", petId, "gpsPoints", pointId));
+}
+
+export async function clearGpsHistory(petId: string, limitCount: number) {
+  if (shouldUseDemoData()) {
+    demoUpdate<GpsPoint[]>(demoKey(petId), [], (prev) => prev.slice(limitCount));
+    return;
+  }
+  const { db } = getFirebase();
+  const q = query(gpsPointsCol(petId), orderBy("recordedAt", "desc"), limit(limitCount));
+  const pointsSnap = await getDocs(q);
+  const batch = writeBatch(db);
+  for (const d of pointsSnap.docs) batch.delete(d.ref);
+  await batch.commit();
 }

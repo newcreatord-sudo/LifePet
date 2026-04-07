@@ -9,6 +9,11 @@ export type Pet = {
   dob?: string;
   photoPath?: string;
   weightKg?: number;
+  sex?: "male" | "female" | "unknown";
+  neutered?: boolean;
+  activityLevel?: "low" | "medium" | "high";
+  bodyConditionScore?: number;
+  heightCm?: number;
   temperamentTags?: string[];
   currentFood?: {
     label?: string;
@@ -27,6 +32,10 @@ export type Pet = {
     emergencyPhone?: string;
   };
   microchipId?: string;
+  identification?: {
+    passportId?: string;
+    registry?: string;
+  };
   dietNotes?: string;
   geofence?: {
     enabled: boolean;

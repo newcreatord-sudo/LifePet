@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
-import { createGpsPoint, subscribeGpsHistory, subscribeLatestGpsPoint } from "@/data/gps";
+import { clearGpsHistory, createGpsPoint, deleteGpsPoint, subscribeGpsHistory, subscribeLatestGpsPoint } from "@/data/gps";
 import { updatePet } from "@/data/pets";
 import type { GpsPoint } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ExternalLink, Trash2 } from "lucide-react";
 
 function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
@@ -28,7 +29,11 @@ export default function Gps() {
   const [latest, setLatest] = useState<GpsPoint | null>(null);
   const [history, setHistory] = useState<GpsPoint[]>([]);
   const [tracking, setTracking] = useState(false);
+  const [watching, setWatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const watchIdRef = useRef<number | null>(null);
+  const lastSavedRef = useRef<{ lat: number; lng: number; at: number } | null>(null);
 
   const [geofenceEnabled, setGeofenceEnabled] = useState(activePet?.geofence?.enabled ?? false);
   const [radiusM, setRadiusM] = useState(String(activePet?.geofence?.radiusM ?? 300));
@@ -99,6 +104,56 @@ export default function Gps() {
     }
   }
 
+  async function startTracking() {
+    if (!user || !activePetId) return;
+    if (!navigator.geolocation) {
+      setError("Geolocalizzazione non supportata.");
+      return;
+    }
+    setError(null);
+    setWatching(true);
+    const id = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const now = Date.now();
+        const last = lastSavedRef.current;
+        const moved = !last ? Infinity : distanceMeters({ lat: last.lat, lng: last.lng }, p);
+        const elapsed = !last ? Infinity : now - last.at;
+        if (moved < 12 && elapsed < 45_000) return;
+        lastSavedRef.current = { lat: p.lat, lng: p.lng, at: now };
+        await createGpsPoint(activePetId, {
+          petId: activePetId,
+          lat: p.lat,
+          lng: p.lng,
+          accuracyM: pos.coords.accuracy,
+          recordedAt: now,
+          createdAt: now,
+          createdBy: user.uid,
+        });
+      },
+      (e) => {
+        setError(e.message || "Impossibile leggere la posizione GPS");
+        setWatching(false);
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+    );
+    watchIdRef.current = id;
+  }
+
+  function stopTracking() {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setWatching(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+    };
+  }, []);
+
   const geofenceStatus = useMemo(() => {
     if (!activePet?.geofence?.enabled || !latest) return null;
     const c = { lat: activePet.geofence.centerLat, lng: activePet.geofence.centerLng };
@@ -106,6 +161,31 @@ export default function Gps() {
     const d = distanceMeters(c, p);
     return { distanceM: d, outside: d > activePet.geofence.radiusM };
   }, [activePet?.geofence?.centerLat, activePet?.geofence?.centerLng, activePet?.geofence?.enabled, activePet?.geofence?.radiusM, latest]);
+
+  const trackSpark = useMemo(() => {
+    if (history.length < 2) return null;
+    const pts = history
+      .slice()
+      .sort((a, b) => a.recordedAt - b.recordedAt)
+      .map((p) => ({ lat: p.lat, lng: p.lng }));
+    const minLat = Math.min(...pts.map((p) => p.lat));
+    const maxLat = Math.max(...pts.map((p) => p.lat));
+    const minLng = Math.min(...pts.map((p) => p.lng));
+    const maxLng = Math.max(...pts.map((p) => p.lng));
+    const spanLat = maxLat - minLat || 1;
+    const spanLng = maxLng - minLng || 1;
+    const w = 320;
+    const h = 120;
+    const pad = 8;
+    const d = pts
+      .map((p, i) => {
+        const x = pad + ((p.lng - minLng) / spanLng) * (w - pad * 2);
+        const y = pad + (1 - (p.lat - minLat) / spanLat) * (h - pad * 2);
+        return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+    return { d, w, h };
+  }, [history]);
 
   return (
     <div className="space-y-6">
@@ -118,13 +198,21 @@ export default function Gps() {
               <CardTitle>Live</CardTitle>
               <CardDescription>Usa i permessi posizione del browser.</CardDescription>
             </div>
-          <button
-            onClick={recordOnce}
-            disabled={!activePetId || tracking}
-            className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
-          >
-            {tracking ? "Registrazione…" : "Registra punto"}
-          </button>
+            <div className="flex items-center gap-2">
+              {watching ? (
+                <button onClick={stopTracking} className="rounded-xl bg-rose-500 text-white px-4 py-2 text-sm font-medium hover:bg-rose-400">
+                  Stop tracking
+                </button>
+              ) : (
+                <button onClick={startTracking} disabled={!activePetId} className="lp-btn-primary">
+                  Start tracking
+                </button>
+              )}
+
+              <button onClick={recordOnce} disabled={!activePetId || tracking} className="lp-btn-secondary">
+                {tracking ? "Registrazione…" : "Registra punto"}
+              </button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -133,18 +221,38 @@ export default function Gps() {
           <EmptyState title="Seleziona un pet" description="Scegli un profilo per usare il GPS." />
         ) : latest ? (
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-              <div className="text-xs text-slate-500">Lat</div>
+            <div className="lp-panel p-3">
+              <div className="text-xs text-slate-600">Lat</div>
               <div className="text-sm font-medium">{latest.lat.toFixed(6)}</div>
             </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-              <div className="text-xs text-slate-500">Lng</div>
+            <div className="lp-panel p-3">
+              <div className="text-xs text-slate-600">Lng</div>
               <div className="text-sm font-medium">{latest.lng.toFixed(6)}</div>
             </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-              <div className="text-xs text-slate-500">Accuratezza</div>
+            <div className="lp-panel p-3">
+              <div className="text-xs text-slate-600">Accuratezza</div>
               <div className="text-sm font-medium">{latest.accuracyM ? `${Math.round(latest.accuracyM)} m` : "—"}</div>
             </div>
+            <div className="md:col-span-3">
+              <a
+                href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(String(latest.lat))}&mlon=${encodeURIComponent(String(latest.lng))}#map=16/${encodeURIComponent(String(latest.lat))}/${encodeURIComponent(String(latest.lng))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="lp-btn-icon inline-flex items-center gap-2"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Apri su OpenStreetMap
+              </a>
+            </div>
+
+            {trackSpark ? (
+              <div className="md:col-span-3 lp-panel p-3">
+                <div className="text-xs text-slate-600">Traccia (ultimi punti)</div>
+                <svg width={trackSpark.w} height={trackSpark.h} className="mt-2">
+                  <path d={trackSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                </svg>
+              </div>
+            ) : null}
           </div>
         ) : (
           <EmptyState title="Nessun punto ancora" description="Premi “Registra punto” per salvare la posizione." />
@@ -182,12 +290,12 @@ export default function Gps() {
                 <input
                   value={radiusM}
                   onChange={(e) => setRadiusM(e.target.value)}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
                 />
               </label>
               <button
                 onClick={saveGeofence}
-                className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm hover:bg-slate-900"
+              className="lp-btn-secondary"
               >
                 Salva
               </button>
@@ -197,7 +305,7 @@ export default function Gps() {
                 className={
                   geofenceStatus.outside
                     ? "rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100"
-                    : "rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-sm text-emerald-100"
+                    : "rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-800"
                 }
               >
                 {geofenceStatus.outside
@@ -214,8 +322,23 @@ export default function Gps() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Storico</CardTitle>
-          <CardDescription>Ultimi punti registrati.</CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>Storico</CardTitle>
+              <CardDescription>Ultimi punti registrati.</CardDescription>
+            </div>
+            {activePetId && history.length > 0 ? (
+              <button
+                onClick={async () => {
+                  if (!confirm("Eliminare gli ultimi punti dallo storico?")) return;
+                  await clearGpsHistory(activePetId, 50);
+                }}
+                className="lp-btn-secondary"
+              >
+                Svuota
+              </button>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent>
         {!activePetId ? (
@@ -225,12 +348,24 @@ export default function Gps() {
         ) : (
           <div className="space-y-2">
             {history.map((p) => (
-              <div key={p.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+              <div key={p.id} className="lp-panel px-3 py-2">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-medium">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</div>
-                  <div className="text-xs text-slate-500">{new Date(p.recordedAt).toLocaleString()}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs text-slate-600">{new Date(p.recordedAt).toLocaleString()}</div>
+                    {activePetId ? (
+                      <button
+                        onClick={async () => {
+                          await deleteGpsPoint(activePetId, p.id);
+                        }}
+                        className="lp-btn-icon"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="text-xs text-slate-500">Accuratezza: {p.accuracyM ? `${Math.round(p.accuracyM)} m` : "—"}</div>
+                <div className="text-xs text-slate-600">Accuratezza: {p.accuracyM ? `${Math.round(p.accuracyM)} m` : "—"}</div>
               </div>
             ))}
           </div>
