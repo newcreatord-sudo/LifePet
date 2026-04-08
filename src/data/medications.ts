@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, type UpdateData, updateDoc } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import type { PetMedication } from "@/types";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
@@ -83,11 +83,18 @@ export async function setMedicationEnabled(petId: string, medId: string, enabled
 export async function updateMedication(
   petId: string,
   medication: PetMedication,
-  patch: Partial<Pick<PetMedication, "name" | "dose" | "unit" | "route" | "times" | "startAt" | "endAt" | "notes" | "enabled">>
+  patch: UpdateData<Pick<PetMedication, "name" | "dose" | "unit" | "route" | "times" | "startAt" | "endAt" | "notes" | "enabled">>
 ) {
-  const merged = { ...medication, ...patch } as PetMedication;
+  const cleanedForMerge = Object.fromEntries(
+    Object.entries(patch as Record<string, unknown>).map(([k, v]) => {
+      if (v && typeof v === "object" && (v as { _methodName?: unknown })._methodName === "deleteField") return [k, undefined];
+      return [k, v];
+    })
+  ) as Partial<Pick<PetMedication, "name" | "dose" | "unit" | "route" | "times" | "startAt" | "endAt" | "notes" | "enabled">>;
+
+  const merged = { ...medication, ...cleanedForMerge } as PetMedication;
   if (shouldUseDemoData()) {
-    demoUpdate<PetMedication[]>(demoKey(petId), [], (prev) => prev.map((m) => (m.id === medication.id ? { ...m, ...patch } : m)));
+    demoUpdate<PetMedication[]>(demoKey(petId), [], (prev) => prev.map((m) => (m.id === medication.id ? { ...m, ...cleanedForMerge } : m)));
     await seedMedicationTasks(petId, merged);
     return;
   }

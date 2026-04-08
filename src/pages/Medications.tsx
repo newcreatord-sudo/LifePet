@@ -11,6 +11,7 @@ import type { PetMedication } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { deleteField } from "firebase/firestore";
 
 type ParsedMedication = {
   name: string;
@@ -460,17 +461,17 @@ export default function Medications() {
                       }
                       const d = Number(editDays);
                       const startAt = m.startAt ?? Date.now();
-                      const endAt = Number.isFinite(d) && d > 0 ? startAt + d * 24 * 60 * 60 * 1000 : undefined;
+                      const endAt = Number.isFinite(d) && d > 0 ? startAt + d * 24 * 60 * 60 * 1000 : null;
                       setSavingEdit(true);
                       try {
                         await updateMedication(activePetId, m, {
                           name: n,
-                          dose: editDose.trim() || undefined,
-                          unit: editUnit.trim() || undefined,
-                          route: editRoute.trim() || undefined,
+                          dose: editDose.trim() ? editDose.trim() : deleteField(),
+                          unit: editUnit.trim() ? editUnit.trim() : deleteField(),
+                          route: editRoute.trim() ? editRoute.trim() : deleteField(),
                           times: t,
-                          endAt,
-                          notes: editNotes.trim() || undefined,
+                          endAt: endAt === null ? deleteField() : endAt,
+                          notes: editNotes.trim() ? editNotes.trim() : deleteField(),
                         });
                         setEditingId(null);
                         pushToast({ type: "success", title: "Terapia aggiornata", message: "Salvataggio completato." });

@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
 import { subscribeUserProfile } from "@/data/users";
+import { deleteField } from "firebase/firestore";
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -107,7 +108,7 @@ export default function Nutrition() {
     setSaving(true);
     try {
       await updatePet(activePetId, {
-        weightKg: Number.isFinite(w) && w > 0 ? w : undefined,
+        weightKg: Number.isFinite(w) && w > 0 ? w : deleteField(),
         currentFood: {
           label: foodLabel.trim() || undefined,
           kcalPerG: Number.isFinite(kcalg) && kcalg > 0 ? kcalg : undefined,

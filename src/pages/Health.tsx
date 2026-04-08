@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Paperclip, Pencil, Search, Trash2 } from "lucide-react";
+import { deleteField } from "firebase/firestore";
 
 export default function Health() {
   const user = useAuthStore((s) => s.user);
@@ -419,9 +420,9 @@ export default function Health() {
                             const when = typeof parsed === "number" && Number.isFinite(parsed) ? parsed : ev.occurredAt;
                             await updateHealthEvent(activePetId, ev.id, {
                               title: editTitle.trim() || ev.title,
-                              note: editNote.trim() || undefined,
+                              note: editNote.trim() ? editNote.trim() : deleteField(),
                               occurredAt: when,
-                              severity: ev.type === "symptom" ? editSeverity : undefined,
+                              severity: ev.type === "symptom" ? editSeverity : deleteField(),
                             });
                             setEditingId(null);
                             pushToast({ type: "success", title: "Evento aggiornato", message: "Salvataggio completato." });

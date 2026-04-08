@@ -1,4 +1,5 @@
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { deleteField } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { demoId } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
@@ -32,11 +33,10 @@ export async function getPhotoUrl(photoPath: string) {
 
 export async function deletePetPhoto(petId: string, photoPath: string) {
   if (shouldUseDemoData()) {
-    await updatePet(petId, { photoPath: undefined });
+    await updatePet(petId, { photoPath: deleteField() });
     return;
   }
   const { storage } = getFirebase();
   await deleteObject(ref(storage, photoPath));
-  await updatePet(petId, { photoPath: undefined });
+  await updatePet(petId, { photoPath: deleteField() });
 }
-

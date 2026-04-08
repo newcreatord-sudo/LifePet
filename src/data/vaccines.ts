@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, type UpdateData, updateDoc } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import type { PetVaccine } from "@/types";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
@@ -90,18 +90,35 @@ export async function markVaccineGiven(petId: string, vaccine: PetVaccine, lastA
   await createOrUpdateAgenda(petId, vaccine.createdBy, vaccine.name, nextDueAt, vaccine.reminderDaysBefore);
 }
 
-export async function updateVaccine(petId: string, vaccine: PetVaccine, patch: Partial<Pick<PetVaccine, "name" | "notes" | "intervalDays" | "reminderDaysBefore" | "lastAt">>) {
+export async function updateVaccine(
+  petId: string,
+  vaccine: PetVaccine,
+  patch: UpdateData<Pick<PetVaccine, "name" | "notes" | "intervalDays" | "reminderDaysBefore" | "lastAt">>
+) {
   const now = Date.now();
-  const merged = { ...vaccine, ...patch, updatedAt: now } as PetVaccine;
+  const cleanedForMerge = Object.fromEntries(
+    Object.entries(patch as Record<string, unknown>).map(([k, v]) => {
+      if (v && typeof v === "object" && (v as { _methodName?: unknown })._methodName === "deleteField") return [k, undefined];
+      return [k, v];
+    })
+  ) as Partial<Pick<PetVaccine, "name" | "notes" | "intervalDays" | "reminderDaysBefore" | "lastAt">>;
+
+  const merged = { ...vaccine, ...cleanedForMerge, updatedAt: now } as PetVaccine;
   const nextDueAt = computeNextDue(merged.lastAt ?? null, merged.intervalDays);
-  const writePatch: Partial<Pick<PetVaccine, "name" | "notes" | "intervalDays" | "reminderDaysBefore" | "lastAt" | "nextDueAt" | "updatedAt">> = {
-    ...patch,
+  const writePatch: UpdateData<Pick<PetVaccine, "name" | "notes" | "intervalDays" | "reminderDaysBefore" | "lastAt" | "nextDueAt" | "updatedAt">> = {
+    ...(patch as Record<string, unknown>),
     nextDueAt,
     updatedAt: now,
   };
 
   if (shouldUseDemoData()) {
-    demoUpdate<PetVaccine[]>(demoKey(petId), [], (prev) => prev.map((v) => (v.id === vaccine.id ? { ...v, ...writePatch } : v)));
+    const demoPatch = Object.fromEntries(
+      Object.entries(writePatch as Record<string, unknown>).map(([k, v]) => {
+        if (v && typeof v === "object" && (v as { _methodName?: unknown })._methodName === "deleteField") return [k, undefined];
+        return [k, v];
+      })
+    );
+    demoUpdate<PetVaccine[]>(demoKey(petId), [], (prev) => prev.map((v) => (v.id === vaccine.id ? { ...v, ...demoPatch } : v)));
     await createOrUpdateAgenda(petId, merged.createdBy, merged.name, nextDueAt, merged.reminderDaysBefore);
     return;
   }

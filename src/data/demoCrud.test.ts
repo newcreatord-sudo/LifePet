@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
+import { deleteField } from "firebase/firestore";
 
 vi.mock("@/lib/runtimeMode", () => ({
   shouldUseDemoData: () => true,
@@ -182,9 +183,9 @@ describe("demo mode CRUD", () => {
   it("health CRUD", async () => {
     const { subscribeHealthEventsRange, createHealthEvent, updateHealthEvent, deleteHealthEvent } = await import("@/data/health");
     const petId = "pet_demo_health";
-    let latest: Array<{ id: string; title: string }> = [];
+    let latest: Array<{ id: string; title: string; note?: string }> = [];
     const unsub = subscribeHealthEventsRange(petId, 0, Date.now() + 365 * 24 * 60 * 60 * 1000, 50, (items) => {
-      latest = items.map((e) => ({ id: e.id, title: e.title }));
+      latest = items.map((e) => ({ id: e.id, title: e.title, note: e.note }));
     });
 
     const id = await createHealthEvent(petId, {
@@ -199,6 +200,9 @@ describe("demo mode CRUD", () => {
 
     await updateHealthEvent(petId, id, { title: "Nota 2" });
     expect(latest.find((e) => e.id === id)?.title).toBe("Nota 2");
+
+    await updateHealthEvent(petId, id, { note: deleteField() });
+    expect(latest.find((e) => e.id === id)?.note).toBeUndefined();
 
     await deleteHealthEvent(petId, id);
     expect(latest.find((e) => e.id === id)).toBeUndefined();

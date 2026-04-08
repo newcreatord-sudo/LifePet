@@ -8,6 +8,7 @@ import type { PetVaccine } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { deleteField } from "firebase/firestore";
 
 export default function Vaccines() {
   const user = useAuthStore((s) => s.user);
@@ -164,10 +165,10 @@ export default function Vaccines() {
                       try {
                         await updateVaccine(activePetId, v, {
                           name: nn,
-                          notes: editNotes.trim() || undefined,
+                          notes: editNotes.trim() ? editNotes.trim() : deleteField(),
                           intervalDays: Number.isFinite(intDays) && intDays > 0 ? intDays : v.intervalDays,
                           reminderDaysBefore: Number.isFinite(remDays) && remDays >= 0 ? remDays : v.reminderDaysBefore,
-                          lastAt: parsedLast && Number.isFinite(parsedLast) ? parsedLast : undefined,
+                          lastAt: parsedLast && Number.isFinite(parsedLast) ? parsedLast : deleteField(),
                         });
                         setEditingId(null);
                         pushToast({ type: "success", title: "Vaccino aggiornato", message: "Modifiche salvate." });

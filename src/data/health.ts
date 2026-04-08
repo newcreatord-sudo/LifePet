@@ -7,6 +7,7 @@ import {
   orderBy,
   query,
   limit,
+  type UpdateData,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -82,9 +83,19 @@ export async function createHealthEvent(petId: string, input: Omit<HealthEvent, 
   return ref.id;
 }
 
-export async function updateHealthEvent(petId: string, eventId: string, patch: Partial<Omit<HealthEvent, "id" | "petId" | "createdAt" | "createdBy">>) {
+export async function updateHealthEvent(
+  petId: string,
+  eventId: string,
+  patch: UpdateData<Omit<HealthEvent, "id" | "petId" | "createdAt" | "createdBy">>
+) {
   if (shouldUseDemoData()) {
-    demoUpdate<HealthEvent[]>(demoKey(petId), [], (prev) => prev.map((e) => (e.id === eventId ? { ...e, ...patch } : e)));
+    const cleaned = Object.fromEntries(
+      Object.entries(patch as Record<string, unknown>).map(([k, v]) => {
+        if (v && typeof v === "object" && (v as { _methodName?: unknown })._methodName === "deleteField") return [k, undefined];
+        return [k, v];
+      })
+    );
+    demoUpdate<HealthEvent[]>(demoKey(petId), [], (prev) => prev.map((e) => (e.id === eventId ? { ...e, ...cleaned } : e)));
     return;
   }
   const { db } = getFirebase();
