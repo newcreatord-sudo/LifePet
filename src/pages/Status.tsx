@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, ArrowRight, Droplets, Footprints, HeartPulse, ShieldAlert, Sparkles, Weight } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { subscribeLogsRange } from "@/data/logs";
 import { subscribeTasks } from "@/data/tasks";
@@ -9,6 +10,9 @@ import { subscribeLatestGpsPoint } from "@/data/gps";
 import { subscribeMedications } from "@/data/medications";
 import { subscribeVaccines } from "@/data/vaccines";
 import { subscribeHealthScoresRange } from "@/data/healthScores";
+import { aiChat } from "@/data/ai";
+import { aiUserMessage } from "@/lib/aiErrors";
+import { subscribeUserProfile } from "@/data/users";
 import type { GpsPoint, HealthEvent, PetLog, PetMedication, PetTask, PetVaccine } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -59,6 +63,7 @@ function simpleSpark(values: number[]) {
 }
 
 export default function Status() {
+  const user = useAuthStore((s) => s.user);
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
@@ -70,6 +75,11 @@ export default function Status() {
   const [meds, setMeds] = useState<PetMedication[]>([]);
   const [vaccines, setVaccines] = useState<PetVaccine[]>([]);
   const [scores, setScores] = useState<number[]>([]);
+
+  const [aiAllowed, setAiAllowed] = useState(true);
+  const [symptomText, setSymptomText] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
 
   const range = useMemo(() => {
     const toMs = Date.now();
@@ -91,6 +101,17 @@ export default function Status() {
     const unsub = subscribeTasks(activePetId, setTasks);
     return () => unsub();
   }, [activePetId]);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setAiAllowed(true);
+      return;
+    }
+    const unsub = subscribeUserProfile(user.uid, (p) => {
+      setAiAllowed(p?.preferences?.aiEnabled !== false);
+    });
+    return () => unsub();
+  }, [user]);
 
   useEffect(() => {
     if (!activePetId) return;
@@ -375,6 +396,65 @@ export default function Status() {
                   <div className="mt-2 text-sm text-slate-600">Nessun punto GPS.</div>
                 )}
               </div>
+            </div>
+
+            <div className="mt-4 lp-surface p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-semibold">AI sintomi (informativa)</div>
+                <div className="inline-flex items-center gap-2 text-xs text-slate-600">
+                  <Sparkles className="w-4 h-4" />
+                  Non è diagnosi
+                </div>
+              </div>
+
+              {!aiAllowed ? (
+                <div className="mt-2 text-sm text-slate-600">AI disattivata: riattivala in Impostazioni → Preferenze.</div>
+              ) : (
+                <>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                    <label className="md:col-span-10 block">
+                      <div className="text-xs text-slate-600 mb-1">Descrivi i sintomi</div>
+                      <input
+                        value={symptomText}
+                        onChange={(e) => setSymptomText(e.target.value)}
+                        placeholder="Es. vomito 2 volte, diarrea, apatia, mangia meno…"
+                        className="lp-input"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={!user || !activePetId || aiLoading}
+                      className="md:col-span-2 lp-btn-primary"
+                      onClick={async () => {
+                        if (!activePetId) return;
+                        const t = symptomText.trim();
+                        if (!t) return;
+                        setAiLoading(true);
+                        setAiAnswer(null);
+                        try {
+                          const prompt = [
+                            "Sei LifePet AI. Rispondi in italiano.",
+                            "Non fare diagnosi e non prescrivere farmaci.",
+                            "Struttura: 1) Cosa monitorare nelle prossime 24h 2) Segnali di allarme (contatta vet) 3) Azioni sicure in casa 4) Disclaimer.",
+                            `Sintomi riportati: ${t}`,
+                            `Contesto: indice salute ${computed.score}/100, sintomi 30d=${computed.metrics.symptom30d}, acqua 24h=${computed.metrics.water24h}, attività 7d=${computed.metrics.activity7d}.`,
+                          ].join("\n");
+                          const res = await aiChat(activePetId, null, prompt);
+                          setAiAnswer(res.answer);
+                        } catch (e) {
+                          setAiAnswer(aiUserMessage(e));
+                        } finally {
+                          setAiLoading(false);
+                        }
+                      }}
+                    >
+                      {aiLoading ? "…" : "Chiedi"}
+                    </button>
+                  </div>
+
+                  {aiAnswer ? <div className="mt-3 text-sm text-slate-800 whitespace-pre-wrap">{aiAnswer}</div> : null}
+                </>
+              )}
             </div>
             </CardContent>
           </Card>

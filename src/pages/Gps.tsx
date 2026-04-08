@@ -9,7 +9,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ExternalLink, Trash2 } from "lucide-react";
 import { subscribeUserProfile } from "@/data/users";
-import { createNotification } from "@/data/notifications";
 import { Link } from "react-router-dom";
 
 function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
@@ -178,27 +177,7 @@ export default function Gps() {
     return { distanceM: d, outside: d > activePet.geofence.radiusM };
   }, [activePet?.geofence?.centerLat, activePet?.geofence?.centerLng, activePet?.geofence?.enabled, activePet?.geofence?.radiusM, latest]);
 
-  useEffect(() => {
-    if (!user || !activePetId || !activePet?.geofence?.enabled || !geofenceStatus) return;
-    if (!geofenceStatus.outside) return;
-    const key = `lifepet:geofenceAlert:${activePetId}:${new Date().toISOString().slice(0, 10)}`;
-    try {
-      if (localStorage.getItem(key)) return;
-      localStorage.setItem(key, "1");
-    } catch {
-      return;
-    }
 
-    void createNotification(activePetId, {
-      petId: activePetId,
-      type: "geofence_outside",
-      title: `${activePet.name}: fuori zona`,
-      body: `Il pet risulta fuori dalla zona sicura (distanza ~${Math.round(geofenceStatus.distanceM)} m).`,
-      severity: "danger",
-      createdAt: Date.now(),
-      read: false,
-    });
-  }, [activePet?.geofence?.enabled, activePet?.name, activePetId, geofenceStatus, user]);
 
   const trackSpark = useMemo(() => {
     if (history.length < 2) return null;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CalendarClock, Droplets, Footprints, HeartPulse, NotebookPen, Plus, Sparkles, Target } from "lucide-react";
+import { Bell, CalendarClock, Droplets, Footprints, HeartPulse, NotebookPen, PhoneCall, Plus, Sparkles, Target } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
@@ -150,6 +150,15 @@ export default function Dashboard() {
         description="Un riepilogo gentile e pratico per prendersi cura ogni giorno."
         actions={
           <>
+            {activePet?.vetContact?.emergencyPhone ? (
+              <a
+                href={`tel:${activePet.vetContact.emergencyPhone}`}
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-500 text-white px-3 py-2 text-sm font-medium hover:bg-rose-400"
+              >
+                <PhoneCall className="w-4 h-4" />
+                SOS Vet
+              </a>
+            ) : null}
             <button
               onClick={quickAddTask}
               disabled={!user || !activePetId}
