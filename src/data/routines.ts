@@ -10,7 +10,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
-import type { PetRoutine } from "@/types";
+import type { PetRoutine, RoutineKind } from "@/types";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
 import { ensureTaskExists } from "@/data/tasks";
@@ -81,11 +81,47 @@ export async function createRoutine(petId: string, input: Omit<PetRoutine, "id">
 
 export async function setRoutineEnabled(petId: string, routineId: string, enabled: boolean) {
   if (shouldUseDemoData()) {
-    demoUpdate<PetRoutine[]>(demoKey(petId), [], (prev) => prev.map((r) => (r.id === routineId ? { ...r, enabled } : r)));
+    let routine: PetRoutine | null = null;
+    demoUpdate<PetRoutine[]>(demoKey(petId), [], (prev) =>
+      prev.map((r) => {
+        if (r.id !== routineId) return r;
+        routine = { ...r, enabled };
+        return routine;
+      })
+    );
+    if (enabled && routine) await seedUpcomingTasksFromRoutine(petId, routine);
     return;
   }
   const { db } = getFirebase();
-  await updateDoc(doc(db, "pets", petId, "routines", routineId), { enabled });
+  const ref = doc(db, "pets", petId, "routines", routineId);
+  await updateDoc(ref, { enabled });
+  if (enabled) {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const routine = { id: snap.id, ...(snap.data() as Omit<PetRoutine, "id">) } as PetRoutine;
+      await seedUpcomingTasksFromRoutine(petId, routine);
+    }
+  }
+}
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export async function seedEnabledRoutinesOncePerDay(petId: string, routines: PetRoutine[], onlyKind?: RoutineKind) {
+  const day = todayKey();
+  const list = routines.filter((r) => r.enabled && (!onlyKind || r.kind === onlyKind));
+  for (const r of list) {
+    const key = `lifepet:routineSeed:${petId}:${r.id}:${day}`;
+    try {
+      if (localStorage.getItem(key)) continue;
+      localStorage.setItem(key, "1");
+    } catch {
+      continue;
+    }
+    await seedUpcomingTasksFromRoutine(petId, r);
+  }
 }
 
 export async function updateRoutine(petId: string, routineId: string, patch: Partial<Omit<PetRoutine, "id" | "petId" | "createdAt" | "createdBy">>) {

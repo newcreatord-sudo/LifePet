@@ -4,7 +4,7 @@ import { usePetStore } from "@/stores/petStore";
 import { useAuthStore } from "@/stores/authStore";
 import { aiChat } from "@/data/ai";
 import { createTask, setTaskDone, subscribeTasks } from "@/data/tasks";
-import { createRoutine } from "@/data/routines";
+import { createRoutine, seedEnabledRoutinesOncePerDay, subscribeRoutines } from "@/data/routines";
 import { aiUserMessage } from "@/lib/aiErrors";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -86,6 +86,14 @@ export default function Training() {
   useEffect(() => {
     if (!activePetId) return;
     const unsub = subscribeTasks(activePetId, setTasks);
+    return () => unsub();
+  }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeRoutines(activePetId, (items) => {
+      void seedEnabledRoutinesOncePerDay(activePetId, items, "training");
+    });
     return () => unsub();
   }, [activePetId]);
 

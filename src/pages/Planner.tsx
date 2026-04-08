@@ -3,7 +3,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { createTask, deleteTask, setTaskDone, subscribeTasks, updateTask } from "@/data/tasks";
-import { createRoutine, deleteRoutine, setRoutineEnabled, subscribeRoutines, updateRoutine } from "@/data/routines";
+import { createRoutine, deleteRoutine, seedEnabledRoutinesOncePerDay, setRoutineEnabled, subscribeRoutines, updateRoutine } from "@/data/routines";
 import type { PetRoutine, RoutineKind, PetTask } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -49,6 +49,11 @@ export default function Planner() {
     const unsub = subscribeRoutines(activePetId, setRoutines);
     return () => unsub();
   }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    void seedEnabledRoutinesOncePerDay(activePetId, routines);
+  }, [activePetId, routines]);
 
   const due = useMemo(() => tasks.filter((t) => t.status === "due"), [tasks]);
   const done = useMemo(() => tasks.filter((t) => t.status === "done"), [tasks]);
