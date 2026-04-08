@@ -209,7 +209,50 @@ async function fetchRecentLogsSince(petId: string, fromMs: number, limitCount: n
     .orderBy("occurredAt", "desc")
     .limit(limitCount)
     .get();
-  return snap.docs.map((d) => d.data() as { type?: string; occurredAt?: number; note?: string });
+  return snap.docs.map(
+    (d) =>
+      d.data() as {
+        type?: string;
+        occurredAt?: number;
+        note?: string;
+        value?: { amount?: number; unit?: string; tags?: string[] };
+      }
+  );
+}
+
+function toMl(amount: unknown, unit: unknown) {
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) return null;
+  if (typeof unit !== "string" || !unit.trim()) return amount;
+  const u = unit.trim().toLowerCase();
+  if (u === "ml") return amount;
+  if (u === "l" || u === "lt" || u === "liter" || u === "litri") return amount * 1000;
+  return null;
+}
+
+async function fetchLatestGpsPoint(petId: string) {
+  const snap = await db
+    .collection("pets")
+    .doc(petId)
+    .collection("gpsPoints")
+    .orderBy("recordedAt", "desc")
+    .limit(1)
+    .get();
+  const d = snap.docs[0]?.data() as { lat?: unknown; lng?: unknown; recordedAt?: unknown } | undefined;
+  if (!d) return null;
+  const lat = typeof d.lat === "number" ? d.lat : NaN;
+  const lng = typeof d.lng === "number" ? d.lng : NaN;
+  const recordedAt = typeof d.recordedAt === "number" ? d.recordedAt : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(recordedAt)) return null;
+  return { lat, lng, recordedAt };
+}
+
+async function fetchCurrentTempC(lat: number, lng: number) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(String(lat))}&longitude=${encodeURIComponent(String(lng))}&current_weather=true`;
+  const r = await fetch(url, { method: "GET" });
+  if (!r.ok) return null;
+  const j = (await r.json()) as { current_weather?: { temperature?: unknown } };
+  const t = j.current_weather?.temperature;
+  return typeof t === "number" && Number.isFinite(t) ? t : null;
 }
 
 function ymd(d: Date) {
@@ -1228,10 +1271,55 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
   await Promise.all(
     petsSnap.docs.map(async (petDoc) => {
       const petId = petDoc.id;
+      const petData = petDoc.data() as { weightKg?: unknown };
+      const weightKg = typeof petData.weightKg === "number" ? petData.weightKg : NaN;
       const logs48h = await fetchRecentLogsSince(petId, from48h, 120);
       const hasFood24h = logs48h.some((l) => l.type === "food" && (l.occurredAt ?? 0) >= from24h);
       const hasWater24h = logs48h.some((l) => l.type === "water" && (l.occurredAt ?? 0) >= from24h);
       const hasActivity48h = logs48h.some((l) => l.type === "activity" && (l.occurredAt ?? 0) >= from48h);
+
+      if (Number.isFinite(weightKg) && weightKg > 0) {
+        const waterMl24h = logs48h
+          .filter((l) => l.type === "water" && (l.occurredAt ?? 0) >= from24h)
+          .map((l) => toMl(l.value?.amount, l.value?.unit))
+          .filter((x): x is number => typeof x === "number")
+          .reduce((s, v) => s + v, 0);
+
+        const expectedMl = weightKg * 50;
+        if (waterMl24h > 0 && waterMl24h < expectedMl * 0.5) {
+          const type = "hydration_low";
+          if (!(await hasRecentNotification(petId, type, dedupeFrom))) {
+            await createPetNotification(petId, {
+              type,
+              title: "Idratazione: bassa",
+              body: `Acqua stimata 24h: ~${Math.round(waterMl24h)} ml (atteso ~${Math.round(expectedMl)} ml). Monitora e valuta il veterinario se persistente.`,
+              severity: "warning",
+              data: { url: `/app/wellness?petId=${petId}` },
+            });
+          }
+        }
+      }
+
+      try {
+        const gps = await fetchLatestGpsPoint(petId);
+        if (gps && gps.recordedAt >= now - 12 * 60 * 60 * 1000) {
+          const t = await fetchCurrentTempC(gps.lat, gps.lng);
+          if (typeof t === "number" && t >= 30) {
+            const type = "heat";
+            if (!(await hasRecentNotification(petId, type, dedupeFrom))) {
+              await createPetNotification(petId, {
+                type,
+                title: "Attenzione al caldo",
+                body: `Temperatura attuale ~${Math.round(t)}°C. Evita sforzi, assicurati acqua e zone d’ombra.`,
+                severity: "warning",
+                data: { url: `/app/gps?petId=${petId}` },
+              });
+            }
+          }
+        }
+      } catch (e) {
+        void e;
+      }
 
       if (!hasWater24h) {
         const type = "hydration";
@@ -1241,6 +1329,7 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
             title: "Idratazione: check",
             body: "Nessun log acqua nelle ultime 24h. Cambia l’acqua e monitora.",
             severity: "warning",
+            data: { url: `/app/wellness?petId=${petId}` },
           });
         }
       }
@@ -1253,6 +1342,7 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
             title: "Attività: promemoria",
             body: "Nessun log attività nelle ultime 48h. Aggiungi una breve sessione (gioco/passeggiata).",
             severity: "info",
+            data: { url: `/app/wellness?petId=${petId}` },
           });
         }
       }
@@ -1265,6 +1355,7 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
             title: "Pasti: promemoria",
             body: "Nessun log cibo nelle ultime 24h. Controlla pasti e appetito.",
             severity: "warning",
+            data: { url: `/app/nutrition?petId=${petId}` },
           });
         }
       }
