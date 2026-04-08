@@ -7,6 +7,7 @@ import {
   orderBy,
   query,
   limit,
+  type UpdateData,
   updateDoc,
   where,
   type QueryConstraint,
@@ -89,10 +90,16 @@ export async function deleteLog(petId: string, logId: string) {
 export async function updateLog(
   petId: string,
   logId: string,
-  patch: Partial<Omit<PetLog, "id" | "petId" | "createdAt" | "createdBy">>
+  patch: UpdateData<Omit<PetLog, "id" | "petId" | "createdAt" | "createdBy">>
 ) {
   if (shouldUseDemoData()) {
-    demoUpdate<PetLog[]>(demoKey(petId), [], (prev) => prev.map((l) => (l.id === logId ? { ...l, ...patch } : l)));
+    const cleaned = Object.fromEntries(
+      Object.entries(patch as Record<string, unknown>).map(([k, v]) => {
+        if (v && typeof v === "object" && (v as { _methodName?: unknown })._methodName === "deleteField") return [k, undefined];
+        return [k, v];
+      })
+    );
+    demoUpdate<PetLog[]>(demoKey(petId), [], (prev) => prev.map((l) => (l.id === logId ? { ...l, ...cleaned } : l)));
     return;
   }
   const { db } = getFirebase();

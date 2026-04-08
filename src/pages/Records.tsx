@@ -12,6 +12,7 @@ import { getBillingStatus, type BillingStatus } from "@/data/billing";
 import { exportPetData } from "@/data/export";
 import { createRecordsShare } from "@/data/recordsShare";
 import { useToastStore } from "@/stores/toastStore";
+import { deleteField } from "firebase/firestore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -466,7 +467,10 @@ export default function Records() {
                                       }
                                     }
                                   }
-                                  await updateLog(activePetId, l.id, { note: nextNote || undefined, value: nextValue });
+                                  await updateLog(activePetId, l.id, {
+                                    note: nextNote ? nextNote : deleteField(),
+                                    value: nextValue ? nextValue : deleteField(),
+                                  });
                                 }}
                               >
                                 <Pencil className="w-4 h-4" />

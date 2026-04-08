@@ -11,6 +11,7 @@ import { ExternalLink, KeyRound, Trash2 } from "lucide-react";
 import { subscribeUserProfile } from "@/data/users";
 import { Link } from "react-router-dom";
 import { useToastStore } from "@/stores/toastStore";
+import { deleteField } from "firebase/firestore";
 
 function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
@@ -286,7 +287,7 @@ export default function Gps() {
                           if (!activePetId) return;
                           if (!confirm("Disattivare l’integrazione (rimuovere token)?")) return;
                           try {
-                            await updatePet(activePetId, { gpsIngestToken: undefined });
+                            await updatePet(activePetId, { gpsIngestToken: deleteField() });
                             pushToast({ type: "success", title: "Token GPS", message: "Rimosso." });
                           } catch (e) {
                             pushToast({ type: "error", title: "Token GPS", message: e instanceof Error ? e.message : "Operazione fallita" });

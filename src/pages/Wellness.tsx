@@ -12,6 +12,8 @@ import type { HealthScore, PetLog, PetTask } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useToastStore } from "@/stores/toastStore";
+import { deleteField } from "firebase/firestore";
 import { Link } from "react-router-dom";
 import { computeLongevitySnapshot } from "@/lib/longevity";
 import { updatePet } from "@/data/pets";
@@ -63,6 +65,7 @@ function simpleSpark(values: number[]) {
 export default function Wellness() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
   const pets = usePetStore((s) => s.pets);
   const [logs30d, setLogs30d] = useState<PetLog[]>([]);
   const [tasks, setTasks] = useState<PetTask[]>([]);
@@ -228,6 +231,9 @@ export default function Wellness() {
                     setCreatingToken(true);
                     try {
                       await updatePet(activePetId, { deviceIngestToken: generateToken() });
+                      pushToast({ type: "success", title: "Token sensori", message: "Aggiornato." });
+                    } catch (e) {
+                      pushToast({ type: "error", title: "Token sensori", message: e instanceof Error ? e.message : "Operazione fallita" });
                     } finally {
                       setCreatingToken(false);
                     }
@@ -244,7 +250,12 @@ export default function Wellness() {
                     onClick={async () => {
                       if (!activePetId) return;
                       if (!confirm("Disattivare integrazione sensori (rimuovere token)?")) return;
-                      await updatePet(activePetId, { deviceIngestToken: undefined });
+                      try {
+                        await updatePet(activePetId, { deviceIngestToken: deleteField() });
+                        pushToast({ type: "success", title: "Token sensori", message: "Rimosso." });
+                      } catch (e) {
+                        pushToast({ type: "error", title: "Token sensori", message: e instanceof Error ? e.message : "Operazione fallita" });
+                      }
                     }}
                   >
                     <Trash2 className="w-4 h-4" />

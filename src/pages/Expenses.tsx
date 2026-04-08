@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { useToastStore } from "@/stores/toastStore";
+import { deleteField } from "firebase/firestore";
 import {
   createExpense,
   createExpenseSeries,
@@ -475,7 +476,10 @@ export default function Expenses() {
                       const v = budgetValue;
                       setSavingBudget(true);
                       try {
-                        await updatePet(activePetId, { budgetMonthly: v ?? undefined, budgetCurrency: "EUR" });
+                        await updatePet(activePetId, {
+                          budgetMonthly: v === null ? deleteField() : v,
+                          budgetCurrency: "EUR",
+                        });
                         pushToast({ type: "success", title: "Budget salvato", message: "Aggiornato correttamente." });
                       } catch (err) {
                         pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio budget fallito" });
