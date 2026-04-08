@@ -1102,6 +1102,7 @@ export const smartCareSweep = onSchedule("every 6 hours", async () => {
       }
     })
   );
+
 });
 
 export const healthScoreSweep = onSchedule("every 24 hours", async () => {

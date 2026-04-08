@@ -9,6 +9,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/pets/$(petId)).data.ownerId == request.auth.uid;
     }
 
+    function intOrZero(v) {
+      return v is int ? v : 0;
+    }
+
     function isModerator() {
       return request.auth.token.role in ['admin','moderator'] || exists(/databases/$(database)/documents/moderators/$(request.auth.uid));
     }
@@ -178,7 +182,17 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
-        allow update: if isSignedIn() && isModerator() && request.resource.data.authorId == resource.data.authorId;
+        allow update: if isSignedIn() && (
+          (isModerator() && request.resource.data.authorId == resource.data.authorId) ||
+          (
+            request.resource.data.authorId == resource.data.authorId &&
+            request.resource.data.createdAt == resource.data.createdAt &&
+            request.resource.data.text == resource.data.text &&
+            request.resource.data.status == resource.data.status &&
+            request.resource.data.reportCount == intOrZero(resource.data.reportCount) + 1 &&
+            exists(/databases/$(database)/documents/groups/$(groupId)/messages/$(messageId)/reports/$(request.auth.uid))
+          )
+        );
         allow delete: if false;
 
         match /reports/{reportId} {

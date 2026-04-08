@@ -9,6 +9,8 @@ import {
   orderBy,
   query,
   setDoc,
+  updateDoc,
+  increment,
 } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import type { CommunityGroup, CommunityGroupMember, CommunityGroupMessage } from "@/types";
@@ -146,4 +148,6 @@ export async function reportGroupMessage(groupId: string, messageId: string, rep
     { reporterId, reason: reason.trim(), createdAt: Date.now() },
     { merge: true }
   );
+
+  await updateDoc(doc(db, "groups", groupId, "messages", messageId), { reportCount: increment(1) });
 }

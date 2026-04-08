@@ -313,7 +313,10 @@ export default function Community() {
                       <div className="text-[10px] text-slate-600">{authorLabel(m.authorId)}</div>
                     </div>
                     <div className="whitespace-pre-wrap">{m.text}</div>
-                    <div className="text-[10px] text-slate-600 mt-1">{new Date(m.createdAt).toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-600 mt-1">
+                      {new Date(m.createdAt).toLocaleString()}
+                      {isModerator ? ` · reports: ${m.reportCount ?? 0} · status: ${m.status ?? "active"}` : ""}
+                    </div>
 
                     <div className="mt-2 flex items-center justify-end gap-2">
                       {user && m.authorId !== user.uid ? (
