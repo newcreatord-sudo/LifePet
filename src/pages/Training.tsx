@@ -4,6 +4,7 @@ import { usePetStore } from "@/stores/petStore";
 import { useAuthStore } from "@/stores/authStore";
 import { aiChat } from "@/data/ai";
 import { createTask, setTaskDone, subscribeTasks } from "@/data/tasks";
+import { createRoutine } from "@/data/routines";
 import { aiUserMessage } from "@/lib/aiErrors";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -163,24 +164,20 @@ export default function Training() {
 
   async function addTrainingPlan() {
     if (!user || !activePetId) return;
-    const base = Date.now();
     const t = issue.trim() || "sessione";
-    const [hh, mm] = planTime.split(":").map((x) => Number(x));
-    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return;
     setCreatingPlan(true);
     try {
-      for (let i = 0; i < 7; i += 1) {
-        const d = new Date(base + i * 24 * 60 * 60 * 1000);
-        d.setHours(hh, mm, 0, 0);
-        await createTask(activePetId, {
-          petId: activePetId,
-          title: `Training: ${t} (giorno ${i + 1}/7)`,
-          dueAt: d.getTime(),
-          status: "due",
-          createdAt: Date.now(),
-          createdBy: user.uid,
-        });
-      }
+      await createRoutine(activePetId, {
+        petId: activePetId,
+        title: `Training: ${t}`,
+        kind: "training",
+        enabled: true,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        times: [planTime],
+        recurrence: { type: "daily" },
+        createdAt: Date.now(),
+        createdBy: user.uid,
+      });
     } finally {
       setCreatingPlan(false);
     }
