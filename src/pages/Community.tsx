@@ -471,11 +471,12 @@ export default function Community() {
                       <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                         <div className="text-sm font-semibold">Commenti</div>
                         <div className="mt-2 space-y-2">
-                          {(comments[p.id] ?? []).filter((c) => c.status !== "hidden" && c.status !== "removed").length === 0 ? (
+                          {(comments[p.id] ?? []).filter((c) => (isModerator ? true : (c.reportCount ?? 0) < 3) && c.status !== "hidden" && c.status !== "removed")
+                            .length === 0 ? (
                             <div className="text-sm text-slate-400">Nessun commento. Inizia tu.</div>
                           ) : (
                             (comments[p.id] ?? [])
-                              .filter((c) => c.status !== "hidden" && c.status !== "removed")
+                              .filter((c) => (isModerator ? true : (c.reportCount ?? 0) < 3) && c.status !== "hidden" && c.status !== "removed")
                               .map((c) => (
                               <div key={c.id} className="lp-panel px-3 py-2">
                                 <div className="flex items-start justify-between gap-2">

@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, increment, limit, onSnapshot, orderBy, query, setDoc, updateDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
@@ -92,11 +92,13 @@ export async function reportPost(postId: string, reporterId: string, reason: str
 }
 
 export async function reportComment(postId: string, commentId: string, reporterId: string, reason: string) {
-  if (shouldUseDemoData()) return;
+  if (shouldUseDemoData()) {
+    demoUpdate<CommunityComment[]>(demoCommentsKey(postId), [], (prev) =>
+      prev.map((c) => (c.id === commentId ? { ...c, reportCount: (c.reportCount ?? 0) + 1 } : c))
+    );
+    return;
+  }
   const { db } = getFirebase();
-  await setDoc(
-    doc(db, "posts", postId, "comments", commentId, "reports", reporterId),
-    { reporterId, reason: reason.trim(), createdAt: Date.now() },
-    { merge: true }
-  );
+  await setDoc(doc(db, "posts", postId, "comments", commentId, "reports", reporterId), { reporterId, reason: reason.trim(), createdAt: Date.now() }, { merge: true });
+  await updateDoc(doc(db, "posts", postId, "comments", commentId), { reportCount: increment(1) });
 }
