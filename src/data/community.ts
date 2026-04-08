@@ -89,6 +89,7 @@ export async function reportPost(postId: string, reporterId: string, reason: str
   }
   const { db } = getFirebase();
   await setDoc(doc(db, "posts", postId, "reports", reporterId), { reporterId, reason: reason.trim(), createdAt: Date.now() }, { merge: true });
+  await updateDoc(doc(db, "posts", postId), { reportCount: increment(1) });
 }
 
 export async function reportComment(postId: string, commentId: string, reporterId: string, reason: string) {

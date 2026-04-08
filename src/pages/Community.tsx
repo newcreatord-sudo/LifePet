@@ -417,12 +417,12 @@ export default function Community() {
               <CardDescription>Consigli e domande dalla community.</CardDescription>
             </CardHeader>
             <CardContent>
-            {posts.filter((p) => p.status !== "hidden" && p.status !== "removed").length === 0 ? (
+            {posts.filter((p) => (isModerator ? true : (p.reportCount ?? 0) < 3) && p.status !== "hidden" && p.status !== "removed").length === 0 ? (
               <EmptyState title="Nessun post" description="Pubblica il primo messaggio per iniziare." />
             ) : (
               <div className="space-y-3">
                 {posts
-                  .filter((p) => p.status !== "hidden" && p.status !== "removed")
+                  .filter((p) => (isModerator ? true : (p.reportCount ?? 0) < 3) && p.status !== "hidden" && p.status !== "removed")
                   .map((p) => (
                   <div key={p.id} className="lp-card p-4">
                     <div className="flex items-center gap-2 text-xs text-slate-600">
@@ -436,6 +436,7 @@ export default function Community() {
                       {authorLabel(p.authorId)}
                     </div>
                     <div className="text-sm whitespace-pre-wrap">{p.text}</div>
+                    {isModerator ? <div className="text-[10px] text-slate-600 mt-1">reports: {p.reportCount ?? 0} · status: {p.status ?? "active"}</div> : null}
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <div className="text-xs text-slate-600">{new Date(p.createdAt).toLocaleString()}</div>
                       <div className="flex items-center gap-2">
