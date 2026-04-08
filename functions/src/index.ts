@@ -157,6 +157,9 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 }
 
 async function createPetNotification(petId: string, input: { type: string; title: string; body: string; severity: "info" | "warning" | "danger" }) {
+  const ownerId = await getPetOwnerId(petId);
+  if (ownerId && !(await shouldCreateNotificationForOwner(ownerId, input.type))) return;
+
   await db.collection("pets").doc(petId).collection("notifications").add({
     petId,
     type: input.type,
@@ -167,7 +170,6 @@ async function createPetNotification(petId: string, input: { type: string; title
     read: false,
   });
 
-  const ownerId = await getPetOwnerId(petId);
   if (ownerId) {
     await sendPushToUser(ownerId, {
       title: input.title,
@@ -373,7 +375,39 @@ async function getPetOwnerId(petId: string) {
   return pet.ownerId ?? null;
 }
 
+async function shouldCreateNotificationForOwner(ownerId: string, type: string) {
+  const userSnap = await db.collection("users").doc(ownerId).get();
+  const prefs = (userSnap.data() as { preferences?: { gpsEnabled?: unknown; communityEnabled?: unknown } } | undefined)?.preferences;
+  if (type.startsWith("gps_") && prefs?.gpsEnabled === false) return false;
+  if (type.startsWith("group_message") && prefs?.communityEnabled === false) return false;
+  if (type.startsWith("post_") && prefs?.communityEnabled === false) return false;
+  return true;
+}
+
 async function sendPushToUser(userId: string, payload: { title: string; body: string; data: Record<string, string> }) {
+  const userSnap = await db.collection("users").doc(userId).get();
+  const prefs = (userSnap.data() as {
+    preferences?: {
+      pushEnabled?: unknown;
+      quietHoursEnabled?: unknown;
+      quietHoursStart?: unknown;
+      quietHoursEnd?: unknown;
+    };
+  })?.preferences;
+
+  const pushEnabled = prefs?.pushEnabled === undefined ? true : Boolean(prefs?.pushEnabled);
+  if (!pushEnabled) return;
+
+  const quietEnabled = prefs?.quietHoursEnabled === true;
+  if (quietEnabled) {
+    const start = typeof prefs?.quietHoursStart === "string" ? prefs?.quietHoursStart : "22:00";
+    const end = typeof prefs?.quietHoursEnd === "string" ? prefs?.quietHoursEnd : "07:00";
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const inRange = start < end ? hhmm >= start && hhmm < end : hhmm >= start || hhmm < end;
+    if (inRange) return;
+  }
+
   const tokensSnap = await db.collection("users").doc(userId).collection("pushTokens").get();
   const tokens = tokensSnap.docs.map((d) => String((d.data() as { token?: string }).token ?? d.id)).filter(Boolean);
   if (tokens.length === 0) return;

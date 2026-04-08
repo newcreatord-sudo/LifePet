@@ -14,6 +14,10 @@ export type UserProfile = {
     gpsEnabled?: boolean;
     communityEnabled?: boolean;
     providerConsoleProviderId?: string;
+    pushEnabled?: boolean;
+    quietHoursEnabled?: boolean;
+    quietHoursStart?: string;
+    quietHoursEnd?: string;
   };
   createdAt: number;
   updatedAt: number;
@@ -30,7 +34,15 @@ export async function ensureUserProfile(uid: string, email?: string | null) {
       uid,
       email: email ?? null,
       plan: "pro",
-      preferences: { aiEnabled: true, gpsEnabled: true, communityEnabled: true },
+      preferences: {
+        aiEnabled: true,
+        gpsEnabled: true,
+        communityEnabled: true,
+        pushEnabled: true,
+        quietHoursEnabled: false,
+        quietHoursStart: "22:00",
+        quietHoursEnd: "07:00",
+      },
       createdAt: now,
       updatedAt: now,
     });
@@ -43,7 +55,15 @@ export async function ensureUserProfile(uid: string, email?: string | null) {
     await setDoc(ref, {
       email: email ?? null,
       plan: "free",
-      preferences: { aiEnabled: true, gpsEnabled: true, communityEnabled: true },
+      preferences: {
+        aiEnabled: true,
+        gpsEnabled: true,
+        communityEnabled: true,
+        pushEnabled: true,
+        quietHoursEnabled: false,
+        quietHoursStart: "22:00",
+        quietHoursEnd: "07:00",
+      },
       createdAt: now,
       updatedAt: now,
     });
@@ -67,6 +87,10 @@ export async function updateUserPreferences(uid: string, patch: NonNullable<User
   if (patch.gpsEnabled !== undefined) update["preferences.gpsEnabled"] = patch.gpsEnabled;
   if (patch.communityEnabled !== undefined) update["preferences.communityEnabled"] = patch.communityEnabled;
   if (patch.providerConsoleProviderId !== undefined) update["preferences.providerConsoleProviderId"] = patch.providerConsoleProviderId;
+  if (patch.pushEnabled !== undefined) update["preferences.pushEnabled"] = patch.pushEnabled;
+  if (patch.quietHoursEnabled !== undefined) update["preferences.quietHoursEnabled"] = patch.quietHoursEnabled;
+  if (patch.quietHoursStart !== undefined) update["preferences.quietHoursStart"] = patch.quietHoursStart;
+  if (patch.quietHoursEnd !== undefined) update["preferences.quietHoursEnd"] = patch.quietHoursEnd;
   await updateDoc(ref, update);
 }
 

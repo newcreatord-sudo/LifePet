@@ -29,6 +29,7 @@ export default function Settings() {
   const [privacyError, setPrivacyError] = useState<string | null>(null);
 
   const prefs = profile?.preferences ?? { aiEnabled: true, gpsEnabled: true, communityEnabled: true };
+  const pushPrefs = profile?.preferences ?? {};
 
   const pushAvailable = useMemo(() => isPushSupported() && !!getVapidKey(), []);
 
@@ -307,6 +308,65 @@ export default function Settings() {
           <CardDescription>Push opzionali (geofence e segnali importanti).</CardDescription>
         </CardHeader>
         <CardContent>
+
+        {user && !user.isDemo ? (
+          <div className="space-y-3">
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
+              <div>
+                <div className="text-sm font-medium">Push server-side</div>
+                <div className="text-xs text-slate-600">Se disattivo, l’inbox resta ma non arrivano push.</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={pushPrefs.pushEnabled !== false}
+                onChange={async (e) => {
+                  await updateUserPreferences(user.uid, { pushEnabled: e.target.checked });
+                }}
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
+              <div>
+                <div className="text-sm font-medium">Quiet hours</div>
+                <div className="text-xs text-slate-600">Blocca i push in una fascia oraria.</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={pushPrefs.quietHoursEnabled === true}
+                onChange={async (e) => {
+                  await updateUserPreferences(user.uid, { quietHoursEnabled: e.target.checked });
+                }}
+              />
+            </label>
+
+            {pushPrefs.quietHoursEnabled ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <div className="text-xs text-slate-600 mb-1">Da</div>
+                  <input
+                    type="time"
+                    value={pushPrefs.quietHoursStart ?? "22:00"}
+                    onChange={async (e) => {
+                      await updateUserPreferences(user.uid, { quietHoursStart: e.target.value });
+                    }}
+                    className="lp-input"
+                  />
+                </label>
+                <label className="block">
+                  <div className="text-xs text-slate-600 mb-1">A</div>
+                  <input
+                    type="time"
+                    value={pushPrefs.quietHoursEnd ?? "07:00"}
+                    onChange={async (e) => {
+                      await updateUserPreferences(user.uid, { quietHoursEnd: e.target.value });
+                    }}
+                    className="lp-input"
+                  />
+                </label>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {user?.isDemo ? (
           <div className="mt-3 text-sm text-slate-600">Le notifiche push sono disabilitate in modalità demo.</div>

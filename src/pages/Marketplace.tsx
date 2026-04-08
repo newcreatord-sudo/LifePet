@@ -10,6 +10,7 @@ import type { ListingCategory, MarketplaceListing } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { subscribeUserProfile } from "@/data/users";
 
 function categoryLabel(cat: ListingCategory) {
   if (cat === "food") return "Cibo";
@@ -28,6 +29,7 @@ export default function Marketplace() {
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string | null>(null);
+  const [aiAllowed, setAiAllowed] = useState(true);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -61,6 +63,17 @@ export default function Marketplace() {
     const unsub = subscribeListings(50, setItems);
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setAiAllowed(true);
+      return;
+    }
+    const unsub = subscribeUserProfile(user.uid, (p) => {
+      setAiAllowed(p?.preferences?.aiEnabled !== false);
+    });
+    return () => unsub();
+  }, [user]);
 
   const filtered = useMemo(() => {
     const q = queryText.trim().toLowerCase();
@@ -262,7 +275,7 @@ export default function Marketplace() {
             </div>
           <button
             onClick={onSuggest}
-            disabled={aiLoading || !activePetId}
+            disabled={aiLoading || !activePetId || !aiAllowed}
             className="lp-btn-primary inline-flex items-center gap-2"
           >
             <Sparkles className="w-4 h-4" />
@@ -274,6 +287,7 @@ export default function Marketplace() {
           <div className="lp-panel p-3 text-sm whitespace-pre-wrap min-h-20">
             {activePetId ? aiSuggestions ?? "Genera suggerimenti su cibo, accessori e servizi." : "Seleziona un pet per personalizzare i suggerimenti."}
           </div>
+          {!aiAllowed ? <div className="mt-2 text-xs text-slate-600">AI disattivata: riattivala in Impostazioni → Preferenze.</div> : null}
         </CardContent>
       </Card>
 

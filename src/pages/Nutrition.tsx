@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
+import { subscribeUserProfile } from "@/data/users";
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -49,6 +50,7 @@ export default function Nutrition() {
 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiText, setAiText] = useState<string | null>(null);
+  const [aiAllowed, setAiAllowed] = useState(true);
   const [creatingRoutine, setCreatingRoutine] = useState(false);
   const [routines, setRoutines] = useState<Array<{ id: string; title: string; kind: string }>>([]);
 
@@ -69,6 +71,17 @@ export default function Nutrition() {
     const a = pet.activityLevel;
     setActivity(a === "low" ? "low" : a === "high" ? "high" : "normal");
   }, [pet]);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setAiAllowed(true);
+      return;
+    }
+    const unsub = subscribeUserProfile(user.uid, (p) => {
+      setAiAllowed(p?.preferences?.aiEnabled !== false);
+    });
+    return () => unsub();
+  }, [user]);
 
   const hasMealRoutine = useMemo(() => routines.some((r) => r.kind === "food" && r.title.toLowerCase().includes("pasto")), [routines]);
 
@@ -307,13 +320,14 @@ export default function Nutrition() {
                 </div>
                 <button
                   onClick={onAskAi}
-                  disabled={aiLoading}
+                  disabled={aiLoading || !aiAllowed}
                   className="lp-btn-primary inline-flex items-center gap-2"
                 >
                   <Sparkles className="w-4 h-4" />
                   {aiLoading ? "…" : "Chiedi all’AI"}
                 </button>
               </div>
+              {!aiAllowed ? <div className="mt-2 text-xs text-slate-600">AI disattivata: riattivala in Impostazioni → Preferenze.</div> : null}
               <div className="mt-3 text-sm whitespace-pre-wrap text-slate-800 min-h-20">
                 {aiText ?? "Chiedi un piano, una lista da evitare e cosa monitorare."}
               </div>
