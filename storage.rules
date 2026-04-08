@@ -38,5 +38,11 @@ service firebase.storage {
       allow create, update: if isSignedIn() && isListingSeller(listingId) && request.resource.size < 8 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
       allow delete: if isSignedIn() && isListingSeller(listingId);
     }
+
+    match /publicProfiles/{userId}/profile/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.auth.uid == userId && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
   }
 }

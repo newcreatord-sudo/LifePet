@@ -121,6 +121,12 @@ export default function Community() {
     return name || handle || uid.slice(0, 6);
   }
 
+  function authorAvatar(uid: string) {
+    const p = profiles[uid];
+    const url = p?.photoURL?.trim();
+    return url || null;
+  }
+
   const activeGroup = useMemo(() => groups.find((g) => g.id === activeGroupId) ?? null, [activeGroupId, groups]);
 
   async function onPost(e: React.FormEvent) {
@@ -278,7 +284,16 @@ export default function Community() {
                         : "mr-auto max-w-[85%] rounded-xl bg-white border border-slate-200/70 px-3 py-2 text-sm"
                     }
                   >
-                    <div className="text-[10px] text-slate-600 mb-1">{authorLabel(m.authorId)}</div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-5 h-5 rounded-full border border-slate-200/70 bg-white overflow-hidden flex items-center justify-center">
+                        {authorAvatar(m.authorId) ? (
+                          <img src={authorAvatar(m.authorId)!} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="text-[10px] font-semibold text-slate-700">{authorLabel(m.authorId).slice(0, 1).toUpperCase()}</div>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-600">{authorLabel(m.authorId)}</div>
+                    </div>
                     <div className="whitespace-pre-wrap">{m.text}</div>
                     <div className="text-[10px] text-slate-600 mt-1">{new Date(m.createdAt).toLocaleString()}</div>
                   </div>
@@ -349,7 +364,16 @@ export default function Community() {
                   .filter((p) => p.status !== "hidden" && p.status !== "removed")
                   .map((p) => (
                   <div key={p.id} className="lp-card p-4">
-                    <div className="text-xs text-slate-600">{authorLabel(p.authorId)}</div>
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <div className="w-6 h-6 rounded-full border border-slate-200/70 bg-white overflow-hidden flex items-center justify-center">
+                        {authorAvatar(p.authorId) ? (
+                          <img src={authorAvatar(p.authorId)!} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="text-[10px] font-semibold text-slate-700">{authorLabel(p.authorId).slice(0, 1).toUpperCase()}</div>
+                        )}
+                      </div>
+                      {authorLabel(p.authorId)}
+                    </div>
                     <div className="text-sm whitespace-pre-wrap">{p.text}</div>
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <div className="text-xs text-slate-600">{new Date(p.createdAt).toLocaleString()}</div>
@@ -395,7 +419,16 @@ export default function Community() {
                               <div key={c.id} className="lp-panel px-3 py-2">
                                 <div className="flex items-start justify-between gap-2">
                                   <div>
-                                    <div className="text-[10px] text-slate-600">{authorLabel(c.authorId)}</div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-5 h-5 rounded-full border border-slate-200/70 bg-white overflow-hidden flex items-center justify-center">
+                                        {authorAvatar(c.authorId) ? (
+                                          <img src={authorAvatar(c.authorId)!} alt="" className="w-full h-full object-cover" />
+                                        ) : (
+                                          <div className="text-[10px] font-semibold text-slate-700">{authorLabel(c.authorId).slice(0, 1).toUpperCase()}</div>
+                                        )}
+                                      </div>
+                                      <div className="text-[10px] text-slate-600">{authorLabel(c.authorId)}</div>
+                                    </div>
                                     <div className="text-sm whitespace-pre-wrap">{c.text}</div>
                                   </div>
                                   {user ? (

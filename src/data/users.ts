@@ -10,6 +10,7 @@ export type PublicProfile = {
   displayName: string;
   handle?: string;
   photoURL?: string;
+  photoPath?: string;
   createdAt: number;
   updatedAt: number;
 };

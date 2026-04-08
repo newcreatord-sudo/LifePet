@@ -5,6 +5,7 @@ import { usePetStore } from "@/stores/petStore";
 import { deletePushToken, savePushToken } from "@/data/pushTokens";
 import { disablePushNotifications, enablePushNotifications, getVapidKey, isPushSupported, subscribeForegroundMessages } from "@/lib/push";
 import { subscribePublicProfile, subscribeUserProfile, updatePublicProfile, updateUserPreferences, type PublicProfile, type UserProfile } from "@/data/users";
+import { deletePublicProfilePhoto, uploadPublicProfilePhoto } from "@/data/publicProfilePhotos";
 import { billingCreateCheckoutSession, billingCreatePortalSession, getBillingStatus, type BillingStatus } from "@/data/billing";
 import { exportPetData } from "@/data/export";
 import { deleteAccountCascade } from "@/data/account";
@@ -26,6 +27,7 @@ export default function Settings() {
   const [publicName, setPublicName] = useState("");
   const [publicHandle, setPublicHandle] = useState("");
   const [savingPublic, setSavingPublic] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
@@ -116,6 +118,56 @@ export default function Settings() {
             <EmptyState title="Accedi" description="Per modificare il profilo pubblico devi essere autenticato." />
           ) : (
             <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full border border-slate-200/70 bg-white overflow-hidden flex items-center justify-center">
+                  {publicProfile?.photoURL ? (
+                    <img src={publicProfile.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-sm font-semibold text-slate-700">{(publicName || "U").slice(0, 1).toUpperCase()}</div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="lp-btn-secondary">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={!user || user.isDemo || uploadingAvatar}
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (!f || !user || user.isDemo) return;
+                        setUploadingAvatar(true);
+                        try {
+                          await uploadPublicProfilePhoto(user.uid, f, publicProfile?.photoPath);
+                        } finally {
+                          setUploadingAvatar(false);
+                        }
+                      }}
+                    />
+                    {uploadingAvatar ? "Caricamento…" : "Carica avatar"}
+                  </label>
+
+                  {publicProfile?.photoPath ? (
+                    <button
+                      type="button"
+                      className="lp-btn-secondary"
+                      disabled={!user || user.isDemo || uploadingAvatar}
+                      onClick={async () => {
+                        if (!user || user.isDemo || !publicProfile.photoPath) return;
+                        setUploadingAvatar(true);
+                        try {
+                          await deletePublicProfilePhoto(user.uid, publicProfile.photoPath);
+                        } finally {
+                          setUploadingAvatar(false);
+                        }
+                      }}
+                    >
+                      Rimuovi
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="block">
                   <div className="text-xs text-slate-600 mb-1">Nome</div>
