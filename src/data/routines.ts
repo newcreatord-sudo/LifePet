@@ -46,6 +46,7 @@ function computeOccurrences(routine: PetRoutine | Omit<PetRoutine, "id">, daysAh
       const ms = parseTimeToTodayMs(t, d);
       if (!ms) continue;
       if (ms < Date.now() - 60 * 1000) continue;
+      if (typeof routine.endAt === "number" && ms > routine.endAt) continue;
       occurrences.push(ms);
     }
   }
@@ -158,6 +159,7 @@ export async function deleteRoutine(petId: string, routineId: string) {
 
 export async function seedUpcomingTasksFromRoutine(petId: string, routine: PetRoutine) {
   if (!routine.enabled) return;
+  if (typeof routine.endAt === "number" && Date.now() > routine.endAt) return;
   const occurrences = computeOccurrences(routine, 7);
   const titleBase = routine.title.trim();
   for (const dueAt of occurrences.slice(0, 40)) {

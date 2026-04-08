@@ -175,6 +175,13 @@ export default function Training() {
     const t = issue.trim() || "sessione";
     setCreatingPlan(true);
     try {
+      const [hh, mm] = planTime.split(":").map((x) => Number(x));
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) return;
+      const start = new Date();
+      start.setHours(hh, mm, 0, 0);
+      if (start.getTime() < Date.now() - 60 * 1000) start.setDate(start.getDate() + 1);
+      const endAt = start.getTime() + 6 * 24 * 60 * 60 * 1000 + 60 * 1000;
+
       await createRoutine(activePetId, {
         petId: activePetId,
         title: `Training: ${t}`,
@@ -183,6 +190,7 @@ export default function Training() {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         times: [planTime],
         recurrence: { type: "daily" },
+        endAt,
         createdAt: Date.now(),
         createdBy: user.uid,
       });

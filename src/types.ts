@@ -347,6 +347,7 @@ export type PetRoutine = {
   timezone?: string;
   times: string[];
   recurrence: { type: "daily" } | { type: "weekly"; weekdays: number[] };
+  endAt?: number;
   createdAt: number;
   createdBy: string;
 };
