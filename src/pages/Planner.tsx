@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { createTask, deleteTask, setTaskDone, subscribeTasks, updateTask } from "@/data/tasks";
@@ -12,6 +13,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 export default function Planner() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<PetTask[]>([]);
   const [routines, setRoutines] = useState<PetRoutine[]>([]);
   const [title, setTitle] = useState("");
@@ -43,6 +46,18 @@ export default function Planner() {
     const unsub = subscribeTasks(activePetId, setTasks);
     return () => unsub();
   }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId || !user) return;
+    const params = new URLSearchParams(location.search);
+    const completeTaskId = params.get("completeTaskId");
+    if (!completeTaskId) return;
+    void (async () => {
+      await setTaskDone(activePetId, completeTaskId, true, Date.now());
+      params.delete("completeTaskId");
+      navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : "" }, { replace: true });
+    })();
+  }, [activePetId, location.pathname, location.search, navigate, user]);
 
   useEffect(() => {
     if (!activePetId) return;

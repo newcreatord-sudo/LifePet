@@ -156,7 +156,10 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
 }
 
-async function createPetNotification(petId: string, input: { type: string; title: string; body: string; severity: "info" | "warning" | "danger" }) {
+async function createPetNotification(
+  petId: string,
+  input: { type: string; title: string; body: string; severity: "info" | "warning" | "danger"; data?: Record<string, string> }
+) {
   const ownerId = await getPetOwnerId(petId);
   if (ownerId && !(await shouldCreateNotificationForOwner(ownerId, input.type))) return;
 
@@ -174,7 +177,13 @@ async function createPetNotification(petId: string, input: { type: string; title
     await sendPushToUser(ownerId, {
       title: input.title,
       body: input.body,
-      data: { petId, type: input.type, severity: input.severity, url: `/app/notifications?petId=${petId}` },
+      data: {
+        petId,
+        type: input.type,
+        severity: input.severity,
+        url: `/app/notifications?petId=${petId}`,
+        ...(input.data ?? {}),
+      },
     });
   }
 }
@@ -1469,6 +1478,10 @@ export const taskReminderSweep = onSchedule("every 10 minutes", async () => {
         title: `${prefix}`,
         body: `${titleStr} · ${when}`,
         severity,
+        data: {
+          url: `/app/planner?petId=${petId}`,
+          doneUrl: `/app/planner?petId=${petId}&completeTaskId=${d.id}`,
+        },
       });
 
       await d.ref.set({ reminderSentAt: now }, { merge: true });
