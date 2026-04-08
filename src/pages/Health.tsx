@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
+import { useToastStore } from "@/stores/toastStore";
 import { createHealthEvent, deleteHealthEvent, subscribeHealthEventsRange, updateHealthEvent } from "@/data/health";
 import { getPetDocumentDownloadUrl, uploadPetDocument } from "@/data/documents";
 import type { HealthEvent, HealthEventType } from "@/types";
@@ -15,6 +16,7 @@ export default function Health() {
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
+  const pushToast = useToastStore((s) => s.push);
   const [events, setEvents] = useState<HealthEvent[]>([]);
 
   const [rangeDays, setRangeDays] = useState("180");
@@ -42,6 +44,12 @@ export default function Health() {
   const [editOccurredAt, setEditOccurredAt] = useState("");
   const [editSeverity, setEditSeverity] = useState<"low" | "medium" | "high">("low");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  function validateUpload(file: File) {
+    if (file.size > 10 * 1024 * 1024) return "Massimo 10MB.";
+    return null;
+  }
 
   function parseSeverity(v: string): "low" | "medium" | "high" {
     if (v === "medium" || v === "high") return v;
@@ -81,7 +89,8 @@ export default function Health() {
     if (!user || !activePetId) return;
     setSaving(true);
     try {
-      const occurredMs = occurredAt ? new Date(occurredAt).getTime() : Date.now();
+      const parsed = occurredAt ? new Date(occurredAt).getTime() : undefined;
+      const occurredMs = typeof parsed === "number" && Number.isFinite(parsed) ? parsed : Date.now();
       await createHealthEvent(activePetId, {
         petId: activePetId,
         type,
@@ -96,6 +105,9 @@ export default function Health() {
       setNote("");
       setOccurredAt("");
       setSeverity("low");
+      pushToast({ type: "success", title: "Evento aggiunto", message: "Salvato in cartella clinica." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione evento fallita" });
     } finally {
       setSaving(false);
     }
@@ -104,13 +116,19 @@ export default function Health() {
   async function onUploadPrescription(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !user || !activePetId) return;
+    const validation = validateUpload(file);
+    if (validation) {
+      pushToast({ type: "error", title: "File non valido", message: validation });
+      e.target.value = "";
+      return;
+    }
     setUploading(true);
     try {
       const { docId, storagePath } = await uploadPetDocument(activePetId, user.uid, file);
       await createHealthEvent(activePetId, {
         petId: activePetId,
         type: "visit",
-        title: "Prescription / report",
+        title: "Referto / prescrizione",
         note: `Uploaded: ${file.name}`,
         occurredAt: Date.now(),
         createdAt: Date.now(),
@@ -118,6 +136,9 @@ export default function Health() {
         attachments: [{ name: file.name, storagePath, docId }],
       });
       e.target.value = "";
+      pushToast({ type: "success", title: "Documento allegato", message: "Creato evento visita con allegato." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Upload fallito" });
     } finally {
       setUploading(false);
     }
@@ -125,11 +146,19 @@ export default function Health() {
 
   async function onUploadAttachment(ev: HealthEvent, file: File) {
     if (!user || !activePetId) return;
+    const validation = validateUpload(file);
+    if (validation) {
+      pushToast({ type: "error", title: "File non valido", message: validation });
+      return;
+    }
     setUploading(true);
     try {
       const { docId, storagePath } = await uploadPetDocument(activePetId, user.uid, file);
       const next = [...(ev.attachments ?? []), { name: file.name, storagePath, docId }];
       await updateHealthEvent(activePetId, ev.id, { attachments: next });
+      pushToast({ type: "success", title: "Allegato caricato", message: "Aggiornato evento." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Upload allegato fallito" });
     } finally {
       setUploading(false);
     }
@@ -386,7 +415,8 @@ export default function Health() {
                           if (!activePetId) return;
                           setSavingEdit(true);
                           try {
-                            const when = editOccurredAt ? new Date(editOccurredAt).getTime() : ev.occurredAt;
+                            const parsed = editOccurredAt ? new Date(editOccurredAt).getTime() : undefined;
+                            const when = typeof parsed === "number" && Number.isFinite(parsed) ? parsed : ev.occurredAt;
                             await updateHealthEvent(activePetId, ev.id, {
                               title: editTitle.trim() || ev.title,
                               note: editNote.trim() || undefined,
@@ -394,6 +424,9 @@ export default function Health() {
                               severity: ev.type === "symptom" ? editSeverity : undefined,
                             });
                             setEditingId(null);
+                            pushToast({ type: "success", title: "Evento aggiornato", message: "Salvataggio completato." });
+                          } catch (err) {
+                            pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
                           } finally {
                             setSavingEdit(false);
                           }
@@ -435,8 +468,8 @@ export default function Health() {
                               try {
                                 const url = await getPetDocumentDownloadUrl(a.storagePath);
                                 window.open(url, "_blank", "noopener,noreferrer");
-                              } catch {
-                                return;
+                              } catch (err) {
+                                pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Apertura allegato fallita" });
                               }
                             }}
                             className="lp-btn-icon"
@@ -485,10 +518,20 @@ export default function Health() {
                         <button
                           onClick={async () => {
                             if (!activePetId) return;
+                            if (deletingId) return;
                             if (!confirm("Eliminare questo evento salute?")) return;
-                            await deleteHealthEvent(activePetId, ev.id);
+                            setDeletingId(ev.id);
+                            try {
+                              await deleteHealthEvent(activePetId, ev.id);
+                              pushToast({ type: "success", title: "Evento eliminato", message: "Rimosso." });
+                            } catch (err) {
+                              pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione fallita" });
+                            } finally {
+                              setDeletingId(null);
+                            }
                           }}
                           className="lp-btn-icon"
+                          disabled={deletingId === ev.id}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

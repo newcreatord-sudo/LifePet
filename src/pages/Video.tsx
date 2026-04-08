@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Film, Save, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
+import { useToastStore } from "@/stores/toastStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -71,6 +72,7 @@ export default function Video() {
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
   const pet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
+  const pushToast = useToastStore((s) => s.push);
 
   const [aiAllowed, setAiAllowed] = useState(true);
   const [mode, setMode] = useState<VideoMode>("behavior");
@@ -96,7 +98,11 @@ export default function Video() {
   }, [user]);
 
   async function analyze() {
-    if (!activePetId || frames.length === 0) return;
+    if (!activePetId) return;
+    if (frames.length === 0) {
+      pushToast({ type: "error", title: "Frame mancanti", message: "Seleziona un video e attendi l’estrazione frame." });
+      return;
+    }
     setAiLoading(true);
     setAiText(null);
     try {
@@ -119,6 +125,7 @@ export default function Video() {
       setAiText(res.answer);
     } catch (e) {
       setAiText(aiUserMessage(e));
+      pushToast({ type: "error", title: "Errore AI", message: aiUserMessage(e) });
     } finally {
       setAiLoading(false);
     }
@@ -128,6 +135,10 @@ export default function Video() {
     if (!user || user.isDemo || !activePetId || !videoFile || !aiText) return;
     setSavingToHealth(true);
     try {
+      if (videoFile.size > 10 * 1024 * 1024) {
+        pushToast({ type: "error", title: "File troppo grande", message: "Massimo 10MB." });
+        return;
+      }
       const uploaded = await uploadPetDocument(activePetId, user.uid, videoFile);
       await createHealthEvent(activePetId, {
         petId: activePetId,
@@ -140,6 +151,9 @@ export default function Video() {
         severity: "low",
         attachments: [{ name: videoFile.name, storagePath: uploaded.storagePath, docId: uploaded.docId }],
       });
+      pushToast({ type: "success", title: "Salvato", message: "Evento creato in Salute." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
     } finally {
       setSavingToHealth(false);
     }
@@ -184,6 +198,14 @@ export default function Video() {
                   disabled={extracting || aiLoading}
                   onChange={async (e) => {
                     const f = e.target.files?.[0] ?? null;
+                    if (f && f.size > 10 * 1024 * 1024) {
+                      pushToast({ type: "error", title: "File troppo grande", message: "Massimo 10MB." });
+                      e.target.value = "";
+                      setVideoFile(null);
+                      setAiText(null);
+                      setFrames([]);
+                      return;
+                    }
                     setVideoFile(f);
                     setAiText(null);
                     setFrames([]);
@@ -194,6 +216,7 @@ export default function Video() {
                       setFrames(extracted);
                     } catch (err) {
                       setAiText(aiUserMessage(err));
+                      pushToast({ type: "error", title: "Errore", message: aiUserMessage(err) });
                     } finally {
                       setExtracting(false);
                     }

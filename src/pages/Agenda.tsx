@@ -4,6 +4,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { createAgendaEvent, createAgendaSeries, deleteAgendaEvent, seedUpcomingAgendaFromSeries, subscribeAgendaRange, updateAgendaEvent } from "@/data/agenda";
 import type { AgendaEvent, AgendaSeries } from "@/types";
+import { useToastStore } from "@/stores/toastStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -38,6 +39,7 @@ function downloadText(filename: string, text: string) {
 export default function Agenda() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
   const [events, setEvents] = useState<AgendaEvent[]>([]);
 
   const [title, setTitle] = useState("");
@@ -53,6 +55,7 @@ export default function Agenda() {
   const [editKind, setEditKind] = useState<AgendaEvent["kind"]>("vet");
   const [editReminder, setEditReminder] = useState("60");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const range = useMemo(() => {
     const from = new Date();
@@ -76,27 +79,36 @@ export default function Agenda() {
   async function onAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!user || !activePetId) return;
+    const t = title.trim();
+    if (!t) {
+      pushToast({ type: "error", title: "Titolo obbligatorio", message: "Inserisci un titolo per l’evento." });
+      return;
+    }
     const dueMs = dueAt ? new Date(dueAt).getTime() : NaN;
-    if (!Number.isFinite(dueMs)) return;
+    if (!Number.isFinite(dueMs)) {
+      pushToast({ type: "error", title: "Data non valida", message: "Controlla data e ora dell’evento." });
+      return;
+    }
     setSaving(true);
     try {
       const reminderMinutesBefore = Math.max(0, Number(reminder) || 0);
       if (recurrenceType === "none") {
         await createAgendaEvent(activePetId, {
           petId: activePetId,
-          title: title.trim(),
+          title: t,
           dueAt: dueMs,
           kind,
           reminderMinutesBefore,
           createdAt: Date.now(),
           createdBy: user.uid,
         });
+        pushToast({ type: "success", title: "Evento creato", message: "Aggiunto all’agenda." });
       } else {
         const d = new Date(dueMs);
         const timeOfDay = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
         const seriesInput: Omit<AgendaSeries, "id"> = {
           petId: activePetId,
-          title: title.trim(),
+          title: t,
           kind,
           enabled: true,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -112,12 +124,15 @@ export default function Agenda() {
         };
         const seriesId = await createAgendaSeries(activePetId, seriesInput);
         await seedUpcomingAgendaFromSeries(activePetId, { id: seriesId, ...seriesInput }, 30);
+        pushToast({ type: "success", title: "Routine agenda creata", message: "Eventi generati per i prossimi giorni." });
       }
       setTitle("");
       setDueAt("");
       setKind("vet");
       setReminder("60");
       setRecurrenceType("none");
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Operazione fallita" });
     } finally {
       setSaving(false);
     }
@@ -306,17 +321,28 @@ export default function Agenda() {
                     onSubmit={async (e) => {
                       e.preventDefault();
                       if (!activePetId) return;
+                      const t = editTitle.trim();
+                      if (!t) {
+                        pushToast({ type: "error", title: "Titolo obbligatorio", message: "Inserisci un titolo per l’evento." });
+                        return;
+                      }
                       const dueMs = editDueAt ? new Date(editDueAt).getTime() : NaN;
-                      if (!Number.isFinite(dueMs)) return;
+                      if (!Number.isFinite(dueMs)) {
+                        pushToast({ type: "error", title: "Data non valida", message: "Controlla data e ora dell’evento." });
+                        return;
+                      }
                       setSavingEdit(true);
                       try {
                         await updateAgendaEvent(activePetId, ev.id, {
-                          title: editTitle.trim(),
+                          title: t,
                           dueAt: dueMs,
                           kind: editKind,
                           reminderMinutesBefore: Math.max(0, Number(editReminder) || 0),
                         });
                         setEditingId(null);
+                        pushToast({ type: "success", title: "Evento aggiornato", message: "Salvataggio completato." });
+                      } catch (err) {
+                        pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
                       } finally {
                         setSavingEdit(false);
                       }
@@ -383,10 +409,20 @@ export default function Agenda() {
                       <button
                         onClick={async () => {
                           if (!activePetId) return;
+                          if (deletingId) return;
                           if (!confirm("Eliminare questo evento?")) return;
-                          await deleteAgendaEvent(activePetId, ev.id);
+                          setDeletingId(ev.id);
+                          try {
+                            await deleteAgendaEvent(activePetId, ev.id);
+                            pushToast({ type: "success", title: "Evento eliminato", message: "Rimosso dall’agenda." });
+                          } catch (err) {
+                            pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione fallita" });
+                          } finally {
+                            setDeletingId(null);
+                          }
                         }}
                         className="lp-btn-icon"
+                        disabled={deletingId === ev.id}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

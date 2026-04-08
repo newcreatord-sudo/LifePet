@@ -27,23 +27,23 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
         <div className="w-full max-w-xl rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
-          <div className="text-lg font-semibold">Firebase setup required</div>
-          <div className="text-sm text-slate-300 mt-2">{configError}</div>
+          <div className="text-lg font-semibold">Configurazione Firebase mancante</div>
+          <div className="text-sm text-slate-300 mt-2 break-words">{configError}</div>
           <div className="text-sm text-slate-400 mt-3">
-            Copy `.env.example` to `.env.local` and fill it with your Firebase Web App config.
+            Copia `.env.example` in `.env.local` e inserisci i parametri della tua Firebase Web App.
           </div>
           <div className="mt-4 flex flex-col sm:flex-row gap-2">
             <button
               onClick={enterDemo}
-              className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300"
+              className="rounded-xl bg-sky-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-sky-300"
             >
-              Enter demo mode
+              Entra in modalità demo
             </button>
             <a
               href="/login"
               className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900"
             >
-              Go to login
+              Vai al login
             </a>
           </div>
         </div>

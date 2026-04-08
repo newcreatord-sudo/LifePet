@@ -179,7 +179,9 @@ export default function Marketplace() {
       const res = await aiChat(activePetId, null, prompt);
       setAiSuggestions(res.answer);
     } catch (e) {
-      setAiSuggestions(aiUserMessage(e));
+      const msg = aiUserMessage(e);
+      setAiSuggestions(msg);
+      pushToast({ type: "error", title: "Errore AI", message: msg });
     } finally {
       setAiLoading(false);
     }

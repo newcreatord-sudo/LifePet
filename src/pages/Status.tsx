@@ -3,6 +3,7 @@ import { Activity, ArrowRight, Droplets, Footprints, HeartPulse, ShieldAlert, Sp
 import { Link } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
+import { useToastStore } from "@/stores/toastStore";
 import { subscribeLogsRange } from "@/data/logs";
 import { subscribeTasks } from "@/data/tasks";
 import { subscribeRecentHealthEvents } from "@/data/health";
@@ -48,6 +49,7 @@ function simpleSpark(values: number[]) {
 export default function Status() {
   const user = useAuthStore((s) => s.user);
   const pets = usePetStore((s) => s.pets);
+  const pushToast = useToastStore((s) => s.push);
   const activePetId = usePetStore((s) => s.activePetId);
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
 
@@ -425,7 +427,10 @@ export default function Status() {
                       onClick={async () => {
                         if (!activePetId) return;
                         const t = symptomText.trim();
-                        if (!t) return;
+                        if (!t) {
+                          pushToast({ type: "error", title: "Sintomi obbligatori", message: "Descrivi i sintomi prima di chiedere." });
+                          return;
+                        }
                         setAiLoading(true);
                         setAiAnswer(null);
                         try {
@@ -439,7 +444,9 @@ export default function Status() {
                           const res = await aiChat(activePetId, null, prompt);
                           setAiAnswer(res.answer);
                         } catch (e) {
-                          setAiAnswer(aiUserMessage(e));
+                          const msg = aiUserMessage(e);
+                          setAiAnswer(msg);
+                          pushToast({ type: "error", title: "Errore AI", message: msg });
                         } finally {
                           setAiLoading(false);
                         }

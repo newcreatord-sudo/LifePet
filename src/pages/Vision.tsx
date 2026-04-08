@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Camera, Save, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
+import { useToastStore } from "@/stores/toastStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -25,6 +26,7 @@ export default function Vision() {
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
   const pet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
+  const pushToast = useToastStore((s) => s.push);
 
   const [aiAllowed, setAiAllowed] = useState(true);
   const [mode, setMode] = useState<VisionMode>("skin");
@@ -47,7 +49,11 @@ export default function Vision() {
   }, [user]);
 
   async function analyze() {
-    if (!activePetId || !imageDataUrl) return;
+    if (!activePetId) return;
+    if (!imageDataUrl) {
+      pushToast({ type: "error", title: "Foto mancante", message: "Seleziona una foto prima di analizzare." });
+      return;
+    }
     setAiLoading(true);
     setAiText(null);
     try {
@@ -68,6 +74,7 @@ export default function Vision() {
       setAiText(res.answer);
     } catch (e) {
       setAiText(aiUserMessage(e));
+      pushToast({ type: "error", title: "Errore AI", message: aiUserMessage(e) });
     } finally {
       setAiLoading(false);
     }
@@ -77,6 +84,10 @@ export default function Vision() {
     if (!user || user.isDemo || !activePetId || !imageFile || !aiText) return;
     setSavingToHealth(true);
     try {
+      if (imageFile.size > 10 * 1024 * 1024) {
+        pushToast({ type: "error", title: "File troppo grande", message: "Massimo 10MB." });
+        return;
+      }
       const uploaded = await uploadPetDocument(activePetId, user.uid, imageFile);
       await createHealthEvent(activePetId, {
         petId: activePetId,
@@ -89,6 +100,9 @@ export default function Vision() {
         severity: "low",
         attachments: imageFile ? [{ name: imageFile.name, storagePath: uploaded.storagePath, docId: uploaded.docId }] : undefined,
       });
+      pushToast({ type: "success", title: "Salvato", message: "Evento creato in Salute." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
     } finally {
       setSavingToHealth(false);
     }
@@ -133,6 +147,14 @@ export default function Vision() {
                   disabled={aiLoading}
                   onChange={(e) => {
                     const f = e.target.files?.[0] ?? null;
+                    if (f && f.size > 10 * 1024 * 1024) {
+                      pushToast({ type: "error", title: "File troppo grande", message: "Massimo 10MB." });
+                      e.target.value = "";
+                      setImageFile(null);
+                      setImageDataUrl(null);
+                      setAiText(null);
+                      return;
+                    }
                     setImageFile(f);
                     setAiText(null);
                     if (!f) {
@@ -141,6 +163,10 @@ export default function Vision() {
                     }
                     const reader = new FileReader();
                     reader.onload = () => setImageDataUrl(typeof reader.result === "string" ? reader.result : null);
+                    reader.onerror = () => {
+                      setImageDataUrl(null);
+                      pushToast({ type: "error", title: "Errore", message: "Impossibile leggere la foto." });
+                    };
                     reader.readAsDataURL(f);
                   }}
                 />
@@ -184,4 +210,3 @@ export default function Vision() {
     </div>
   );
 }
-

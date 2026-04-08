@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePetStore } from "@/stores/petStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useToastStore } from "@/stores/toastStore";
 import { subscribeUserProfile } from "@/data/users";
 import { aiChat, aiGenerateSummary } from "@/data/ai";
 import { Sparkles } from "lucide-react";
@@ -16,6 +17,7 @@ type ChatMsg = { role: "user" | "assistant"; text: string };
 export default function Insights() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
   const [aiAllowed, setAiAllowed] = useState(true);
   const [days, setDays] = useState(7);
   const [summary, setSummary] = useState<string | null>(null);
@@ -48,7 +50,9 @@ export default function Insights() {
       setSummary(res.summary);
       setSummaryCitations(res.citations ?? []);
     } catch (e) {
-      setSummary(aiUserMessage(e));
+      const msg = aiUserMessage(e);
+      setSummary(msg);
+      pushToast({ type: "error", title: "Errore AI", message: msg });
     } finally {
       setSummaryLoading(false);
     }
@@ -58,7 +62,11 @@ export default function Insights() {
     e.preventDefault();
     if (!activePetId) return;
     const text = chatInput.trim();
-    if (!text) return;
+    if (!text) {
+      pushToast({ type: "error", title: "Messaggio vuoto", message: "Scrivi una domanda per inviare." });
+      return;
+    }
+    if (chatLoading) return;
     setChatInput("");
     setMessages((m) => [...m, { role: "user", text }]);
     setChatLoading(true);
@@ -69,7 +77,9 @@ export default function Insights() {
       setMessages((m) => [...m, { role: "assistant", text: res.answer }]);
       setChatCitations(res.citations ?? []);
     } catch (e) {
-      setMessages((m) => [...m, { role: "assistant", text: aiUserMessage(e) }]);
+      const msg = aiUserMessage(e);
+      setMessages((m) => [...m, { role: "assistant", text: msg }]);
+      pushToast({ type: "error", title: "Errore AI", message: msg });
     } finally {
       setChatLoading(false);
     }
@@ -77,15 +87,20 @@ export default function Insights() {
 
   async function saveInsightNote(title: string, note: string) {
     if (!user || !activePetId) return;
-    await createHealthEvent(activePetId, {
-      petId: activePetId,
-      type: "note",
-      title,
-      note,
-      occurredAt: Date.now(),
-      createdAt: Date.now(),
-      createdBy: user.uid,
-    });
+    try {
+      await createHealthEvent(activePetId, {
+        petId: activePetId,
+        type: "note",
+        title,
+        note,
+        occurredAt: Date.now(),
+        createdAt: Date.now(),
+        createdBy: user.uid,
+      });
+      pushToast({ type: "success", title: "Salvato", message: "Nota aggiunta in Salute." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
+    }
   }
 
   return (

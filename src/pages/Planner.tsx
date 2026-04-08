@@ -3,6 +3,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
+import { useToastStore } from "@/stores/toastStore";
 import { createTask, deleteTask, setTaskDone, subscribeTasks, updateTask } from "@/data/tasks";
 import { createRoutine, deleteRoutine, seedEnabledRoutinesOncePerDay, setRoutineEnabled, subscribeRoutines, updateRoutine } from "@/data/routines";
 import type { PetRoutine, RoutineKind, PetTask } from "@/types";
@@ -15,6 +16,7 @@ export default function Planner() {
   const activePetId = usePetStore((s) => s.activePetId);
   const location = useLocation();
   const navigate = useNavigate();
+  const pushToast = useToastStore((s) => s.push);
   const [tasks, setTasks] = useState<PetTask[]>([]);
   const [routines, setRoutines] = useState<PetRoutine[]>([]);
   const [title, setTitle] = useState("");
@@ -40,6 +42,9 @@ export default function Planner() {
   const [editTaskTitle, setEditTaskTitle] = useState("");
   const [editTaskDueAt, setEditTaskDueAt] = useState<string>("");
   const [savingTask, setSavingTask] = useState(false);
+  const [deletingRoutineId, setDeletingRoutineId] = useState<string | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activePetId) return;
@@ -53,11 +58,17 @@ export default function Planner() {
     const completeTaskId = params.get("completeTaskId");
     if (!completeTaskId) return;
     void (async () => {
-      await setTaskDone(activePetId, completeTaskId, true, Date.now());
-      params.delete("completeTaskId");
-      navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : "" }, { replace: true });
+      try {
+        await setTaskDone(activePetId, completeTaskId, true, Date.now());
+        pushToast({ type: "success", title: "Task completato", message: "Segnato come fatto." });
+      } catch (err) {
+        pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Operazione fallita" });
+      } finally {
+        params.delete("completeTaskId");
+        navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : "" }, { replace: true });
+      }
     })();
-  }, [activePetId, location.pathname, location.search, navigate, user]);
+  }, [activePetId, location.pathname, location.search, navigate, pushToast, user]);
 
   useEffect(() => {
     if (!activePetId) return;
@@ -67,8 +78,14 @@ export default function Planner() {
 
   useEffect(() => {
     if (!activePetId) return;
-    void seedEnabledRoutinesOncePerDay(activePetId, routines);
-  }, [activePetId, routines]);
+    void (async () => {
+      try {
+        await seedEnabledRoutinesOncePerDay(activePetId, routines);
+      } catch (err) {
+        pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Generazione task routine fallita" });
+      }
+    })();
+  }, [activePetId, pushToast, routines]);
 
   const due = useMemo(() => tasks.filter((t) => t.status === "due"), [tasks]);
   const done = useMemo(() => tasks.filter((t) => t.status === "done"), [tasks]);
@@ -76,12 +93,18 @@ export default function Planner() {
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!user || !activePetId) return;
+    const t = title.trim();
+    if (!t) {
+      pushToast({ type: "error", title: "Titolo obbligatorio", message: "Inserisci un titolo per il task." });
+      return;
+    }
     setCreating(true);
     try {
-      const dueMs = dueAt ? new Date(dueAt).getTime() : undefined;
+      const parsed = dueAt ? new Date(dueAt).getTime() : undefined;
+      const dueMs = typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
       await createTask(activePetId, {
         petId: activePetId,
-        title: title.trim(),
+        title: t,
         dueAt: dueMs,
         status: "due",
         createdAt: Date.now(),
@@ -89,6 +112,9 @@ export default function Planner() {
       });
       setTitle("");
       setDueAt("");
+      pushToast({ type: "success", title: "Task creato", message: "Aggiunto alla lista." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione task fallita" });
     } finally {
       setCreating(false);
     }
@@ -96,19 +122,33 @@ export default function Planner() {
 
   async function toggleDone(task: PetTask, done: boolean) {
     if (!activePetId) return;
-    await setTaskDone(activePetId, task.id, done, Date.now());
+    if (togglingTaskId) return;
+    setTogglingTaskId(task.id);
+    try {
+      await setTaskDone(activePetId, task.id, done, Date.now());
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Aggiornamento task fallito" });
+    } finally {
+      setTogglingTaskId(null);
+    }
   }
 
   async function onCreateRoutine(e: React.FormEvent) {
     e.preventDefault();
     if (!user || !activePetId) return;
     const t = routineTitle.trim();
-    if (!t) return;
+    if (!t) {
+      pushToast({ type: "error", title: "Titolo obbligatorio", message: "Inserisci un titolo per la routine." });
+      return;
+    }
     const times = routineTimes
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean);
-    if (times.length === 0) return;
+    if (times.length === 0) {
+      pushToast({ type: "error", title: "Orari obbligatori", message: "Inserisci almeno un orario (es. 08:00)." });
+      return;
+    }
 
     setCreatingRoutine(true);
     try {
@@ -127,6 +167,9 @@ export default function Planner() {
         createdBy: user.uid,
       });
       setRoutineTitle("");
+      pushToast({ type: "success", title: "Routine creata", message: "Genererà task automaticamente." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione routine fallita" });
     } finally {
       setCreatingRoutine(false);
     }
@@ -265,7 +308,14 @@ export default function Planner() {
                               .split(",")
                               .map((x) => x.trim())
                               .filter(Boolean);
-                            if (!t || times.length === 0) return;
+                            if (!t) {
+                              pushToast({ type: "error", title: "Titolo obbligatorio", message: "Inserisci un titolo per la routine." });
+                              return;
+                            }
+                            if (times.length === 0) {
+                              pushToast({ type: "error", title: "Orari obbligatori", message: "Inserisci almeno un orario (es. 08:00)." });
+                              return;
+                            }
                             setSavingRoutine(true);
                             try {
                               await updateRoutine(activePetId, r.id, {
@@ -278,6 +328,9 @@ export default function Planner() {
                                     : { type: "daily" },
                               });
                               setEditingRoutineId(null);
+                              pushToast({ type: "success", title: "Routine aggiornata", message: "Salvataggio completato." });
+                            } catch (err) {
+                              pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio routine fallito" });
                             } finally {
                               setSavingRoutine(false);
                             }
@@ -397,15 +450,32 @@ export default function Planner() {
                             <button
                               onClick={async () => {
                                 if (!activePetId) return;
+                                if (deletingRoutineId) return;
                                 if (!confirm("Eliminare questa routine?")) return;
-                                await deleteRoutine(activePetId, r.id);
+                                setDeletingRoutineId(r.id);
+                                try {
+                                  await deleteRoutine(activePetId, r.id);
+                                  pushToast({ type: "success", title: "Routine eliminata", message: "Rimossa." });
+                                } catch (err) {
+                                  pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione routine fallita" });
+                                } finally {
+                                  setDeletingRoutineId(null);
+                                }
                               }}
                               className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
+                              disabled={deletingRoutineId === r.id}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => activePetId && setRoutineEnabled(activePetId, r.id, !r.enabled)}
+                              onClick={async () => {
+                                if (!activePetId) return;
+                                try {
+                                  await setRoutineEnabled(activePetId, r.id, !r.enabled);
+                                } catch (err) {
+                                  pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Aggiornamento routine fallito" });
+                                }
+                              }}
                               className={
                                 r.enabled
                                   ? "rounded-xl bg-sky-600 text-white px-3 py-2 text-xs font-medium hover:bg-sky-500"
@@ -480,11 +550,20 @@ export default function Planner() {
                       onSubmit={async (e) => {
                         e.preventDefault();
                         if (!activePetId) return;
+                        const nextTitle = editTaskTitle.trim();
+                        if (!nextTitle) {
+                          pushToast({ type: "error", title: "Titolo obbligatorio", message: "Inserisci un titolo per il task." });
+                          return;
+                        }
                         setSavingTask(true);
                         try {
-                          const dueMs = editTaskDueAt ? new Date(editTaskDueAt).getTime() : undefined;
-                          await updateTask(activePetId, t.id, { title: editTaskTitle.trim(), dueAt: dueMs });
+                          const parsed = editTaskDueAt ? new Date(editTaskDueAt).getTime() : undefined;
+                          const dueMs = typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
+                          await updateTask(activePetId, t.id, { title: nextTitle, dueAt: dueMs });
                           setEditingTaskId(null);
+                          pushToast({ type: "success", title: "Task aggiornato", message: "Salvataggio completato." });
+                        } catch (err) {
+                          pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio task fallito" });
                         } finally {
                           setSavingTask(false);
                         }
@@ -545,16 +624,27 @@ export default function Planner() {
                         <button
                           onClick={async () => {
                             if (!activePetId) return;
+                            if (deletingTaskId) return;
                             if (!confirm("Eliminare questo task?")) return;
-                            await deleteTask(activePetId, t.id);
+                            setDeletingTaskId(t.id);
+                            try {
+                              await deleteTask(activePetId, t.id);
+                              pushToast({ type: "success", title: "Task eliminato", message: "Rimosso." });
+                            } catch (err) {
+                              pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione task fallita" });
+                            } finally {
+                              setDeletingTaskId(null);
+                            }
                           }}
                           className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
+                          disabled={deletingTaskId === t.id}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => toggleDone(t, true)}
                           className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
+                          disabled={togglingTaskId === t.id}
                         >
                           Fatto
                         </button>
@@ -589,16 +679,27 @@ export default function Planner() {
                       <button
                         onClick={async () => {
                           if (!activePetId) return;
+                          if (deletingTaskId) return;
                           if (!confirm("Eliminare questo task?")) return;
-                          await deleteTask(activePetId, t.id);
+                          setDeletingTaskId(t.id);
+                          try {
+                            await deleteTask(activePetId, t.id);
+                            pushToast({ type: "success", title: "Task eliminato", message: "Rimosso." });
+                          } catch (err) {
+                            pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione task fallita" });
+                          } finally {
+                            setDeletingTaskId(null);
+                          }
                         }}
                         className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
+                        disabled={deletingTaskId === t.id}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => toggleDone(t, false)}
                         className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
+                        disabled={togglingTaskId === t.id}
                       >
                         Annulla
                       </button>

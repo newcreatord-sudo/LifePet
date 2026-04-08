@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { usePetStore } from "@/stores/petStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useToastStore } from "@/stores/toastStore";
 import { aiChat } from "@/data/ai";
 import { updatePet } from "@/data/pets";
 import { createRoutine, subscribeRoutines } from "@/data/routines";
@@ -39,6 +40,7 @@ export default function Nutrition() {
   const user = useAuthStore((s) => s.user);
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
 
   const pet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
   const [weightKg, setWeightKg] = useState(pet?.weightKg?.toString() ?? "");
@@ -112,6 +114,9 @@ export default function Nutrition() {
           notes: notes.trim() || undefined,
         },
       });
+      pushToast({ type: "success", title: "Salvato", message: "Dati alimentazione aggiornati." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
     } finally {
       setSaving(false);
     }
@@ -144,7 +149,9 @@ export default function Nutrition() {
       const res = await aiChat(activePetId, null, prompt);
       setAiText(res.answer);
     } catch (e) {
-      setAiText(aiUserMessage(e));
+      const msg = aiUserMessage(e);
+      setAiText(msg);
+      pushToast({ type: "error", title: "Errore AI", message: msg });
     } finally {
       setAiLoading(false);
     }
@@ -153,7 +160,12 @@ export default function Nutrition() {
   async function saveAiPlan() {
     if (!activePetId) return;
     if (!aiText) return;
-    await updatePet(activePetId, { dietNotes: aiText });
+    try {
+      await updatePet(activePetId, { dietNotes: aiText });
+      pushToast({ type: "success", title: "Salvato", message: "Piano AI salvato nelle note dieta." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
+    }
   }
 
   async function onCreateMealRoutine() {
@@ -164,7 +176,10 @@ export default function Nutrition() {
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
-      if (times.length === 0) return;
+      if (times.length === 0) {
+        pushToast({ type: "error", title: "Orari obbligatori", message: "Inserisci almeno un orario (es. 08:00)." });
+        return;
+      }
       const grams = derived?.gramsPerMeal;
       const title = grams ? `Pasto — ${grams} g` : "Pasto";
       await createRoutine(activePetId, {
@@ -178,6 +193,9 @@ export default function Nutrition() {
         createdAt: Date.now(),
         createdBy: user.uid,
       });
+      pushToast({ type: "success", title: "Routine creata", message: "Task pasti verranno generati." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione routine fallita" });
     } finally {
       setCreatingRoutine(false);
     }

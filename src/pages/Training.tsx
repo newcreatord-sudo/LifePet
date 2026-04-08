@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Sparkles } from "lucide-react";
 import { usePetStore } from "@/stores/petStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useToastStore } from "@/stores/toastStore";
 import { aiChat } from "@/data/ai";
 import { createTask, setTaskDone, subscribeTasks } from "@/data/tasks";
 import { createRoutine, seedEnabledRoutinesOncePerDay, subscribeRoutines } from "@/data/routines";
@@ -47,6 +48,7 @@ export default function Training() {
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
   const pet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
+  const pushToast = useToastStore((s) => s.push);
 
   const [issue, setIssue] = useState("");
   const [context, setContext] = useState("");
@@ -92,10 +94,16 @@ export default function Training() {
   useEffect(() => {
     if (!activePetId) return;
     const unsub = subscribeRoutines(activePetId, (items) => {
-      void seedEnabledRoutinesOncePerDay(activePetId, items, "training");
+      void (async () => {
+        try {
+          await seedEnabledRoutinesOncePerDay(activePetId, items, "training");
+        } catch (err) {
+          pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Generazione task training fallita" });
+        }
+      })();
     });
     return () => unsub();
-  }, [activePetId]);
+  }, [activePetId, pushToast]);
 
   const trainingTasks = useMemo(() => tasks.filter((t) => t.title.startsWith("Training:")), [tasks]);
 
@@ -130,7 +138,10 @@ export default function Training() {
   async function onAskAi() {
     if (!activePetId) return;
     const i = issue.trim();
-    if (!i) return;
+    if (!i) {
+      pushToast({ type: "error", title: "Problema obbligatorio", message: "Scegli o descrivi un problema prima di chiedere all’AI." });
+      return;
+    }
     setAiLoading(true);
     setAiText(null);
     setCitations([]);
@@ -147,7 +158,9 @@ export default function Training() {
       setAiText(res.answer);
       setCitations(res.citations ?? []);
     } catch (e) {
-      setAiText(aiUserMessage(e));
+      const msg = aiUserMessage(e);
+      setAiText(msg);
+      pushToast({ type: "error", title: "Errore AI", message: msg });
     } finally {
       setAiLoading(false);
     }
@@ -155,6 +168,10 @@ export default function Training() {
 
   async function addTrainingTask() {
     if (!user || !activePetId) return;
+    if (!issue.trim()) {
+      pushToast({ type: "error", title: "Problema obbligatorio", message: "Inserisci un titolo per creare il task." });
+      return;
+    }
     setCreatingTask(true);
     try {
       await createTask(activePetId, {
@@ -165,6 +182,9 @@ export default function Training() {
         createdAt: Date.now(),
         createdBy: user.uid,
       });
+      pushToast({ type: "success", title: "Task creato", message: "Aggiunto al planner." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione task fallita" });
     } finally {
       setCreatingTask(false);
     }
@@ -176,7 +196,10 @@ export default function Training() {
     setCreatingPlan(true);
     try {
       const [hh, mm] = planTime.split(":").map((x) => Number(x));
-      if (!Number.isFinite(hh) || !Number.isFinite(mm)) return;
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) {
+        pushToast({ type: "error", title: "Orario non valido", message: "Usa formato HH:MM." });
+        return;
+      }
       const start = new Date();
       start.setHours(hh, mm, 0, 0);
       if (start.getTime() < Date.now() - 60 * 1000) start.setDate(start.getDate() + 1);
@@ -194,6 +217,9 @@ export default function Training() {
         createdAt: Date.now(),
         createdBy: user.uid,
       });
+      pushToast({ type: "success", title: "Piano creato", message: "Routine training attivata." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione routine fallita" });
     } finally {
       setCreatingPlan(false);
     }

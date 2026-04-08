@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pencil, Pill, Sparkles, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
+import { useToastStore } from "@/stores/toastStore";
 import { createMedication, deleteMedication, setMedicationEnabled, subscribeMedications, updateMedication } from "@/data/medications";
 import { aiChat, aiVisionAnalyze } from "@/data/ai";
 import { aiUserMessage } from "@/lib/aiErrors";
@@ -53,6 +54,7 @@ function normalizeTime(t: string) {
 export default function Medications() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
   const [items, setItems] = useState<PetMedication[]>([]);
 
   const [aiAllowed, setAiAllowed] = useState(true);
@@ -62,6 +64,11 @@ export default function Medications() {
   const [aiRaw, setAiRaw] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedMedication[] | null>(null);
   const [creatingFromAi, setCreatingFromAi] = useState(false);
+
+  function validateUpload(file: File) {
+    if (file.size > 10 * 1024 * 1024) return "Massimo 10MB.";
+    return null;
+  }
 
   const [name, setName] = useState("");
   const [dose, setDose] = useState("");
@@ -105,12 +112,18 @@ export default function Medications() {
     e.preventDefault();
     if (!user || !activePetId) return;
     const n = name.trim();
-    if (!n) return;
+    if (!n) {
+      pushToast({ type: "error", title: "Nome obbligatorio", message: "Inserisci il nome del farmaco." });
+      return;
+    }
     const t = times
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean);
-    if (t.length === 0) return;
+    if (t.length === 0) {
+      pushToast({ type: "error", title: "Orari obbligatori", message: "Inserisci almeno un orario (es. 08:00)." });
+      return;
+    }
     const d = Number(days);
     const startAt = Date.now();
     const endAt = Number.isFinite(d) && d > 0 ? startAt + d * 24 * 60 * 60 * 1000 : undefined;
@@ -134,6 +147,9 @@ export default function Medications() {
       setName("");
       setDose("");
       setNotes("");
+      pushToast({ type: "success", title: "Terapia creata", message: "Promemoria generati nel planner." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione terapia fallita" });
     } finally {
       setCreating(false);
     }
@@ -176,12 +192,23 @@ export default function Medications() {
                     onChange={async (e) => {
                       const f = e.target.files?.[0];
                       if (!f) return;
+                      const validation = validateUpload(f);
+                      if (validation) {
+                        pushToast({ type: "error", title: "File non valido", message: validation });
+                        e.target.value = "";
+                        return;
+                      }
                       const reader = new FileReader();
                       reader.onload = () => {
                         const v = typeof reader.result === "string" ? reader.result : null;
                         setRxImageDataUrl(v);
                       };
+                      reader.onerror = () => {
+                        setRxImageDataUrl(null);
+                        pushToast({ type: "error", title: "Errore", message: "Impossibile leggere l’immagine." });
+                      };
                       reader.readAsDataURL(f);
+                      e.target.value = "";
                     }}
                   />
                   Carica foto ricetta
@@ -207,7 +234,10 @@ export default function Medications() {
                   onClick={async () => {
                     if (!activePetId) return;
                     const text = rxText.trim();
-                    if (!text && !rxImageDataUrl) return;
+                    if (!text && !rxImageDataUrl) {
+                      pushToast({ type: "error", title: "Input mancante", message: "Incolla il testo o carica una foto della ricetta." });
+                      return;
+                    }
                     setAiLoading(true);
                     setAiRaw(null);
                     setParsed(null);
@@ -257,9 +287,12 @@ export default function Medications() {
 
                       if (normalized.length === 0) throw new Error("AI parse empty");
                       setParsed(normalized);
+                      pushToast({ type: "success", title: "Analisi completata", message: "Controlla l’anteprima prima di creare." });
                     } catch (e) {
-                      setAiRaw(aiUserMessage(e));
+                      const msg = aiUserMessage(e);
+                      setAiRaw(msg);
                       setParsed(null);
+                      pushToast({ type: "error", title: "Errore AI", message: msg });
                     } finally {
                       setAiLoading(false);
                     }
@@ -298,6 +331,9 @@ export default function Medications() {
                         }
                         setRxText("");
                         setParsed(null);
+                        pushToast({ type: "success", title: "Terapie create", message: "Aggiunte alla lista e al planner." });
+                      } catch (err) {
+                        pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione terapie fallita" });
                       } finally {
                         setCreatingFromAi(false);
                       }
@@ -414,7 +450,14 @@ export default function Medications() {
                         .split(",")
                         .map((x) => x.trim())
                         .filter(Boolean);
-                      if (!n || t.length === 0) return;
+                      if (!n) {
+                        pushToast({ type: "error", title: "Nome obbligatorio", message: "Inserisci il nome del farmaco." });
+                        return;
+                      }
+                      if (t.length === 0) {
+                        pushToast({ type: "error", title: "Orari obbligatori", message: "Inserisci almeno un orario (es. 08:00)." });
+                        return;
+                      }
                       const d = Number(editDays);
                       const startAt = m.startAt ?? Date.now();
                       const endAt = Number.isFinite(d) && d > 0 ? startAt + d * 24 * 60 * 60 * 1000 : undefined;
@@ -430,6 +473,9 @@ export default function Medications() {
                           notes: editNotes.trim() || undefined,
                         });
                         setEditingId(null);
+                        pushToast({ type: "success", title: "Terapia aggiornata", message: "Salvataggio completato." });
+                      } catch (err) {
+                        pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
                       } finally {
                         setSavingEdit(false);
                       }
@@ -507,6 +553,9 @@ export default function Medications() {
                           setBusyId(m.id);
                           try {
                             await deleteMedication(activePetId, m.id);
+                            pushToast({ type: "success", title: "Terapia eliminata", message: "Rimossa." });
+                          } catch (err) {
+                            pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione fallita" });
                           } finally {
                             setBusyId(null);
                           }
@@ -517,7 +566,14 @@ export default function Medications() {
                         <Trash2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => activePetId && setMedicationEnabled(activePetId, m.id, !m.enabled)}
+                        onClick={async () => {
+                          if (!activePetId) return;
+                          try {
+                            await setMedicationEnabled(activePetId, m.id, !m.enabled);
+                          } catch (err) {
+                            pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Aggiornamento fallito" });
+                          }
+                        }}
                         className={
                           m.enabled
                             ? "rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-emerald-300"

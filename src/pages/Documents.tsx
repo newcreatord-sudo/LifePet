@@ -4,6 +4,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { deletePetDocument, getPetDocumentDownloadUrl, subscribeDocuments, uploadPetDocument } from "@/data/documents";
 import type { PetDocument } from "@/types";
+import { useToastStore } from "@/stores/toastStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -11,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 export default function Documents() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
   const [docs, setDocs] = useState<PetDocument[]>([]);
   const [uploading, setUploading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -24,10 +26,18 @@ export default function Documents() {
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !user || !activePetId) return;
+    if (file.size > 10 * 1024 * 1024) {
+      pushToast({ type: "error", title: "File troppo grande", message: "Massimo 10MB." });
+      e.target.value = "";
+      return;
+    }
     setUploading(true);
     try {
       await uploadPetDocument(activePetId, user.uid, file);
       e.target.value = "";
+      pushToast({ type: "success", title: "Documento caricato", message: "Disponibile in libreria." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Upload fallito" });
     } finally {
       setUploading(false);
     }
@@ -87,8 +97,8 @@ export default function Documents() {
                         try {
                           const url = await getPetDocumentDownloadUrl(d.storagePath);
                           window.open(url, "_blank", "noopener,noreferrer");
-                        } catch {
-                          return;
+                        } catch (err) {
+                          pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Apertura fallita" });
                         }
                       }}
                       className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
@@ -102,6 +112,9 @@ export default function Documents() {
                         setBusyId(d.id);
                         try {
                           await deletePetDocument(activePetId, d.id, d.storagePath);
+                          pushToast({ type: "success", title: "Documento eliminato", message: "Rimosso." });
+                        } catch (err) {
+                          pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione fallita" });
                         } finally {
                           setBusyId(null);
                         }

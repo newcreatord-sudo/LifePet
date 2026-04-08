@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
+import { useToastStore } from "@/stores/toastStore";
 import {
   createExpense,
   createExpenseSeries,
@@ -34,6 +35,7 @@ export default function Expenses() {
   const activePetId = usePetStore((s) => s.activePetId);
   const pets = usePetStore((s) => s.pets);
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
+  const pushToast = useToastStore((s) => s.push);
   const [items, setItems] = useState<Expense[]>([]);
   const [monthItems, setMonthItems] = useState<Expense[]>([]);
   const [items90d, setItems90d] = useState<Expense[]>([]);
@@ -54,6 +56,9 @@ export default function Expenses() {
 
   const [budget, setBudget] = useState("");
   const [savingBudget, setSavingBudget] = useState(false);
+  const [deletingSeriesId, setDeletingSeriesId] = useState<string | null>(null);
+  const [togglingSeriesId, setTogglingSeriesId] = useState<string | null>(null);
+  const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
 
   useEffect(() => {
     setBudget(activePet?.budgetMonthly?.toString() ?? "");
@@ -86,8 +91,14 @@ export default function Expenses() {
 
   useEffect(() => {
     if (!user || !activePetId) return;
-    void seedExpenseSeriesOncePerDay(activePetId, user.uid, series);
-  }, [activePetId, series, user]);
+    void (async () => {
+      try {
+        await seedExpenseSeriesOncePerDay(activePetId, user.uid, series);
+      } catch (err) {
+        pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Generazione ricorrenze fallita" });
+      }
+    })();
+  }, [activePetId, pushToast, series, user]);
 
   useEffect(() => {
     if (!activePetId) return;
@@ -135,7 +146,10 @@ export default function Expenses() {
     e.preventDefault();
     if (!user || !activePetId) return;
     const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) return;
+    if (!Number.isFinite(value) || value <= 0) {
+      pushToast({ type: "error", title: "Importo non valido", message: "Inserisci un importo maggiore di 0." });
+      return;
+    }
     setSaving(true);
     try {
       await createExpense(activePetId, {
@@ -151,6 +165,9 @@ export default function Expenses() {
       setAmount("");
       setNote("");
       setCategory("food");
+      pushToast({ type: "success", title: "Spesa aggiunta", message: "Registrata correttamente." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione spesa fallita" });
     } finally {
       setSaving(false);
     }
@@ -161,8 +178,14 @@ export default function Expenses() {
     if (!user || !activePetId) return;
     const value = Number(seriesAmount);
     const day = Number(seriesDay);
-    if (!Number.isFinite(value) || value <= 0) return;
-    if (!Number.isFinite(day) || day < 1 || day > 28) return;
+    if (!Number.isFinite(value) || value <= 0) {
+      pushToast({ type: "error", title: "Importo non valido", message: "Inserisci un importo maggiore di 0." });
+      return;
+    }
+    if (!Number.isFinite(day) || day < 1 || day > 28) {
+      pushToast({ type: "error", title: "Giorno non valido", message: "Scegli un giorno tra 1 e 28." });
+      return;
+    }
     setSavingSeries(true);
     try {
       const startAt = Date.now();
@@ -184,6 +207,9 @@ export default function Expenses() {
       setSeriesNote("");
       setSeriesCategory("food");
       setSeriesDay("1");
+      pushToast({ type: "success", title: "Ricorrenza aggiunta", message: "Verrà generata automaticamente." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione ricorrenza fallita" });
     } finally {
       setSavingSeries(false);
     }
@@ -312,9 +338,20 @@ export default function Expenses() {
                               className={s.enabled ? "lp-btn-primary" : "lp-btn-secondary"}
                               onClick={async () => {
                                 if (!activePetId) return;
-                                await setExpenseSeriesEnabled(activePetId, s.id, !s.enabled);
-                                if (!s.enabled) await seedExpenseSeriesOncePerDay(activePetId, user?.uid ?? "system", [{ ...s, enabled: true }]);
+                                if (togglingSeriesId) return;
+                                setTogglingSeriesId(s.id);
+                                try {
+                                  await setExpenseSeriesEnabled(activePetId, s.id, !s.enabled);
+                                  if (!s.enabled) {
+                                    await seedExpenseSeriesOncePerDay(activePetId, user?.uid ?? "system", [{ ...s, enabled: true }]);
+                                  }
+                                } catch (err) {
+                                  pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Aggiornamento ricorrenza fallito" });
+                                } finally {
+                                  setTogglingSeriesId(null);
+                                }
                               }}
+                              disabled={togglingSeriesId === s.id}
                             >
                               {s.enabled ? "Attiva" : "Pausa"}
                             </button>
@@ -323,9 +360,19 @@ export default function Expenses() {
                               className="lp-btn-icon"
                               onClick={async () => {
                                 if (!activePetId) return;
+                                if (deletingSeriesId) return;
                                 if (!confirm("Eliminare questa ricorrenza?")) return;
-                                await deleteExpenseSeries(activePetId, s.id);
+                                setDeletingSeriesId(s.id);
+                                try {
+                                  await deleteExpenseSeries(activePetId, s.id);
+                                  pushToast({ type: "success", title: "Ricorrenza eliminata", message: "Rimossa." });
+                                } catch (err) {
+                                  pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione ricorrenza fallita" });
+                                } finally {
+                                  setDeletingSeriesId(null);
+                                }
                               }}
+                              disabled={deletingSeriesId === s.id}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -421,10 +468,17 @@ export default function Expenses() {
                     disabled={!activePetId || savingBudget}
                     onClick={async () => {
                       if (!activePetId) return;
+                      if (budget.trim() && budgetValue === null) {
+                        pushToast({ type: "error", title: "Budget non valido", message: "Inserisci un numero maggiore di 0 o lascia vuoto per rimuovere." });
+                        return;
+                      }
                       const v = budgetValue;
                       setSavingBudget(true);
                       try {
                         await updatePet(activePetId, { budgetMonthly: v ?? undefined, budgetCurrency: "EUR" });
+                        pushToast({ type: "success", title: "Budget salvato", message: "Aggiornato correttamente." });
+                      } catch (err) {
+                        pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio budget fallito" });
                       } finally {
                         setSavingBudget(false);
                       }
@@ -457,10 +511,21 @@ export default function Expenses() {
                       {user && activePetId ? (
                         <button
                           onClick={async () => {
+                            if (!activePetId) return;
+                            if (deletingExpenseId) return;
                             if (!confirm("Eliminare questa spesa?")) return;
-                            await deleteExpense(activePetId, it.id);
+                            setDeletingExpenseId(it.id);
+                            try {
+                              await deleteExpense(activePetId, it.id);
+                              pushToast({ type: "success", title: "Spesa eliminata", message: "Rimossa." });
+                            } catch (err) {
+                              pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione spesa fallita" });
+                            } finally {
+                              setDeletingExpenseId(null);
+                            }
                           }}
                           className="lp-btn-icon"
+                          disabled={deletingExpenseId === it.id}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

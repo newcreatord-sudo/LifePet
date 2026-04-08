@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
+import { useToastStore } from "@/stores/toastStore";
 import { aiChat } from "@/data/ai";
 import { createHealthEvent } from "@/data/health";
 import { aiUserMessage } from "@/lib/aiErrors";
@@ -19,6 +20,7 @@ export default function Symptoms() {
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
   const pet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
+  const pushToast = useToastStore((s) => s.push);
 
   const [aiAllowed, setAiAllowed] = useState(true);
 
@@ -58,15 +60,20 @@ export default function Symptoms() {
   async function onAskAi() {
     if (!activePetId) return;
     const s = symptoms.trim();
-    if (!s) return;
+    if (!s) {
+      pushToast({ type: "error", title: "Sintomi obbligatori", message: "Descrivi i sintomi per chiedere all’AI." });
+      return;
+    }
+    if (loading) return;
     setLoading(true);
     setAnswer(null);
     setSaved(false);
     try {
+      const durationValue = Number(durationHours);
       const payload = {
         pet: { name: pet?.name, species: pet?.species, breed: pet?.breed, weightKg: pet?.weightKg, allergies: pet?.healthProfile?.allergies, conditions: pet?.healthProfile?.conditions },
         symptoms: s,
-        durationHours: Number(durationHours) || undefined,
+        durationHours: Number.isFinite(durationValue) && durationValue > 0 ? durationValue : undefined,
         severity,
         appetite,
         waterIntake,
@@ -93,6 +100,7 @@ export default function Symptoms() {
       setAnswer(res.answer);
     } catch (e) {
       setAnswer(aiUserMessage(e));
+      pushToast({ type: "error", title: "Errore AI", message: aiUserMessage(e) });
     } finally {
       setLoading(false);
     }
@@ -101,31 +109,39 @@ export default function Symptoms() {
   async function onSaveHealthEvent() {
     if (!user || !activePetId) return;
     const s = symptoms.trim();
-    if (!s) return;
-    await createHealthEvent(activePetId, {
-      petId: activePetId,
-      type: "symptom",
-      title: "Segnalazione sintomi",
-      note: [
-        `Sintomi: ${s}`,
-        `Durata: ${durationHours}h`,
-        `Gravità: ${severity}`,
-        `Appetito: ${appetite}`,
-        `Acqua: ${waterIntake}`,
-        vomiting ? "Vomito: sì" : "Vomito: no",
-        diarrhea ? "Diarrea: sì" : "Diarrea: no",
-        breathing ? "Problemi respiratori: sì" : "Problemi respiratori: no",
-        bleeding ? "Sanguinamento: sì" : "Sanguinamento: no",
-        notes.trim() ? `Note: ${notes.trim()}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      severity,
-      occurredAt: Date.now(),
-      createdAt: Date.now(),
-      createdBy: user.uid,
-    });
-    setSaved(true);
+    if (!s) {
+      pushToast({ type: "error", title: "Sintomi obbligatori", message: "Descrivi i sintomi prima di salvare." });
+      return;
+    }
+    try {
+      await createHealthEvent(activePetId, {
+        petId: activePetId,
+        type: "symptom",
+        title: "Segnalazione sintomi",
+        note: [
+          `Sintomi: ${s}`,
+          `Durata: ${durationHours}h`,
+          `Gravità: ${severity}`,
+          `Appetito: ${appetite}`,
+          `Acqua: ${waterIntake}`,
+          vomiting ? "Vomito: sì" : "Vomito: no",
+          diarrhea ? "Diarrea: sì" : "Diarrea: no",
+          breathing ? "Problemi respiratori: sì" : "Problemi respiratori: no",
+          bleeding ? "Sanguinamento: sì" : "Sanguinamento: no",
+          notes.trim() ? `Note: ${notes.trim()}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        severity,
+        occurredAt: Date.now(),
+        createdAt: Date.now(),
+        createdBy: user.uid,
+      });
+      setSaved(true);
+      pushToast({ type: "success", title: "Salvato", message: "Evento creato in Salute." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
+    }
   }
 
   return (
@@ -260,7 +276,7 @@ export default function Symptoms() {
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 onClick={onAskAi}
-                disabled={loading}
+                disabled={loading || !symptoms.trim()}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
               >
                 <Sparkles className="w-4 h-4" />
@@ -268,7 +284,7 @@ export default function Symptoms() {
               </button>
               <button
                 onClick={onSaveHealthEvent}
-                disabled={!user}
+                disabled={!user || saved || !symptoms.trim()}
                 className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
               >
                 Salva in Salute
