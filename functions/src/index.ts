@@ -631,6 +631,56 @@ export const aiChat = SKIP_AI
   return { answer, citations, conversationId };
   });
 
+export const aiVisionAnalyze = SKIP_AI
+  ? onCall(async () => {
+      throw new HttpsError("failed-precondition", "AI is not configured");
+    })
+  : onCall({ secrets: [OPENAI_API_KEY!] }, async (req) => {
+      const uid = req.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+      await enforceAiQuota(uid);
+
+      const petId = String(req.data?.petId ?? "");
+      const imageDataUrl = String(req.data?.imageDataUrl ?? "");
+      const prompt = String(req.data?.prompt ?? "");
+      if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+      if (!imageDataUrl.startsWith("data:image/")) throw new HttpsError("invalid-argument", "imageDataUrl must be a data URL");
+      if (!prompt.trim()) throw new HttpsError("invalid-argument", "prompt is required");
+      if (imageDataUrl.length > 1_800_000) throw new HttpsError("invalid-argument", "image is too large");
+
+      await assertPetAccess(petId, uid);
+
+      const model = process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
+      const client = getOpenAi(OPENAI_API_KEY!.value());
+
+      const system = [
+        "You are LifePet AI.",
+        "You may be given an image and a user instruction.",
+        "Do not diagnose or prescribe.",
+        "If the image is unclear, say what to improve (lighting, focus) and what data is missing.",
+      ].join("\n");
+
+      const completion = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: imageDataUrl } },
+            ],
+          },
+        ],
+        temperature: 0.2,
+      });
+
+      const answer = completion.choices[0]?.message?.content ?? "";
+      const citations: Array<{ kind: "log" | "task"; id: string }> = [];
+      return { answer, citations };
+    });
+
 export const likePost = onCall(async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required");

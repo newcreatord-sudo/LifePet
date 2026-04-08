@@ -3,7 +3,7 @@ import { Pencil, Pill, Sparkles, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { createMedication, deleteMedication, setMedicationEnabled, subscribeMedications, updateMedication } from "@/data/medications";
-import { aiChat } from "@/data/ai";
+import { aiChat, aiVisionAnalyze } from "@/data/ai";
 import { aiUserMessage } from "@/lib/aiErrors";
 import { subscribeUserProfile } from "@/data/users";
 import type { PetMedication } from "@/types";
@@ -57,6 +57,7 @@ export default function Medications() {
 
   const [aiAllowed, setAiAllowed] = useState(true);
   const [rxText, setRxText] = useState("");
+  const [rxImageDataUrl, setRxImageDataUrl] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRaw, setAiRaw] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedMedication[] | null>(null);
@@ -165,6 +166,39 @@ export default function Medications() {
                 />
               </label>
 
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="rounded-xl border border-slate-800 px-3 py-2 text-sm hover:bg-slate-900 cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={!user || user.isDemo || aiLoading}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const v = typeof reader.result === "string" ? reader.result : null;
+                        setRxImageDataUrl(v);
+                      };
+                      reader.readAsDataURL(f);
+                    }}
+                  />
+                  Carica foto ricetta
+                </label>
+                {rxImageDataUrl ? (
+                  <button type="button" className="lp-btn-secondary" onClick={() => setRxImageDataUrl(null)}>
+                    Rimuovi foto
+                  </button>
+                ) : null}
+              </div>
+
+              {rxImageDataUrl ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <img src={rxImageDataUrl} alt="Ricetta" className="max-h-56 rounded-lg" />
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -173,7 +207,7 @@ export default function Medications() {
                   onClick={async () => {
                     if (!activePetId) return;
                     const text = rxText.trim();
-                    if (!text) return;
+                    if (!text && !rxImageDataUrl) return;
                     setAiLoading(true);
                     setAiRaw(null);
                     setParsed(null);
@@ -184,14 +218,16 @@ export default function Medications() {
                         "Schema: array di oggetti {name, dose?, unit?, route?, times:[HH:MM], days?, notes?}.",
                         "Regole: times deve essere HH:MM (24h). Se il testo è ambiguo, inserisci notes con dubbi ma prova a compilare.",
                         "Non dare diagnosi, non suggerire farmaci. Estrai solo ciò che è già nella prescrizione.",
-                        "Prescrizione:",
-                        text,
+                        text ? "Prescrizione (testo):" : "Prescrizione (immagine):",
+                        text || "(vedi immagine)",
                       ].join("\n");
-                      const res = await aiChat(activePetId, null, prompt);
+
+                      const res = rxImageDataUrl ? await aiVisionAnalyze(activePetId, rxImageDataUrl, prompt) : await aiChat(activePetId, null, prompt);
                       setAiRaw(res.answer);
                       const data = tryParseJsonBlock(res.answer);
                       const list = Array.isArray(data) ? data : null;
                       if (!list) throw new Error("AI parse failed");
+
 
                       const asRecord = (v: unknown): Record<string, unknown> | null =>
                         typeof v === "object" && v !== null ? (v as Record<string, unknown>) : null;

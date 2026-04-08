@@ -48,3 +48,22 @@ export async function aiChat(petId: string, conversationId: string | null, messa
     throw new Error(msg);
   }
 }
+
+export async function aiVisionAnalyze(petId: string, imageDataUrl: string, prompt: string) {
+  if (shouldUseDemoData()) {
+    const res: AiChatResponse & { conversationId: string } = {
+      conversationId: demoId(),
+      answer: "Demo AI vision response (not veterinary advice).",
+      citations: [],
+    };
+    return res;
+  }
+  const fn = httpsCallable(getFirebase().functions, "aiVisionAnalyze");
+  try {
+    const res = await fn({ petId, imageDataUrl, prompt });
+    return res.data as AiChatResponse & { conversationId?: string };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "AI request failed";
+    throw new Error(msg);
+  }
+}
