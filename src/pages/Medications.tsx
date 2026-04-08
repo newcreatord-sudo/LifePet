@@ -1,17 +1,66 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Pill, Trash2 } from "lucide-react";
+import { Pencil, Pill, Sparkles, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { createMedication, deleteMedication, setMedicationEnabled, subscribeMedications, updateMedication } from "@/data/medications";
+import { aiChat } from "@/data/ai";
+import { aiUserMessage } from "@/lib/aiErrors";
+import { subscribeUserProfile } from "@/data/users";
 import type { PetMedication } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 
+type ParsedMedication = {
+  name: string;
+  dose?: string;
+  unit?: string;
+  route?: string;
+  times: string[];
+  days?: number;
+  notes?: string;
+};
+
+function tryParseJsonBlock(raw: string) {
+  const s = raw.trim();
+  const fenced = s.match(/```json\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : s;
+  try {
+    return JSON.parse(candidate) as unknown;
+  } catch {
+    const start = candidate.indexOf("[");
+    const end = candidate.lastIndexOf("]");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(candidate.slice(start, end + 1)) as unknown;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function normalizeTime(t: string) {
+  const m = t.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 export default function Medications() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
   const [items, setItems] = useState<PetMedication[]>([]);
+
+  const [aiAllowed, setAiAllowed] = useState(true);
+  const [rxText, setRxText] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiRaw, setAiRaw] = useState<string | null>(null);
+  const [parsed, setParsed] = useState<ParsedMedication[] | null>(null);
+  const [creatingFromAi, setCreatingFromAi] = useState(false);
 
   const [name, setName] = useState("");
   const [dose, setDose] = useState("");
@@ -37,6 +86,17 @@ export default function Medications() {
     const unsub = subscribeMedications(activePetId, setItems);
     return () => unsub();
   }, [activePetId]);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setAiAllowed(true);
+      return;
+    }
+    const unsub = subscribeUserProfile(user.uid, (p) => {
+      setAiAllowed(p?.preferences?.aiEnabled !== false);
+    });
+    return () => unsub();
+  }, [user]);
 
   const active = useMemo(() => items.filter((m) => m.enabled), [items]);
 
@@ -81,6 +141,166 @@ export default function Medications() {
   return (
     <div className="space-y-6">
       <PageHeader title="Terapie" description="Farmaci strutturati con promemoria automatici (task)." />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Scansione ricetta (testo)</CardTitle>
+          <CardDescription>Incolla la prescrizione e crea le terapie automaticamente.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!activePetId ? (
+            <EmptyState title="Seleziona un pet" description="Scegli un profilo per usare la scansione ricetta." />
+          ) : !aiAllowed ? (
+            <EmptyState title="AI disattivata" description="Riattivala in Impostazioni → Preferenze per usare la scansione ricetta." />
+          ) : (
+            <>
+              <label className="block">
+                <div className="text-xs text-slate-400 mb-1">Testo ricetta</div>
+                <textarea
+                  value={rxText}
+                  onChange={(e) => setRxText(e.target.value)}
+                  rows={5}
+                  placeholder="Es. Amoxicillina 50 mg, 1 compressa alle 08:00 e 20:00 per 7 giorni…"
+                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!user || user.isDemo || aiLoading}
+                  className="rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60 inline-flex items-center gap-2"
+                  onClick={async () => {
+                    if (!activePetId) return;
+                    const text = rxText.trim();
+                    if (!text) return;
+                    setAiLoading(true);
+                    setAiRaw(null);
+                    setParsed(null);
+                    try {
+                      const prompt = [
+                        "Sei un assistente LifePet che estrae terapie da una prescrizione.",
+                        "Restituisci SOLO JSON (nessun testo extra).",
+                        "Schema: array di oggetti {name, dose?, unit?, route?, times:[HH:MM], days?, notes?}.",
+                        "Regole: times deve essere HH:MM (24h). Se il testo è ambiguo, inserisci notes con dubbi ma prova a compilare.",
+                        "Non dare diagnosi, non suggerire farmaci. Estrai solo ciò che è già nella prescrizione.",
+                        "Prescrizione:",
+                        text,
+                      ].join("\n");
+                      const res = await aiChat(activePetId, null, prompt);
+                      setAiRaw(res.answer);
+                      const data = tryParseJsonBlock(res.answer);
+                      const list = Array.isArray(data) ? data : null;
+                      if (!list) throw new Error("AI parse failed");
+
+                      const asRecord = (v: unknown): Record<string, unknown> | null =>
+                        typeof v === "object" && v !== null ? (v as Record<string, unknown>) : null;
+
+                      const normalized: ParsedMedication[] = list
+                        .map((x) => {
+                          const r = asRecord(x);
+                          const timesRaw = r && Array.isArray(r.times) ? r.times : [];
+                          return {
+                            name: String(r?.name ?? "").trim(),
+                            dose: typeof r?.dose === "string" ? r.dose.trim() : undefined,
+                            unit: typeof r?.unit === "string" ? r.unit.trim() : undefined,
+                            route: typeof r?.route === "string" ? r.route.trim() : undefined,
+                            times: timesRaw.map((t) => String(t)),
+                            days: typeof r?.days === "number" ? r.days : undefined,
+                            notes: typeof r?.notes === "string" ? r.notes.trim() : undefined,
+                          };
+                        })
+                        .filter((m) => m.name)
+                        .map((m) => ({
+                          ...m,
+                          times: Array.from(new Set(m.times.map((t) => normalizeTime(t)).filter((t): t is string => Boolean(t))))
+                            .slice(0, 6),
+                          days: typeof m.days === "number" && Number.isFinite(m.days) && m.days > 0 ? Math.round(m.days) : undefined,
+                        }))
+                        .filter((m) => m.times.length > 0);
+
+                      if (normalized.length === 0) throw new Error("AI parse empty");
+                      setParsed(normalized);
+                    } catch (e) {
+                      setAiRaw(aiUserMessage(e));
+                      setParsed(null);
+                    } finally {
+                      setAiLoading(false);
+                    }
+                  }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {aiLoading ? "Analisi…" : "Analizza"}
+                </button>
+
+                {parsed && parsed.length ? (
+                  <button
+                    type="button"
+                    disabled={!user || !activePetId || creatingFromAi}
+                    className="rounded-xl border border-slate-800 px-3 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
+                    onClick={async () => {
+                      if (!user || !activePetId) return;
+                      setCreatingFromAi(true);
+                      try {
+                        for (const m of parsed) {
+                          const startAt = Date.now();
+                          const endAt = typeof m.days === "number" ? startAt + m.days * 24 * 60 * 60 * 1000 : undefined;
+                          await createMedication(activePetId, {
+                            petId: activePetId,
+                            name: m.name,
+                            dose: m.dose,
+                            unit: m.unit,
+                            route: m.route,
+                            times: m.times,
+                            startAt,
+                            endAt,
+                            enabled: true,
+                            notes: m.notes,
+                            createdAt: Date.now(),
+                            createdBy: user.uid,
+                          });
+                        }
+                        setRxText("");
+                        setParsed(null);
+                      } finally {
+                        setCreatingFromAi(false);
+                      }
+                    }}
+                  >
+                    {creatingFromAi ? "Creazione…" : "Crea terapie"}
+                  </button>
+                ) : null}
+              </div>
+
+              {parsed && parsed.length ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="text-xs text-slate-400">Anteprima</div>
+                  <div className="mt-2 space-y-2">
+                    {parsed.map((m, idx) => (
+                      <div key={`${m.name}-${idx}`} className="text-sm text-slate-200">
+                        <div className="font-medium">{m.name}</div>
+                        <div className="text-xs text-slate-500">
+                          {(m.dose || m.unit) ? `${m.dose ?? ""} ${m.unit ?? ""}`.trim() : "—"}
+                          {m.route ? ` · ${m.route}` : ""}
+                          {m.times.length ? ` · ${m.times.join(", ")}` : ""}
+                          {typeof m.days === "number" ? ` · ${m.days} giorni` : ""}
+                        </div>
+                        {m.notes ? <div className="text-xs text-slate-400 mt-0.5">{m.notes}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {aiRaw && !parsed ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300 whitespace-pre-wrap">{aiRaw}</div>
+              ) : null}
+
+              <div className="text-xs text-slate-500">AI informativa: verifica sempre prescrizione e orari con il veterinario.</div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
