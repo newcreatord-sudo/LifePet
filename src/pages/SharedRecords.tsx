@@ -35,6 +35,26 @@ export default function SharedRecords() {
     return Date.now() > share.expiresAt;
   }, [share]);
 
+  async function openAttachment(att: { url?: string; storagePath?: string; name: string }) {
+    try {
+      if (att.url) {
+        window.open(att.url, "_blank", "noreferrer");
+        return;
+      }
+      if (!att.storagePath || !token) return;
+      const region = (import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION as string) || "us-central1";
+      const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string;
+      const base = `https://${region}-${projectId}.cloudfunctions.net/sharedRecordAttachmentUrl`;
+      const res = await fetch(`${base}?token=${encodeURIComponent(String(token))}&path=${encodeURIComponent(att.storagePath)}`);
+      if (!res.ok) throw new Error("Impossibile aprire allegato");
+      const json = (await res.json()) as { url?: string };
+      if (!json.url) throw new Error("URL mancante");
+      window.open(json.url, "_blank", "noreferrer");
+    } catch {
+      alert("Impossibile aprire l’allegato");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-4xl mx-auto p-4 space-y-6">
@@ -91,14 +111,13 @@ export default function SharedRecords() {
                                     <div className="text-xs text-slate-600">{it.subtitle ?? it.kind}</div>
                                     {it.note ? <div className="mt-1 text-sm text-slate-800 whitespace-pre-wrap">{it.note}</div> : null}
                                     {it.attachment ? (
-                                      <a
-                                        href={it.attachment.url}
-                                        target="_blank"
-                                        rel="noreferrer"
+                                      <button
+                                        type="button"
+                                        onClick={() => void openAttachment(it.attachment!)}
                                         className="mt-2 lp-btn-icon inline-flex"
                                       >
                                         Apri: {it.attachment.name}
-                                      </a>
+                                      </button>
                                     ) : null}
                                   </div>
                                 </div>

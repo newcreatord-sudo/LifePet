@@ -8,7 +8,7 @@ export type RecordsShareItem = {
   title: string;
   subtitle?: string;
   note?: string;
-  attachment?: { name: string; url: string };
+  attachment?: { name: string; storagePath?: string; url?: string };
 };
 
 export type RecordsShare = {

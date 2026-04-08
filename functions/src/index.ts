@@ -368,6 +368,65 @@ export const stripeWebhook = BILLING_DISABLED
   }
   });
 
+export const sharedRecordAttachmentUrl = onRequest(async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+  res.set("Cache-Control", "no-store");
+
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+  if (req.method !== "GET") {
+    res.status(405).send("Method not allowed");
+    return;
+  }
+
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  const path = typeof req.query.path === "string" ? req.query.path : "";
+  if (!token || !path) {
+    res.status(400).json({ error: "missing_params" });
+    return;
+  }
+
+  const shareSnap = await db.collection("recordShares").doc(token).get();
+  if (!shareSnap.exists) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const share = shareSnap.data() as { expiresAt?: unknown; petId?: unknown; items?: unknown };
+  const expiresAt = typeof share.expiresAt === "number" ? share.expiresAt : 0;
+  const petId = typeof share.petId === "string" ? share.petId : "";
+  if (!expiresAt || Date.now() > expiresAt) {
+    res.status(410).json({ error: "expired" });
+    return;
+  }
+  if (!petId) {
+    res.status(400).json({ error: "invalid_share" });
+    return;
+  }
+
+  const items = Array.isArray(share.items) ? share.items : [];
+  const allowed = items.some((it) => {
+    const att = (it as { attachment?: unknown })?.attachment as { storagePath?: unknown } | undefined;
+    return typeof att?.storagePath === "string" && att.storagePath === path;
+  });
+  if (!allowed) {
+    res.status(403).json({ error: "forbidden" });
+    return;
+  }
+
+  if (!path.startsWith(`pets/${petId}/documents/`)) {
+    res.status(403).json({ error: "forbidden" });
+    return;
+  }
+
+  const signedUntil = Math.min(expiresAt, Date.now() + 5 * 60 * 1000);
+  const [url] = await bucket.file(path).getSignedUrl({ action: "read", expires: signedUntil });
+  res.status(200).json({ url });
+});
+
 async function getPetOwnerId(petId: string) {
   const snap = await db.collection("pets").doc(petId).get();
   if (!snap.exists) return null;

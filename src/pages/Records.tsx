@@ -324,23 +324,17 @@ export default function Records() {
                     if (!Number.isFinite(hours) || hours <= 0 || hours > 168) return;
                     const expiresAt = Date.now() + Math.round(hours * 60 * 60 * 1000);
 
-                    const withAttachments = await Promise.all(
-                      timeline.map(async (t) => {
-                        if (!t.attachment) return { kind: t.kind, ts: t.ts, title: t.title, subtitle: t.subtitle, note: t.note };
-                        try {
-                          const url = await getPetDocumentDownloadUrl(t.attachment.storagePath);
-                          return {
+                    const withAttachments = timeline.map((t) =>
+                      t.attachment
+                        ? {
                             kind: t.kind,
                             ts: t.ts,
                             title: t.title,
                             subtitle: t.subtitle,
                             note: t.note,
-                            attachment: { name: t.attachment.name, url },
-                          };
-                        } catch {
-                          return { kind: t.kind, ts: t.ts, title: t.title, subtitle: t.subtitle, note: t.note };
-                        }
-                      })
+                            attachment: { name: t.attachment.name, storagePath: t.attachment.storagePath },
+                          }
+                        : { kind: t.kind, ts: t.ts, title: t.title, subtitle: t.subtitle, note: t.note }
                     );
 
                     const token = await createRecordsShare({
