@@ -25,6 +25,12 @@ service cloud.firestore {
       }
     }
 
+    match /publicProfiles/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.auth.uid == userId && request.resource.data.uid == userId;
+      allow delete: if false;
+    }
+
     match /pets/{petId} {
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow read, update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;

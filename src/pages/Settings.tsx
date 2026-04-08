@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePetStore } from "@/stores/petStore";
 import { deletePushToken, savePushToken } from "@/data/pushTokens";
 import { disablePushNotifications, enablePushNotifications, getVapidKey, isPushSupported, subscribeForegroundMessages } from "@/lib/push";
-import { subscribeUserProfile, updateUserPreferences, type UserProfile } from "@/data/users";
+import { subscribePublicProfile, subscribeUserProfile, updatePublicProfile, updateUserPreferences, type PublicProfile, type UserProfile } from "@/data/users";
 import { billingCreateCheckoutSession, billingCreatePortalSession, getBillingStatus, type BillingStatus } from "@/data/billing";
 import { exportPetData } from "@/data/export";
 import { deleteAccountCascade } from "@/data/account";
@@ -22,6 +22,10 @@ export default function Settings() {
   const [pushError, setPushError] = useState<string | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
+  const [publicName, setPublicName] = useState("");
+  const [publicHandle, setPublicHandle] = useState("");
+  const [savingPublic, setSavingPublic] = useState(false);
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
@@ -47,6 +51,16 @@ export default function Settings() {
   useEffect(() => {
     if (!user) return;
     const unsub = subscribeUserProfile(user.uid, setProfile);
+    return () => unsub();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribePublicProfile(user.uid, (p) => {
+      setPublicProfile(p);
+      setPublicName(p?.displayName ?? "");
+      setPublicHandle(p?.handle ?? "");
+    });
     return () => unsub();
   }, [user]);
 
@@ -89,6 +103,55 @@ export default function Settings() {
             </span>
           </button>
         </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Profilo pubblico</CardTitle>
+          <CardDescription>Nome mostrato in Community e chat.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!user ? (
+            <EmptyState title="Accedi" description="Per modificare il profilo pubblico devi essere autenticato." />
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <div className="text-xs text-slate-600 mb-1">Nome</div>
+                  <input value={publicName} onChange={(e) => setPublicName(e.target.value)} className="lp-input" />
+                </label>
+                <label className="block">
+                  <div className="text-xs text-slate-600 mb-1">Handle (opzionale)</div>
+                  <input value={publicHandle} onChange={(e) => setPublicHandle(e.target.value)} placeholder="@mario" className="lp-input" />
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  className="lp-btn-primary"
+                  disabled={!user || user.isDemo || savingPublic}
+                  onClick={async () => {
+                    if (!user || user.isDemo) return;
+                    setSavingPublic(true);
+                    try {
+                      await updatePublicProfile(user.uid, {
+                        displayName: publicName,
+                        handle: publicHandle,
+                      });
+                    } finally {
+                      setSavingPublic(false);
+                    }
+                  }}
+                >
+                  {savingPublic ? "Salvataggio…" : "Salva"}
+                </button>
+                {publicProfile ? <div className="text-xs text-slate-600">UID: {publicProfile.uid}</div> : null}
+              </div>
+
+              {user.isDemo ? <div className="text-xs text-slate-600">In modalità demo il profilo pubblico non viene salvato.</div> : null}
+            </div>
+          )}
         </CardContent>
       </Card>
 

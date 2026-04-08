@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Heart, MessageSquare, Plus } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { createComment, createPost, likePost, reportComment, reportPost, subscribeComments, subscribePosts } from "@/data/community";
 import { ensureDefaultGroups, joinGroup, leaveGroup, sendGroupMessage, subscribeGroupMembership, subscribeGroupMessages, subscribeGroups } from "@/data/groups";
 import type { CommunityComment, CommunityGroup, CommunityGroupMessage, CommunityPost } from "@/types";
-import { subscribeUserProfile } from "@/data/users";
+import { subscribePublicProfile, subscribeUserProfile, type PublicProfile } from "@/data/users";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -28,6 +28,14 @@ export default function Community() {
   const [sending, setSending] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [communityAllowed, setCommunityAllowed] = useState(true);
+
+  const [profiles, setProfiles] = useState<Record<string, PublicProfile | null>>({});
+  const profileUnsubs = useRef<Record<string, () => void>>({});
+  const profilesRef = useRef<Record<string, PublicProfile | null>>({});
+
+  useEffect(() => {
+    profilesRef.current = profiles;
+  }, [profiles]);
 
   useEffect(() => {
     const unsub = subscribePosts(50, setPosts);
@@ -73,6 +81,45 @@ export default function Community() {
     });
     return () => unsub();
   }, [user]);
+
+  useEffect(() => {
+    const ids = new Set<string>();
+    for (const p of posts) ids.add(p.authorId);
+    for (const m of messages) ids.add(m.authorId);
+    for (const pid of Object.keys(comments)) for (const c of comments[pid] ?? []) ids.add(c.authorId);
+
+    for (const uid of Array.from(ids)) {
+      if (profilesRef.current[uid] !== undefined) continue;
+      const unsub = subscribePublicProfile(uid, (pp) => {
+        setProfiles((prev) => ({ ...prev, [uid]: pp }));
+      });
+      profileUnsubs.current[uid] = unsub;
+      setProfiles((prev) => ({ ...prev, [uid]: null }));
+    }
+
+    const unsubs = profileUnsubs.current;
+
+    return () => {
+      for (const uid of Object.keys(unsubs)) {
+        if (!ids.has(uid)) {
+          try {
+            unsubs[uid]?.();
+          } catch {
+            continue;
+          }
+          delete unsubs[uid];
+        }
+      }
+    };
+  }, [comments, messages, posts]);
+
+  function authorLabel(uid: string) {
+    const p = profiles[uid];
+    const name = p?.displayName?.trim();
+    const handle = p?.handle?.trim();
+    if (name && handle) return `${name} · ${handle}`;
+    return name || handle || uid.slice(0, 6);
+  }
 
   const activeGroup = useMemo(() => groups.find((g) => g.id === activeGroupId) ?? null, [activeGroupId, groups]);
 
@@ -231,6 +278,7 @@ export default function Community() {
                         : "mr-auto max-w-[85%] rounded-xl bg-white border border-slate-200/70 px-3 py-2 text-sm"
                     }
                   >
+                    <div className="text-[10px] text-slate-600 mb-1">{authorLabel(m.authorId)}</div>
                     <div className="whitespace-pre-wrap">{m.text}</div>
                     <div className="text-[10px] text-slate-600 mt-1">{new Date(m.createdAt).toLocaleString()}</div>
                   </div>
@@ -301,6 +349,7 @@ export default function Community() {
                   .filter((p) => p.status !== "hidden" && p.status !== "removed")
                   .map((p) => (
                   <div key={p.id} className="lp-card p-4">
+                    <div className="text-xs text-slate-600">{authorLabel(p.authorId)}</div>
                     <div className="text-sm whitespace-pre-wrap">{p.text}</div>
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <div className="text-xs text-slate-600">{new Date(p.createdAt).toLocaleString()}</div>
@@ -345,7 +394,10 @@ export default function Community() {
                               .map((c) => (
                               <div key={c.id} className="lp-panel px-3 py-2">
                                 <div className="flex items-start justify-between gap-2">
-                                  <div className="text-sm whitespace-pre-wrap">{c.text}</div>
+                                  <div>
+                                    <div className="text-[10px] text-slate-600">{authorLabel(c.authorId)}</div>
+                                    <div className="text-sm whitespace-pre-wrap">{c.text}</div>
+                                  </div>
                                   {user ? (
                                     <button
                                       onClick={async () => {
