@@ -52,9 +52,9 @@ export function seedDefaultProviders() {
     });
     return [
       mk("vet", "Centro Veterinario Milano", "Milano", "+39 02 0000 0000", "Visite, vaccini, emergenze"),
+      mk("nutritionist", "Nutrizionista Pet Online", "Online", "+39 02 2222 2222", "Dieta personalizzata e piani nutrizionali"),
       mk("groomer", "Toelettatura GreenPaw", "Milano", "+39 02 1111 1111", "Bagno, taglio, unghie"),
       mk("sitter", "Pet Sitter Clara", "Milano", "+39 333 222 1111", "Passeggiate e visite a domicilio"),
     ];
   });
 }
-

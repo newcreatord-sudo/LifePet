@@ -326,7 +326,7 @@ export type MarketplaceListing = {
   photoPaths?: string[];
 };
 
-export type ProviderKind = "vet" | "groomer" | "sitter";
+export type ProviderKind = "vet" | "nutritionist" | "groomer" | "sitter";
 
 export type Provider = {
   id: string;
@@ -335,6 +335,7 @@ export type Provider = {
   city?: string;
   phone?: string;
   description?: string;
+  meetingUrl?: string;
   createdAt: number;
 };
 

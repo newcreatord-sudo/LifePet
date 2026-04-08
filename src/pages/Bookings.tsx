@@ -15,6 +15,7 @@ function hoursToMs(h: number) {
 
 function providerKindLabel(kind: ProviderKind) {
   if (kind === "vet") return "Veterinario";
+  if (kind === "nutritionist") return "Nutrizionista";
   if (kind === "groomer") return "Toelettatore";
   return "Sitter";
 }
@@ -49,6 +50,7 @@ export default function Bookings() {
   const [providerName, setProviderName] = useState("");
   const [providerCity, setProviderCity] = useState("");
   const [providerPhone, setProviderPhone] = useState("");
+  const [providerMeetingUrl, setProviderMeetingUrl] = useState("");
   const [providerDescription, setProviderDescription] = useState("");
   const [savingProvider, setSavingProvider] = useState(false);
 
@@ -120,6 +122,7 @@ export default function Bookings() {
         name: n,
         city: providerCity.trim() || undefined,
         phone: providerPhone.trim() || undefined,
+        meetingUrl: providerMeetingUrl.trim() || undefined,
         description: providerDescription.trim() || undefined,
         createdAt: Date.now(),
       });
@@ -127,6 +130,7 @@ export default function Bookings() {
       setProviderName("");
       setProviderCity("");
       setProviderPhone("");
+      setProviderMeetingUrl("");
       setProviderDescription("");
       setAddingProvider(false);
     } finally {
@@ -206,6 +210,7 @@ export default function Bookings() {
                 className="lp-select"
               >
                 <option value="vet">Veterinario</option>
+                <option value="nutritionist">Nutrizionista</option>
                 <option value="groomer">Toelettatore</option>
                 <option value="sitter">Sitter</option>
               </select>
@@ -261,6 +266,10 @@ export default function Bookings() {
                 className="lp-input"
               />
             </label>
+
+              {selectedProvider?.meetingUrl ? (
+                <div className="text-xs text-slate-600">Teleconsulto: {selectedProvider.meetingUrl}</div>
+              ) : null}
             <div className="lg:col-span-12 text-xs text-slate-600">
               Anti no‑show: se non confermata entro la scadenza, può essere annullata automaticamente. Dopo l’orario può essere segnata come no‑show.
             </div>
@@ -290,6 +299,10 @@ export default function Bookings() {
                 <label className="block">
                   <div className="text-xs text-slate-600 mb-1">Telefono</div>
                   <input value={providerPhone} onChange={(e) => setProviderPhone(e.target.value)} className="lp-input" />
+                </label>
+                <label className="block">
+                  <div className="text-xs text-slate-600 mb-1">Link teleconsulto</div>
+                  <input value={providerMeetingUrl} onChange={(e) => setProviderMeetingUrl(e.target.value)} placeholder="https://meet.jit.si/..." className="lp-input" />
                 </label>
                 <label className="block">
                   <div className="text-xs text-slate-600 mb-1">Descrizione</div>

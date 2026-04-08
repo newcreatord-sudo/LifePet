@@ -150,6 +150,12 @@ export default function Nutrition() {
     }
   }
 
+  async function saveAiPlan() {
+    if (!activePetId) return;
+    if (!aiText) return;
+    await updatePet(activePetId, { dietNotes: aiText });
+  }
+
   async function onCreateMealRoutine() {
     if (!user || !activePetId) return;
     setCreatingRoutine(true);
@@ -318,14 +324,24 @@ export default function Nutrition() {
                   <div className="font-semibold">Supporto AI</div>
                   <div className="text-xs text-slate-600">Suggerimenti personalizzati da profilo e attività</div>
                 </div>
-                <button
-                  onClick={onAskAi}
-                  disabled={aiLoading || !aiAllowed}
-                  className="lp-btn-primary inline-flex items-center gap-2"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  {aiLoading ? "…" : "Chiedi all’AI"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={onAskAi}
+                    disabled={aiLoading || !aiAllowed}
+                    className="lp-btn-primary inline-flex items-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {aiLoading ? "…" : "Chiedi all’AI"}
+                  </button>
+                  <button
+                    onClick={saveAiPlan}
+                    disabled={!aiAllowed || !aiText || saving}
+                    className="lp-btn-secondary"
+                    type="button"
+                  >
+                    Salva piano
+                  </button>
+                </div>
               </div>
               {!aiAllowed ? <div className="mt-2 text-xs text-slate-600">AI disattivata: riattivala in Impostazioni → Preferenze.</div> : null}
               <div className="mt-3 text-sm whitespace-pre-wrap text-slate-800 min-h-20">
