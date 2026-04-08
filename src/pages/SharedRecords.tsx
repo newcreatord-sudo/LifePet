@@ -104,7 +104,7 @@ export default function SharedRecords() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex items-start gap-3">
                                   <div className="mt-0.5">
-                                    <Icon className={it.kind === "health" ? "w-4 h-4 text-fuchsia-700" : "w-4 h-4 text-slate-700"} />
+                                    <Icon className={it.kind === "health" ? "w-4 h-4 text-sky-700" : "w-4 h-4 text-slate-700"} />
                                   </div>
                                   <div>
                                     <div className="text-sm font-medium">{it.title}</div>

@@ -1,4 +1,4 @@
-import { deleteDoc, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
 
@@ -22,3 +22,14 @@ export async function deletePushToken(userId: string, token: string) {
   await deleteDoc(doc(db, "users", userId, "pushTokens", token));
 }
 
+export function subscribePushTokens(userId: string, onTokens: (tokens: string[]) => void) {
+  if (shouldUseDemoData()) {
+    onTokens([]);
+    return () => {};
+  }
+  const { db } = getFirebase();
+  const col = collection(db, "users", userId, "pushTokens");
+  return onSnapshot(col, (snap) => {
+    onTokens(snap.docs.map((d) => d.id));
+  });
+}

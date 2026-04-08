@@ -81,7 +81,7 @@ export default function Notifications() {
                   onClick={() => setOnlyUnread((v) => !v)}
                   className={
                     onlyUnread
-                      ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-sm text-fuchsia-800"
+                      ? "rounded-xl bg-sky-600/10 border border-sky-600/20 px-3 py-2 text-sm text-sky-800"
                       : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-sm text-slate-700 hover:bg-white"
                   }
                 >
@@ -135,11 +135,11 @@ export default function Notifications() {
                           {n.severity === "danger" ? (
                             <ShieldAlert className="w-4 h-4 text-rose-500" />
                           ) : (
-                            <Bell className="w-4 h-4 text-fuchsia-700" />
+                            <Bell className="w-4 h-4 text-sky-700" />
                           )}
                           <div className="text-sm font-semibold truncate">{n.title}</div>
                           {!n.read ? (
-                            <span className="inline-flex items-center rounded-full border border-fuchsia-600/20 bg-fuchsia-600/10 px-2 py-0.5 text-[10px] text-fuchsia-800">
+                            <span className="inline-flex items-center rounded-full border border-sky-600/20 bg-sky-600/10 px-2 py-0.5 text-[10px] text-sky-800">
                               NUOVA
                             </span>
                           ) : null}

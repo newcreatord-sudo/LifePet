@@ -401,7 +401,7 @@ export default function Expenses() {
                   <div className="mt-2">
                     <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
                       <div
-                        className={totalMonth > activePet.budgetMonthly ? "h-2 bg-rose-500" : "h-2 bg-fuchsia-600"}
+                        className={totalMonth > activePet.budgetMonthly ? "h-2 bg-rose-500" : "h-2 bg-sky-600"}
                         style={{ width: `${Math.min(100, Math.round((totalMonth / activePet.budgetMonthly) * 100))}%` }}
                       />
                     </div>

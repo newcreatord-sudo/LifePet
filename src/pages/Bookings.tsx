@@ -181,7 +181,7 @@ export default function Bookings() {
               onClick={() => setStatusFilter((s) => ({ ...s, [k]: !s[k] }))}
               className={
                 statusFilter[k]
-                  ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                  ? "rounded-xl bg-sky-600/10 border border-sky-600/20 px-3 py-2 text-xs text-sky-800"
                   : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
               }
             >
@@ -357,7 +357,7 @@ export default function Bookings() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium flex items-center gap-2">
-                      <CalendarCheck className="w-4 h-4 text-fuchsia-700" />
+                      <CalendarCheck className="w-4 h-4 text-sky-700" />
                       {b.providerName} · {providerKindLabel(b.providerKind)}
                     </div>
                     <div className="text-xs text-slate-600 mt-0.5">{new Date(b.scheduledAt).toLocaleString()}</div>

@@ -1,26 +1,28 @@
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { useEffect, useMemo, useState } from "react";
-import { usePetStore } from "@/stores/petStore";
-import { deletePushToken, savePushToken } from "@/data/pushTokens";
+import { deletePushToken, savePushToken, subscribePushTokens } from "@/data/pushTokens";
 import { disablePushNotifications, enablePushNotifications, getVapidKey, isPushSupported, subscribeForegroundMessages } from "@/lib/push";
 import { subscribePublicProfile, subscribeUserProfile, updatePublicProfile, updateUserPreferences, type PublicProfile, type UserProfile } from "@/data/users";
 import { deletePublicProfilePhoto, uploadPublicProfilePhoto } from "@/data/publicProfilePhotos";
 import { billingCreateCheckoutSession, billingCreatePortalSession, getBillingStatus, type BillingStatus } from "@/data/billing";
-import { exportPetData } from "@/data/export";
+import { exportAccountData } from "@/data/export";
 import { deleteAccountCascade } from "@/data/account";
+import { useTutorialStore } from "@/stores/tutorialStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Bell, Crown, Download, LogOut, Trash2 } from "lucide-react";
+import { Bell, CircleHelp, Crown, Download, LogOut, RotateCcw, Trash2 } from "lucide-react";
 
 export default function Settings() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const pets = usePetStore((s) => s.pets);
   const navigate = useNavigate();
+  const tutorialEnabled = useTutorialStore((s) => s.enabled);
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [pushTokens, setPushTokens] = useState<string[]>([]);
+  const [pushInitDone, setPushInitDone] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
@@ -57,6 +59,33 @@ export default function Settings() {
   }, [user]);
 
   useEffect(() => {
+    if (!user || user.isDemo) return;
+    const unsub = subscribePushTokens(user.uid, setPushTokens);
+    return () => unsub();
+  }, [user]);
+
+  useEffect(() => {
+    setPushToken(pushTokens[0] ?? null);
+  }, [pushTokens]);
+
+  useEffect(() => {
+    if (!user || user.isDemo) return;
+    if (pushPrefs.pushEnabled === false) return;
+    if (!pushAvailable) return;
+    if (pushInitDone) return;
+    if (Notification.permission !== "granted") return;
+    setPushInitDone(true);
+    void (async () => {
+      try {
+        const token = await enablePushNotifications();
+        await savePushToken(user.uid, token);
+      } catch (e) {
+        setPushError(e instanceof Error ? e.message : "Errore push");
+      }
+    })();
+  }, [pushAvailable, pushInitDone, pushPrefs.pushEnabled, user]);
+
+  useEffect(() => {
     if (!user) return;
     const unsub = subscribePublicProfile(user.uid, (p) => {
       setPublicProfile(p);
@@ -87,7 +116,7 @@ export default function Settings() {
         <div className="text-sm text-slate-600">Accesso effettuato come</div>
         <div className="text-sm font-medium mt-1">{user?.email ?? "—"}</div>
         {user?.isDemo ? (
-          <div className="mt-2 inline-flex items-center rounded-full border border-fuchsia-600/20 bg-fuchsia-600/10 px-2.5 py-1 text-xs text-fuchsia-800">
+          <div className="mt-2 inline-flex items-center rounded-full border border-sky-600/20 bg-sky-600/10 px-2.5 py-1 text-xs text-sky-800">
             Modalità demo
           </div>
         ) : null}
@@ -105,6 +134,55 @@ export default function Settings() {
             </span>
           </button>
         </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Tutorial</CardTitle>
+          <CardDescription>Guida attivabile e riavviabile in qualsiasi momento.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
+              <div>
+                <div className="text-sm font-medium">Tutorial attivo</div>
+                <div className="text-xs text-slate-600">Mostra la guida sulle funzioni nelle schermate.</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={tutorialEnabled}
+                onChange={(e) => useTutorialStore.getState().setEnabled(e.target.checked)}
+              />
+            </label>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={() => {
+                  useTutorialStore.getState().setEnabled(true);
+                  navigate("/app/settings", { replace: false });
+                  useTutorialStore.getState().openForRoute("/app/settings");
+                }}
+                className="lp-btn-primary"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <CircleHelp className="w-4 h-4" />
+                  Avvia tutorial
+                </span>
+              </button>
+              <button
+                onClick={() => useTutorialStore.getState().resetProgress()}
+                className="lp-btn-secondary"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4" />
+                  Reset tutorial
+                </span>
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600">Puoi anche aprirlo dal pulsante “Tutorial” in basso a destra.</div>
+          </div>
         </CardContent>
       </Card>
 
@@ -279,21 +357,11 @@ export default function Settings() {
                 setPrivacyError(null);
                 try {
                   const range = { fromMs: Date.now() - 365 * 24 * 60 * 60 * 1000, toMs: Date.now() };
-                  const exportedPets = await Promise.all(pets.map((p) => exportPetData(p.id, range)));
-                  const payload = {
-                    schemaVersion: 1,
-                    exportedAt: Date.now(),
-                    user: { uid: user.uid, email: user.email },
-                    range,
-                    pets: exportedPets,
-                  };
-                  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-                  const url = URL.createObjectURL(blob);
+                  const { url } = await exportAccountData(range);
+                  if (!url) throw new Error("Export non disponibile");
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = `lifepet-account-${user.uid}.json`;
                   a.click();
-                  URL.revokeObjectURL(url);
                 } catch (e) {
                   setPrivacyError(e instanceof Error ? e.message : "Export fallito");
                 } finally {
@@ -356,7 +424,7 @@ export default function Settings() {
           <div className="text-sm font-medium">{effectivePlan.toUpperCase()}</div>
         </div>
         {billing?.betaProEnabled ? (
-          <div className="mt-2 text-xs text-fuchsia-700">Beta attiva: tutto gratis, feature Pro sbloccate.</div>
+          <div className="mt-2 text-xs text-sky-700">Beta attiva: tutto gratis, feature Pro sbloccate.</div>
         ) : null}
         <div className="mt-2 text-xs text-slate-600">I limiti AI sono applicati server-side.</div>
 
@@ -536,9 +604,9 @@ export default function Settings() {
           </div>
         )}
 
-        {pushToken ? (
-          <div className="mt-3 text-xs text-slate-600">Push attive</div>
-        ) : null}
+        <div className="mt-3 text-xs text-slate-600">
+          Stato: {pushPrefs.pushEnabled === false ? "disattivate" : pushToken ? "attive" : "non attive"}
+        </div>
         {pushError ? (
           <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
             {pushError}

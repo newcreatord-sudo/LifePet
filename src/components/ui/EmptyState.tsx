@@ -18,8 +18,8 @@ export function EmptyState({
     <div className={cn("rounded-2xl border border-slate-200/70 bg-white/70 p-5 backdrop-blur-sm", className)}>
       <div className="flex items-start gap-3">
         {Icon ? (
-          <div className="w-10 h-10 rounded-2xl bg-fuchsia-600/10 border border-fuchsia-600/20 flex items-center justify-center">
-            <Icon className="w-5 h-5 text-fuchsia-700" />
+          <div className="w-10 h-10 rounded-2xl bg-sky-600/10 border border-sky-600/20 flex items-center justify-center">
+            <Icon className="w-5 h-5 text-sky-700" />
           </div>
         ) : null}
         <div className="flex-1">

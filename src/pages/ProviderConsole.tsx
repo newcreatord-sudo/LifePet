@@ -156,7 +156,7 @@ export default function ProviderConsole() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium flex items-center gap-2">
-                        <CalendarCheck className="w-4 h-4 text-fuchsia-700" />
+                        <CalendarCheck className="w-4 h-4 text-sky-700" />
                         {new Date(b.scheduledAt).toLocaleString()}
                       </div>
                       <div className="text-xs text-slate-600 mt-0.5">Pet: {b.petId}</div>

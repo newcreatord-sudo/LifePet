@@ -272,7 +272,7 @@ export default function Agenda() {
                       onClick={() => setWeekdays((prev) => (prev.includes(w.i) ? prev.filter((x) => x !== w.i) : [...prev, w.i]))}
                       className={
                         weekdays.includes(w.i)
-                          ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                          ? "rounded-xl bg-sky-600/10 border border-sky-600/20 px-3 py-2 text-xs text-sky-800"
                           : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
                       }
                     >

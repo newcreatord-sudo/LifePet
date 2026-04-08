@@ -226,7 +226,7 @@ export default function Planner() {
                           }
                           className={
                             routineWeekdays.includes(w.i)
-                              ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                              ? "rounded-xl bg-sky-600/10 border border-sky-600/20 px-3 py-2 text-xs text-sky-800"
                               : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
                           }
                         >
@@ -344,7 +344,7 @@ export default function Planner() {
                                     }
                                     className={
                                       editRoutineWeekdays.includes(w.i)
-                                        ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                                        ? "rounded-xl bg-sky-600/10 border border-sky-600/20 px-3 py-2 text-xs text-sky-800"
                                         : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                                     }
                                   >
@@ -365,7 +365,7 @@ export default function Planner() {
                             <button
                               disabled={savingRoutine}
                               type="submit"
-                              className="rounded-xl bg-fuchsia-600 text-white px-3 py-2 text-xs font-medium hover:bg-fuchsia-500 disabled:opacity-60"
+                              className="rounded-xl bg-sky-600 text-white px-3 py-2 text-xs font-medium hover:bg-sky-500 disabled:opacity-60"
                             >
                               {savingRoutine ? "Salvataggio…" : "Salva"}
                             </button>
@@ -408,7 +408,7 @@ export default function Planner() {
                               onClick={() => activePetId && setRoutineEnabled(activePetId, r.id, !r.enabled)}
                               className={
                                 r.enabled
-                                  ? "rounded-xl bg-fuchsia-600 text-white px-3 py-2 text-xs font-medium hover:bg-fuchsia-500"
+                                  ? "rounded-xl bg-sky-600 text-white px-3 py-2 text-xs font-medium hover:bg-sky-500"
                                   : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
                               }
                             >
@@ -442,17 +442,17 @@ export default function Planner() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Titolo task"
               required
-              className="rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-500/30"
+              className="rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500/30"
             />
             <input
               value={dueAt}
               onChange={(e) => setDueAt(e.target.value)}
               type="datetime-local"
-              className="rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-500/30"
+              className="rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500/30"
             />
             <button
               disabled={creating}
-              className="rounded-xl bg-fuchsia-600 text-white px-4 py-2 text-sm font-medium hover:bg-fuchsia-500 disabled:opacity-60"
+              className="rounded-xl bg-sky-600 text-white px-4 py-2 text-sm font-medium hover:bg-sky-500 disabled:opacity-60"
               type="submit"
             >
               {creating ? "Aggiunta…" : "Aggiungi"}
@@ -519,7 +519,7 @@ export default function Planner() {
                         <button
                           disabled={savingTask}
                           type="submit"
-                          className="rounded-xl bg-fuchsia-600 text-white px-3 py-2 text-xs font-medium hover:bg-fuchsia-500 disabled:opacity-60"
+                          className="rounded-xl bg-sky-600 text-white px-3 py-2 text-xs font-medium hover:bg-sky-500 disabled:opacity-60"
                         >
                           {savingTask ? "Salvataggio…" : "Salva"}
                         </button>

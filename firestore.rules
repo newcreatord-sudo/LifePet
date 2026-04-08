@@ -25,6 +25,10 @@ service cloud.firestore {
       );
     }
 
+    function isGroupMember(groupId) {
+      return exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+
     match /bans/{userId} {
       allow read, write: if isSignedIn() && isModerator();
     }
@@ -216,7 +220,7 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid && !isBanned(request.auth.uid);
+        allow create: if isSignedIn() && isGroupMember(groupId) && request.resource.data.authorId == request.auth.uid && !isBanned(request.auth.uid);
         allow update: if isSignedIn() && (
           (isModerator() && request.resource.data.authorId == resource.data.authorId) ||
           (

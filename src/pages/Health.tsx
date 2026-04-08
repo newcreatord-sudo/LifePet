@@ -308,7 +308,7 @@ export default function Health() {
               type="file"
               onChange={onUploadPrescription}
               disabled={uploading}
-              className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-fuchsia-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-fuchsia-500"
+              className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-sky-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-sky-500"
             />
             <div className="text-xs text-slate-600">Carica file e associane uno alla timeline (anche dopo l’upload).</div>
           </div>
@@ -364,7 +364,7 @@ export default function Health() {
                       onClick={() => setTypeFilter((s) => ({ ...s, [k]: !s[k] }))}
                       className={
                         typeFilter[k]
-                          ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                          ? "rounded-xl bg-sky-600/10 border border-sky-600/20 px-3 py-2 text-xs text-sky-800"
                           : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
                       }
                     >

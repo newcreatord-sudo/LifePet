@@ -68,9 +68,9 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-fuchsia-50 text-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50 text-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-24 -left-24 w-96 h-96 bg-fuchsia-400/25 blur-3xl rounded-full" />
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-400/25 blur-3xl rounded-full" />
         <div className="absolute top-20 -right-28 w-[520px] h-[520px] bg-sky-400/25 blur-3xl rounded-full" />
       </div>
       <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-center relative">
@@ -96,8 +96,8 @@ export default function Login() {
             </div>
             <div className="relative">
               <div className="flex items-center gap-2">
-                <div className="w-11 h-11 rounded-2xl bg-fuchsia-600/10 border border-fuchsia-600/20 flex items-center justify-center">
-                  <PawPrint className="w-6 h-6 text-fuchsia-700" />
+                <div className="w-11 h-11 rounded-2xl bg-sky-600/10 border border-sky-600/20 flex items-center justify-center">
+                  <PawPrint className="w-6 h-6 text-sky-700" />
                 </div>
                 <div>
                   <div className="text-lg font-semibold">LifePet</div>
@@ -113,21 +113,21 @@ export default function Login() {
               <div className="mt-5 grid grid-cols-1 gap-3">
                 <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <ShieldPlus className="w-4 h-4 text-fuchsia-700" />
+                    <ShieldPlus className="w-4 h-4 text-sky-700" />
                     Cartella clinica in ordine
                   </div>
                   <div className="text-xs text-slate-600 mt-1">Timeline unica di eventi, log e documenti.</div>
                 </div>
                 <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <HeartPulse className="w-4 h-4 text-fuchsia-700" />
+                    <HeartPulse className="w-4 h-4 text-sky-700" />
                     Routine e promemoria
                   </div>
                   <div className="text-xs text-slate-600 mt-1">Terapie, vaccini, idratazione e attività.</div>
                 </div>
                 <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <Sparkles className="w-4 h-4 text-fuchsia-700" />
+                    <Sparkles className="w-4 h-4 text-sky-700" />
                     Insight AI
                   </div>
                   <div className="text-xs text-slate-600 mt-1">Sintesi e supporto informativo, con disclaimer chiaro.</div>
@@ -139,8 +139,8 @@ export default function Login() {
 
         <div className="lg:col-span-6">
           <div className="flex items-center justify-center gap-2 mb-6 lg:hidden">
-            <div className="w-10 h-10 rounded-2xl bg-fuchsia-600/10 border border-fuchsia-600/20 flex items-center justify-center">
-              <PawPrint className="w-5 h-5 text-fuchsia-700" />
+            <div className="w-10 h-10 rounded-2xl bg-sky-600/10 border border-sky-600/20 flex items-center justify-center">
+              <PawPrint className="w-5 h-5 text-sky-700" />
             </div>
             <div className="text-lg font-semibold">LifePet</div>
           </div>
@@ -194,7 +194,7 @@ export default function Login() {
                   enterDemo();
                   navigate("/app/dashboard", { replace: true });
                 }}
-                className="mt-3 w-full rounded-xl bg-fuchsia-600 text-white font-medium py-2 text-sm hover:bg-fuchsia-500"
+                className="mt-3 w-full rounded-xl bg-sky-600 text-white font-medium py-2 text-sm hover:bg-sky-500"
               >
                 Entra in modalità demo
               </button>
@@ -209,7 +209,7 @@ export default function Login() {
                 onChange={(e) => setEmail(e.target.value)}
                 type="email"
                 required
-                className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-500/30"
+                className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500/30"
               />
             </label>
             <label className="block">
@@ -219,12 +219,12 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 type="password"
                 required
-                className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-500/30"
+                className="w-full rounded-xl bg-white/80 border border-slate-200/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500/30"
               />
             </label>
             <button
               disabled={loading}
-              className="w-full rounded-xl bg-fuchsia-600 text-white font-medium py-2 text-sm hover:bg-fuchsia-500 disabled:opacity-60"
+              className="w-full rounded-xl bg-sky-600 text-white font-medium py-2 text-sm hover:bg-sky-500 disabled:opacity-60"
               type="submit"
             >
               {loading ? "Attendi…" : title}
@@ -237,7 +237,7 @@ export default function Login() {
                 type="button"
                 onClick={onResetPassword}
                 disabled={resetBusy || loading}
-                className="text-fuchsia-700 hover:text-fuchsia-800 disabled:opacity-60"
+                className="text-sky-700 hover:text-sky-800 disabled:opacity-60"
               >
                 {resetBusy ? "Invio…" : "Password dimenticata?"}
               </button>

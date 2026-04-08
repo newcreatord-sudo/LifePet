@@ -7,6 +7,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  type UpdateData,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -47,9 +48,15 @@ export async function createPet(input: Omit<Pet, "id">) {
   return ref.id;
 }
 
-export async function updatePet(petId: string, patch: Partial<Omit<Pet, "id" | "ownerId" | "createdAt">>) {
+export async function updatePet(petId: string, patch: UpdateData<Omit<Pet, "id" | "ownerId" | "createdAt">>) {
   if (shouldUseDemoData()) {
-    demoUpdate<Pet[]>("lifepet:demo:pets", [], (prev) => prev.map((p) => (p.id === petId ? { ...p, ...patch } : p)));
+    const cleaned = Object.fromEntries(
+      Object.entries(patch as Record<string, unknown>).map(([k, v]) => {
+        if (v && typeof v === "object" && (v as { _methodName?: unknown })._methodName === "deleteField") return [k, undefined];
+        return [k, v];
+      })
+    );
+    demoUpdate<Pet[]>("lifepet:demo:pets", [], (prev) => prev.map((p) => (p.id === petId ? { ...p, ...cleaned } : p)));
     return;
   }
   const { db } = getFirebase();

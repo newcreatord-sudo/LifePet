@@ -259,7 +259,7 @@ export default function Marketplace() {
               multiple
               accept="image/*"
               onChange={(e) => setPhotos(Array.from(e.target.files ?? []).slice(0, 6))}
-              className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-fuchsia-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-fuchsia-500"
+              className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-sky-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-sky-500"
             />
           </label>
         </form>
@@ -465,7 +465,7 @@ export default function Marketplace() {
                         onClick={() => setOpenIdx(idx)}
                         className={
                           idx === openIdx
-                            ? "h-14 rounded-xl overflow-hidden border border-fuchsia-600/40"
+                            ? "h-14 rounded-xl overflow-hidden border border-sky-600/40"
                             : "h-14 rounded-xl overflow-hidden border border-slate-200/70"
                         }
                       >

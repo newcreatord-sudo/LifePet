@@ -1,6 +1,6 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { initializeFirestore, type Firestore } from "firebase/firestore";
 import { getFunctions, type Functions } from "firebase/functions";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
@@ -60,7 +60,7 @@ export function getFirebase(): FirebaseServices {
   cached = {
     app,
     auth: getAuth(app),
-    db: getFirestore(app),
+    db: initializeFirestore(app, { ignoreUndefinedProperties: true }),
     storage: getStorage(app),
     functions: getFunctions(app, region),
   };

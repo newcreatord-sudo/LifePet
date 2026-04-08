@@ -272,7 +272,7 @@ export default function Status() {
                 <div className="mt-2 text-3xl font-semibold">{computed.score}</div>
                 <div className="mt-3 h-2 rounded-full bg-slate-200">
                   <div
-                    className="h-2 rounded-full bg-fuchsia-600"
+                    className="h-2 rounded-full bg-sky-600"
                     style={{ width: `${computed.score}%` }}
                   />
                 </div>
@@ -287,7 +287,7 @@ export default function Status() {
                   <div className="mt-1 text-sm font-medium">{scores.length ? "Disponibile" : "Nessun dato"}</div>
                   {computed.charts.scoreSpark ? (
                     <svg width={computed.charts.scoreSpark.w} height={computed.charts.scoreSpark.h} className="mt-2">
-                      <path d={computed.charts.scoreSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                      <path d={computed.charts.scoreSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-600" />
                     </svg>
                   ) : null}
                 </div>
@@ -300,7 +300,7 @@ export default function Status() {
                   <div className="mt-1 text-sm font-medium">{computed.metrics.water24h > 0 ? "OK" : "Mancante"}</div>
                   {computed.charts.waterSpark ? (
                     <svg width={computed.charts.waterSpark.w} height={computed.charts.waterSpark.h} className="mt-2">
-                      <path d={computed.charts.waterSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                      <path d={computed.charts.waterSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-600" />
                     </svg>
                   ) : null}
                 </div>
@@ -313,7 +313,7 @@ export default function Status() {
                   <div className="mt-1 text-sm font-medium">{computed.metrics.activity7d} log</div>
                   {computed.charts.activitySpark ? (
                     <svg width={computed.charts.activitySpark.w} height={computed.charts.activitySpark.h} className="mt-2">
-                      <path d={computed.charts.activitySpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                      <path d={computed.charts.activitySpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-600" />
                     </svg>
                   ) : null}
                 </div>
@@ -326,7 +326,7 @@ export default function Status() {
                   <div className="mt-1 text-sm font-medium">{computed.metrics.weight30d} log</div>
                   {computed.charts.weightSpark ? (
                     <svg width={computed.charts.weightSpark.w} height={computed.charts.weightSpark.h} className="mt-2">
-                      <path d={computed.charts.weightSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                      <path d={computed.charts.weightSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-600" />
                     </svg>
                   ) : null}
                 </div>
@@ -345,7 +345,7 @@ export default function Status() {
                           : `Residuo ~${longevity.remainingYears.toFixed(1)} anni`}
                       </div>
                       <div className="mt-2 h-2 rounded-full bg-slate-200 overflow-hidden">
-                        <div className="h-2 bg-fuchsia-600" style={{ width: `${longevity.longevityScore}%` }} />
+                        <div className="h-2 bg-sky-600" style={{ width: `${longevity.longevityScore}%` }} />
                       </div>
                     </>
                   ) : (

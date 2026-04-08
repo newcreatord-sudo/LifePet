@@ -7,6 +7,7 @@ import { getPetDocumentDownloadUrl, subscribeDocuments, uploadPetDocument } from
 import { deletePetPhoto, uploadPetPhoto } from "@/data/profilePhotos";
 import { PetAvatar } from "@/components/PetAvatar";
 import { useEffect } from "react";
+import { deleteField } from "firebase/firestore";
 import type { Pet, PetDocument } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -181,39 +182,53 @@ export default function Pets() {
       const height = Number(heightCm);
       const kcalPerG = Number(foodKcalPerG);
       const toList = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
+      const compact = <T extends Record<string, unknown>>(obj: T) => {
+        const entries = Object.entries(obj).filter(([, v]) => v !== undefined);
+        return entries.length ? (Object.fromEntries(entries) as Record<string, unknown>) : null;
+      };
+
+      const identification = compact({
+        passportId: passportId.trim() || undefined,
+        registry: registry.trim() || undefined,
+      });
+
+      const currentFood = compact({
+        label: foodLabel.trim() || undefined,
+        kcalPerG: Number.isFinite(kcalPerG) && kcalPerG > 0 ? kcalPerG : undefined,
+        notes: foodNotes.trim() || undefined,
+      });
+
+      const vetContact = compact({
+        clinicName: vetClinicName.trim() || undefined,
+        phone: vetPhone.trim() || undefined,
+        emergencyPhone: vetEmergencyPhone.trim() || undefined,
+        address: vetAddress.trim() || undefined,
+      });
+
+      const allergiesList = toList(allergies);
+      const conditionsList = toList(conditions);
+      const medicationsList = toList(medications);
+      const healthProfile = allergiesList.length || conditionsList.length || medicationsList.length
+        ? { allergies: allergiesList, conditions: conditionsList, medications: medicationsList }
+        : null;
+
       await updatePet(activePetId, {
         name: name.trim(),
-        breed: breed.trim() || undefined,
-        dob: dob.trim() || undefined,
-        weightKg: Number.isFinite(weight) && weight > 0 ? weight : undefined,
+        breed: breed.trim() ? breed.trim() : deleteField(),
+        dob: dob.trim() ? dob.trim() : deleteField(),
+        weightKg: Number.isFinite(weight) && weight > 0 ? weight : deleteField(),
         sex: sex as Pet["sex"],
         neutered,
         activityLevel: activityLevel as Pet["activityLevel"],
-        bodyConditionScore: Number.isFinite(bcs) && bcs >= 1 && bcs <= 9 ? bcs : undefined,
-        heightCm: Number.isFinite(height) && height > 0 ? height : undefined,
+        bodyConditionScore: Number.isFinite(bcs) && bcs >= 1 && bcs <= 9 ? bcs : deleteField(),
+        heightCm: Number.isFinite(height) && height > 0 ? height : deleteField(),
         temperamentTags: toList(temperamentTags),
-        identification: {
-          passportId: passportId.trim() || undefined,
-          registry: registry.trim() || undefined,
-        },
-        currentFood: {
-          label: foodLabel.trim() || undefined,
-          kcalPerG: Number.isFinite(kcalPerG) && kcalPerG > 0 ? kcalPerG : undefined,
-          notes: foodNotes.trim() || undefined,
-        },
-        healthProfile: {
-          allergies: toList(allergies),
-          conditions: toList(conditions),
-          medications: toList(medications),
-        },
-        vetContact: {
-          clinicName: vetClinicName.trim() || undefined,
-          phone: vetPhone.trim() || undefined,
-          emergencyPhone: vetEmergencyPhone.trim() || undefined,
-          address: vetAddress.trim() || undefined,
-        },
-        microchipId: microchipId.trim() || undefined,
-        dietNotes: dietNotes.trim() || undefined,
+        identification: identification ?? deleteField(),
+        currentFood: currentFood ?? deleteField(),
+        healthProfile: healthProfile ?? deleteField(),
+        vetContact: vetContact ?? deleteField(),
+        microchipId: microchipId.trim() ? microchipId.trim() : deleteField(),
+        dietNotes: dietNotes.trim() ? dietNotes.trim() : deleteField(),
       });
     } finally {
       setSaving(false);
@@ -562,13 +577,13 @@ export default function Pets() {
                       <div className="text-lg font-semibold">{activePet.weightKg ? `${activePet.weightKg} kg` : "—"}</div>
                       <div className="text-xs text-slate-600">BCS: {activePet.bodyConditionScore ?? "—"} / 9</div>
                     </div>
-                    <LineChart className="w-5 h-5 text-fuchsia-700" />
+                    <LineChart className="w-5 h-5 text-sky-700" />
                   </div>
 
                   {weightSpark ? (
                     <div className="mt-3">
                       <svg width={weightSpark.w} height={weightSpark.h} className="w-full">
-                        <path d={weightSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                        <path d={weightSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-600" />
                       </svg>
                       <div className="mt-1 text-[11px] text-slate-600">Range: {weightSpark.min.toFixed(1)}–{weightSpark.max.toFixed(1)} kg</div>
                     </div>
@@ -630,7 +645,7 @@ export default function Pets() {
                   accept="image/*"
                   onChange={onUploadPhoto}
                   disabled={photoBusy}
-                  className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-fuchsia-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-fuchsia-500"
+                  className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-sky-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-sky-500"
                 />
                 <div className="mt-2 flex items-center gap-2">
                   <button
@@ -664,7 +679,7 @@ export default function Pets() {
             type="file"
             onChange={onUpload}
             disabled={uploading}
-            className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-fuchsia-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-fuchsia-500"
+            className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-sky-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-sky-500"
           />
           <div className="mt-3 space-y-2">
             {docs.length === 0 ? (

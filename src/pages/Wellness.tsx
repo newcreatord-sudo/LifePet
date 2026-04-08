@@ -313,7 +313,7 @@ export default function Wellness() {
                 <div
                   className={
                     computed.status === "green"
-                      ? "h-full bg-fuchsia-600"
+                      ? "h-full bg-sky-600"
                       : computed.status === "yellow"
                         ? "h-full bg-amber-400"
                         : "h-full bg-rose-500"
@@ -363,7 +363,7 @@ export default function Wellness() {
                   <div className="mt-3">
                     <div className="text-xs text-slate-600">Trend (8 settimane)</div>
                     <svg width={longevityTrend.spark.w} height={longevityTrend.spark.h} className="mt-2">
-                      <path d={longevityTrend.spark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                      <path d={longevityTrend.spark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-600" />
                     </svg>
                   </div>
                 ) : null}

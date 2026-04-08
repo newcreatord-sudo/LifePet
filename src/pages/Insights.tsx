@@ -170,7 +170,7 @@ export default function Insights() {
                       key={idx}
                       className={
                         m.role === "user"
-                          ? "ml-auto max-w-[85%] rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-sm"
+                          ? "ml-auto max-w-[85%] rounded-xl bg-sky-600/10 border border-sky-600/20 px-3 py-2 text-sm"
                           : "mr-auto max-w-[85%] rounded-xl bg-white border border-slate-200/70 px-3 py-2 text-sm"
                       }
                     >

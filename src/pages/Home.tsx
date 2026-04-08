@@ -6,21 +6,21 @@ export default function Home() {
   const user = useAuthStore((s) => s.user);
   const ready = useAuthStore((s) => s.ready);
 
-  if (!ready) return <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-fuchsia-50" />;
+  if (!ready) return <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50" />;
   if (user) return <Navigate to="/app/dashboard" replace />;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-fuchsia-50 text-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50 text-slate-900">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-24 -left-24 w-96 h-96 bg-fuchsia-400/25 blur-3xl rounded-full" />
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-400/25 blur-3xl rounded-full" />
         <div className="absolute top-20 -right-28 w-[520px] h-[520px] bg-sky-400/25 blur-3xl rounded-full" />
       </div>
 
       <header className="relative px-6 py-6">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-2xl bg-fuchsia-600/10 border border-fuchsia-600/20 flex items-center justify-center">
-              <PawPrint className="w-5 h-5 text-fuchsia-700" />
+            <div className="w-10 h-10 rounded-2xl bg-sky-600/10 border border-sky-600/20 flex items-center justify-center">
+              <PawPrint className="w-5 h-5 text-sky-700" />
             </div>
             <div className="leading-tight">
               <div className="font-semibold">LifePet</div>
@@ -33,7 +33,7 @@ export default function Home() {
             </Link>
             <Link
               to="/login"
-              className="rounded-xl bg-fuchsia-600 text-white px-4 py-2 text-sm font-medium hover:bg-fuchsia-500"
+              className="rounded-xl bg-sky-600 text-white px-4 py-2 text-sm font-medium hover:bg-sky-500"
             >
               Inizia ora
             </Link>
@@ -44,8 +44,8 @@ export default function Home() {
       <main className="relative px-6 pb-16">
         <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <section className="lg:col-span-7 pt-8">
-            <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-600/20 bg-fuchsia-600/10 px-3 py-1 text-xs text-fuchsia-800">
-              <HeartPulse className="w-4 h-4 text-fuchsia-700" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-sky-600/20 bg-sky-600/10 px-3 py-1 text-xs text-sky-800">
+              <HeartPulse className="w-4 h-4 text-sky-700" />
               Per chi mette il benessere al primo posto
             </div>
             <h1 className="mt-4 text-4xl lg:text-5xl font-semibold tracking-tight leading-tight">
@@ -58,7 +58,7 @@ export default function Home() {
             <div className="mt-6 flex flex-col sm:flex-row gap-3">
               <Link
                 to="/login"
-                className="inline-flex items-center justify-center rounded-xl bg-fuchsia-600 text-white px-5 py-3 text-sm font-medium hover:bg-fuchsia-500"
+                className="inline-flex items-center justify-center rounded-xl bg-sky-600 text-white px-5 py-3 text-sm font-medium hover:bg-sky-500"
               >
                 Crea account
               </Link>
@@ -97,27 +97,27 @@ export default function Home() {
                     <div className="text-lg font-semibold">Cosa puoi fare</div>
                     <div className="text-xs text-slate-600 mt-1">Inizia in 2 minuti</div>
                   </div>
-                  <div className="w-10 h-10 rounded-2xl bg-fuchsia-600/10 border border-fuchsia-600/20 flex items-center justify-center">
-                    <ShieldPlus className="w-5 h-5 text-fuchsia-700" />
+                  <div className="w-10 h-10 rounded-2xl bg-sky-600/10 border border-sky-600/20 flex items-center justify-center">
+                    <ShieldPlus className="w-5 h-5 text-sky-700" />
                   </div>
                 </div>
                 <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <ShieldPlus className="w-4 h-4 text-fuchsia-700" />
+                    <ShieldPlus className="w-4 h-4 text-sky-700" />
                     Cartella clinica completa
                   </div>
                   <div className="text-xs text-slate-600 mt-1">Eventi, documenti, visite, vaccini e storia in timeline.</div>
                 </div>
                 <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <HeartPulse className="w-4 h-4 text-fuchsia-700" />
+                    <HeartPulse className="w-4 h-4 text-sky-700" />
                     Routine e promemoria smart
                   </div>
                   <div className="text-xs text-slate-600 mt-1">Idratazione, pasti, attività, terapie: sempre sotto controllo.</div>
                 </div>
                 <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <Sparkles className="w-4 h-4 text-fuchsia-700" />
+                    <Sparkles className="w-4 h-4 text-sky-700" />
                     Insight AI responsabili
                   </div>
                   <div className="text-xs text-slate-600 mt-1">Sintesi e supporto informativo, con disclaimer chiaro.</div>

@@ -367,7 +367,7 @@ export default function Gps() {
               <div className="md:col-span-3 lp-panel p-3">
                 <div className="text-xs text-slate-600">Traccia (ultimi punti)</div>
                 <svg width={trackSpark.w} height={trackSpark.h} className="mt-2">
-                  <path d={trackSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-fuchsia-600" />
+                  <path d={trackSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-600" />
                 </svg>
               </div>
             ) : null}

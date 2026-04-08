@@ -220,6 +220,30 @@ async function fetchRecentLogsSince(petId: string, fromMs: number, limitCount: n
   );
 }
 
+async function fetchSubcollection(petId: string, name: string, limitCount: number) {
+  const snap = await db
+    .collection("pets")
+    .doc(petId)
+    .collection(name)
+    .orderBy("createdAt", "desc")
+    .limit(limitCount)
+    .get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
+}
+
+async function fetchSubcollectionByTs(petId: string, name: string, tsField: string, fromMs: number, toMs: number, limitCount: number) {
+  const snap = await db
+    .collection("pets")
+    .doc(petId)
+    .collection(name)
+    .where(tsField, ">=", fromMs)
+    .where(tsField, "<=", toMs)
+    .orderBy(tsField, "desc")
+    .limit(limitCount)
+    .get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
+}
+
 function toMl(amount: unknown, unit: unknown) {
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) return null;
   if (typeof unit !== "string" || !unit.trim()) return amount;
@@ -260,6 +284,18 @@ function ymd(d: Date) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}${m}${day}`;
+}
+
+async function getEffectivePlan(uid: string) {
+  const userSnap = await db.collection("users").doc(uid).get();
+  const plan = parsePlan(userSnap.exists ? (userSnap.data() as UserDoc).plan : "free");
+  const now = Date.now();
+  return isBetaProEnabled(now) ? "pro" : plan;
+}
+
+async function requirePro(uid: string) {
+  const effectivePlan = await getEffectivePlan(uid);
+  if (effectivePlan !== "pro") throw new HttpsError("permission-denied", "Pro required");
 }
 
 async function enforceAiQuota(uid: string) {
@@ -359,6 +395,172 @@ export const billingCreatePortalSession = BILLING_DISABLED
 
   return { url: session.url };
   });
+
+export const exportPetDataPro = onCall(async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  await requirePro(uid);
+
+  const petId = String(req.data?.petId ?? "");
+  const range = req.data?.range as { fromMs?: unknown; toMs?: unknown } | undefined;
+  const fromMs = typeof range?.fromMs === "number" ? range!.fromMs : Date.now() - 365 * 24 * 60 * 60 * 1000;
+  const toMs = typeof range?.toMs === "number" ? range!.toMs : Date.now();
+  if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs > toMs) throw new HttpsError("invalid-argument", "invalid range");
+  await assertPetAccess(petId, uid);
+
+  const petSnap = await db.collection("pets").doc(petId).get();
+  const pet = petSnap.exists ? ({ id: petSnap.id, ...(petSnap.data() as Record<string, unknown>) }) : null;
+
+  const [
+    logs,
+    healthEvents,
+    gpsPoints,
+    agendaEvents,
+    tasks,
+    routines,
+    documents,
+    expenses,
+    notifications,
+    vaccines,
+    medications,
+    bookings,
+  ] = await Promise.all([
+    fetchSubcollectionByTs(petId, "logs", "occurredAt", fromMs, toMs, 3000),
+    fetchSubcollectionByTs(petId, "healthEvents", "occurredAt", fromMs, toMs, 1500),
+    fetchSubcollectionByTs(petId, "gpsPoints", "recordedAt", fromMs, toMs, 3000),
+    fetchSubcollectionByTs(petId, "agendaEvents", "dueAt", fromMs, toMs, 1500),
+    fetchSubcollection(petId, "tasks", 3000),
+    fetchSubcollection(petId, "routines", 500),
+    fetchSubcollection(petId, "documents", 1000),
+    fetchSubcollection(petId, "expenses", 2000),
+    fetchSubcollectionByTs(petId, "notifications", "createdAt", fromMs, toMs, 2000),
+    fetchSubcollection(petId, "vaccines", 500),
+    fetchSubcollection(petId, "medications", 500),
+    fetchSubcollection(petId, "bookings", 500),
+  ]);
+
+  const payload = {
+    schemaVersion: 1,
+    exportedAt: Date.now(),
+    range: { fromMs, toMs },
+    pet,
+    collections: {
+      logs,
+      healthEvents,
+      gpsPoints,
+      agendaEvents,
+      tasks,
+      routines,
+      documents,
+      expenses,
+      notifications,
+      vaccines,
+      medications,
+      bookings,
+    },
+  };
+
+  const ts = Date.now();
+  const path = `exports/${uid}/pet-${petId}-${ts}.json`;
+  await bucket.file(path).save(JSON.stringify(payload), { contentType: "application/json" });
+  const [url] = await bucket.file(path).getSignedUrl({
+    action: "read",
+    expires: Date.now() + 5 * 60 * 1000,
+    responseDisposition: `attachment; filename="lifepet-pet-${petId}.json"`,
+    responseType: "application/json",
+  });
+  return { url };
+});
+
+export const exportAccountDataPro = onCall(async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  await requirePro(uid);
+
+  const range = req.data?.range as { fromMs?: unknown; toMs?: unknown } | undefined;
+  const fromMs = typeof range?.fromMs === "number" ? range!.fromMs : Date.now() - 365 * 24 * 60 * 60 * 1000;
+  const toMs = typeof range?.toMs === "number" ? range!.toMs : Date.now();
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs > toMs) throw new HttpsError("invalid-argument", "invalid range");
+
+  const petsSnap = await db.collection("pets").where("ownerId", "==", uid).orderBy("createdAt", "desc").limit(50).get();
+  const petIds = petsSnap.docs.map((d) => d.id);
+
+  const pets = await Promise.all(
+    petIds.map(async (petId) => {
+      const pet = { id: petId, ...(petsSnap.docs.find((d) => d.id === petId)!.data() as Record<string, unknown>) };
+      const [
+        logs,
+        healthEvents,
+        gpsPoints,
+        agendaEvents,
+        tasks,
+        routines,
+        documents,
+        expenses,
+        notifications,
+        vaccines,
+        medications,
+        bookings,
+      ] = await Promise.all([
+        fetchSubcollectionByTs(petId, "logs", "occurredAt", fromMs, toMs, 3000),
+        fetchSubcollectionByTs(petId, "healthEvents", "occurredAt", fromMs, toMs, 1500),
+        fetchSubcollectionByTs(petId, "gpsPoints", "recordedAt", fromMs, toMs, 3000),
+        fetchSubcollectionByTs(petId, "agendaEvents", "dueAt", fromMs, toMs, 1500),
+        fetchSubcollection(petId, "tasks", 3000),
+        fetchSubcollection(petId, "routines", 500),
+        fetchSubcollection(petId, "documents", 1000),
+        fetchSubcollection(petId, "expenses", 2000),
+        fetchSubcollectionByTs(petId, "notifications", "createdAt", fromMs, toMs, 2000),
+        fetchSubcollection(petId, "vaccines", 500),
+        fetchSubcollection(petId, "medications", 500),
+        fetchSubcollection(petId, "bookings", 500),
+      ]);
+      return {
+        schemaVersion: 1,
+        exportedAt: Date.now(),
+        range: { fromMs, toMs },
+        pet,
+        collections: {
+          logs,
+          healthEvents,
+          gpsPoints,
+          agendaEvents,
+          tasks,
+          routines,
+          documents,
+          expenses,
+          notifications,
+          vaccines,
+          medications,
+          bookings,
+        },
+      };
+    })
+  );
+
+  const userSnap = await db.collection("users").doc(uid).get();
+  const email = userSnap.exists ? (userSnap.data() as UserDoc).email : null;
+
+  const payload = {
+    schemaVersion: 1,
+    exportedAt: Date.now(),
+    range: { fromMs, toMs },
+    user: { uid, email: typeof email === "string" ? email : null },
+    pets,
+  };
+
+  const ts = Date.now();
+  const path = `exports/${uid}/account-${ts}.json`;
+  await bucket.file(path).save(JSON.stringify(payload), { contentType: "application/json" });
+  const [url] = await bucket.file(path).getSignedUrl({
+    action: "read",
+    expires: Date.now() + 5 * 60 * 1000,
+    responseDisposition: `attachment; filename="lifepet-account-${uid}.json"`,
+    responseType: "application/json",
+  });
+  return { url };
+});
 
 export const stripeWebhook = BILLING_DISABLED
   ? onRequest(async (_req, res) => {
@@ -1508,7 +1710,84 @@ export const healthScoreSweep = onSchedule("every 24 hours", async () => {
 });
 
 export const expenseSeriesSweep = onSchedule("every day 02:05", async () => {
-  return;
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = now.getDate();
+  const key = `${yyyy}${mm}`;
+  const nowMs = Date.now();
+
+  const petsSnap = await db.collection("pets").orderBy("createdAt", "desc").limit(300).get();
+  await Promise.all(
+    petsSnap.docs.map(async (petDoc) => {
+      const petId = petDoc.id;
+      const seriesSnap = await db
+        .collection("pets")
+        .doc(petId)
+        .collection("expenseSeries")
+        .where("enabled", "==", true)
+        .orderBy("createdAt", "desc")
+        .limit(200)
+        .get();
+
+      await Promise.all(
+        seriesSnap.docs.map(async (sdoc) => {
+          const s = sdoc.data() as {
+            title?: unknown;
+            amount?: unknown;
+            currency?: unknown;
+            category?: unknown;
+            note?: unknown;
+            startAt?: unknown;
+            endAt?: unknown;
+            recurrence?: { dayOfMonth?: unknown };
+          };
+
+          const dayOfMonth = typeof s.recurrence?.dayOfMonth === "number" ? Math.round(s.recurrence.dayOfMonth) : NaN;
+          if (!Number.isFinite(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 28) return;
+          if (dd < dayOfMonth) return;
+          const startAt = typeof s.startAt === "number" ? s.startAt : 0;
+          const endAt = typeof s.endAt === "number" ? s.endAt : undefined;
+          if (startAt && nowMs < startAt) return;
+          if (endAt && nowMs > endAt) return;
+
+          const amount = typeof s.amount === "number" ? s.amount : NaN;
+          if (!Number.isFinite(amount) || amount <= 0) return;
+
+          const docId = `series_${sdoc.id}_${key}`;
+          const expenseRef = db.collection("pets").doc(petId).collection("expenses").doc(docId);
+          const exists = await expenseRef.get();
+          if (exists.exists) return;
+
+          const title = typeof s.title === "string" ? s.title.trim() : "Ricorrente";
+          const note = typeof s.note === "string" && s.note.trim() ? `${title} · ${s.note.trim()}` : title;
+          const currency = typeof s.currency === "string" ? s.currency : "EUR";
+          const category = typeof s.category === "string" ? s.category : "other";
+
+          await expenseRef.set({
+            petId,
+            amount,
+            currency,
+            category,
+            occurredAt: nowMs,
+            note,
+            seriesId: sdoc.id,
+            createdAt: nowMs,
+            createdBy: "system",
+          });
+        })
+      );
+    })
+  );
+});
+
+export const recordSharesRetentionSweep = onSchedule("every day 03:10", async () => {
+  const now = Date.now();
+  const snap = await db.collection("recordShares").where("expiresAt", "<", now).limit(500).get();
+  if (snap.empty) return;
+  const batch = db.batch();
+  for (const d of snap.docs) batch.delete(d.ref);
+  await batch.commit();
 });
 
 function agendaKindLabel(kind: string) {

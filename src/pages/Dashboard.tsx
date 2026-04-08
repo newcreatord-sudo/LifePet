@@ -170,7 +170,7 @@ export default function Dashboard() {
             <button
               onClick={() => quickAddLog("note")}
               disabled={!user || !activePetId}
-              className="inline-flex items-center gap-2 rounded-xl bg-fuchsia-600 text-white px-3 py-2 text-sm font-medium hover:bg-fuchsia-500 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-sky-600 text-white px-3 py-2 text-sm font-medium hover:bg-sky-500 disabled:opacity-60"
             >
               <NotebookPen className="w-4 h-4" />
               Nota rapida
@@ -184,7 +184,7 @@ export default function Dashboard() {
           <Card className="overflow-hidden">
             <div className="relative">
                 <div className="absolute inset-0">
-                  <div className="absolute -top-24 -left-24 w-72 h-72 bg-fuchsia-400/20 blur-3xl rounded-full" />
+                  <div className="absolute -top-24 -left-24 w-72 h-72 bg-indigo-400/20 blur-3xl rounded-full" />
                   <div className="absolute -bottom-28 -right-24 w-96 h-96 bg-sky-400/20 blur-3xl rounded-full" />
                 </div>
               <div className="relative p-5">
@@ -213,7 +213,7 @@ export default function Dashboard() {
                     title="Crea il primo pet"
                     description="Aggiungi il profilo per iniziare con routine, salute e cartella clinica."
                     action={
-                      <a href="#create-pet" className="inline-flex items-center justify-center rounded-xl bg-fuchsia-600 text-white px-4 py-2 text-sm font-medium hover:bg-fuchsia-500">
+                      <a href="#create-pet" className="inline-flex items-center justify-center rounded-xl bg-sky-600 text-white px-4 py-2 text-sm font-medium hover:bg-sky-500">
                         Inizia
                       </a>
                     }
@@ -224,28 +224,28 @@ export default function Dashboard() {
                   <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                       <div className="flex items-center gap-2 text-xs text-slate-600">
-                        <Target className="w-4 h-4 text-fuchsia-700" />
+                        <Target className="w-4 h-4 text-sky-700" />
                         Task dovuti
                       </div>
                       <div className="mt-1 text-2xl font-semibold">{dueTasks.length}</div>
                     </div>
                     <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                       <div className="flex items-center gap-2 text-xs text-slate-600">
-                        <Bell className="w-4 h-4 text-fuchsia-700" />
+                        <Bell className="w-4 h-4 text-sky-700" />
                         Alert
                       </div>
                       <div className="mt-1 text-2xl font-semibold">{notifications.length}</div>
                     </div>
                     <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                       <div className="flex items-center gap-2 text-xs text-slate-600">
-                        <CalendarClock className="w-4 h-4 text-fuchsia-700" />
+                        <CalendarClock className="w-4 h-4 text-sky-700" />
                         Agenda
                       </div>
                       <div className="mt-1 text-2xl font-semibold">{upcoming.length}</div>
                     </div>
                     <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
                       <div className="flex items-center gap-2 text-xs text-slate-600">
-                        <Sparkles className="w-4 h-4 text-fuchsia-700" />
+                        <Sparkles className="w-4 h-4 text-sky-700" />
                         Insight
                       </div>
                       <div className="mt-1 text-2xl font-semibold">{recentLogs.length}</div>
@@ -270,21 +270,21 @@ export default function Dashboard() {
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => quickAddLog("food")} className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 hover:bg-white text-left">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <HeartPulse className="w-4 h-4 text-fuchsia-700" />
+                      <HeartPulse className="w-4 h-4 text-sky-700" />
                       Cibo
                     </div>
                     <div className="text-xs text-slate-600 mt-1">Registra pasto</div>
                   </button>
                   <button onClick={() => quickAddLog("water")} className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 hover:bg-white text-left">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <Droplets className="w-4 h-4 text-fuchsia-700" />
+                      <Droplets className="w-4 h-4 text-sky-700" />
                       Acqua
                     </div>
                     <div className="text-xs text-slate-600 mt-1">Idratazione</div>
                   </button>
                   <button onClick={() => quickAddLog("activity")} className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 hover:bg-white text-left">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <Footprints className="w-4 h-4 text-fuchsia-700" />
+                      <Footprints className="w-4 h-4 text-sky-700" />
                       Attività
                     </div>
                     <div className="text-xs text-slate-600 mt-1">Passeggiata / gioco</div>
@@ -299,7 +299,7 @@ export default function Dashboard() {
                 </div>
               )}
               <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3 text-xs text-slate-600 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-fuchsia-700" />
+                <Sparkles className="w-4 h-4 text-sky-700" />
                 Per riepiloghi AI: apri Insights e genera una sintesi.
               </div>
             </CardContent>
