@@ -90,6 +90,16 @@ export default function SharedRecords() {
                                     <div className="text-sm font-medium">{it.title}</div>
                                     <div className="text-xs text-slate-600">{it.subtitle ?? it.kind}</div>
                                     {it.note ? <div className="mt-1 text-sm text-slate-800 whitespace-pre-wrap">{it.note}</div> : null}
+                                    {it.attachment ? (
+                                      <a
+                                        href={it.attachment.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-2 lp-btn-icon inline-flex"
+                                      >
+                                        Apri: {it.attachment.name}
+                                      </a>
+                                    ) : null}
                                   </div>
                                 </div>
                                 <div className="text-xs text-slate-600 whitespace-nowrap">{new Date(it.ts).toLocaleString()}</div>
@@ -112,4 +122,3 @@ export default function SharedRecords() {
     </div>
   );
 }
-

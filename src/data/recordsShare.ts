@@ -8,6 +8,7 @@ export type RecordsShareItem = {
   title: string;
   subtitle?: string;
   note?: string;
+  attachment?: { name: string; url: string };
 };
 
 export type RecordsShare = {
@@ -38,4 +39,3 @@ export async function getRecordsShare(token: string) {
   if (!snap.exists()) return null;
   return { id: snap.id, ...(snap.data() as Omit<RecordsShare, "id">) } as RecordsShare;
 }
-
