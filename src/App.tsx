@@ -14,6 +14,7 @@ import Planner from "@/pages/Planner";
 import Training from "@/pages/Training";
 import Bookings from "@/pages/Bookings";
 import ProviderConsole from "@/pages/ProviderConsole";
+import SharedRecords from "@/pages/SharedRecords";
 import Records from "@/pages/Records";
 import Documents from "@/pages/Documents";
 import Medications from "@/pages/Medications";
@@ -41,6 +42,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/share/:token" element={<SharedRecords />} />
         <Route
           path="/app"
           element={

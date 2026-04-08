@@ -138,6 +138,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /recordShares/{shareId} {
+      allow get: if resource.data.expiresAt > request.time.toMillis();
+      allow list: if false;
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
     match /groups/{groupId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();

@@ -10,6 +10,7 @@ import { subscribeTasks } from "@/data/tasks";
 import type { HealthEvent, PetDocument, PetLog, PetTask } from "@/types";
 import { getBillingStatus, type BillingStatus } from "@/data/billing";
 import { exportPetData } from "@/data/export";
+import { createRecordsShare } from "@/data/recordsShare";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -311,6 +312,39 @@ export default function Records() {
                     <Crown className="w-4 h-4" />
                     Esporta
                   </span>
+                </button>
+
+                <button
+                  disabled={!canExport}
+                  onClick={async () => {
+                    if (!user || user.isDemo) return;
+                    const hoursRaw = prompt("Validità link (ore):", "24");
+                    if (hoursRaw === null) return;
+                    const hours = Number(String(hoursRaw).replace(",", "."));
+                    if (!Number.isFinite(hours) || hours <= 0 || hours > 168) return;
+                    const expiresAt = Date.now() + Math.round(hours * 60 * 60 * 1000);
+
+                    const token = await createRecordsShare({
+                      ownerId: user.uid,
+                      petId: activePetId,
+                      createdAt: Date.now(),
+                      expiresAt,
+                      range,
+                      items: timeline.map((t) => ({ kind: t.kind, ts: t.ts, title: t.title, subtitle: t.subtitle, note: t.note })),
+                    });
+                    const url = `${window.location.origin}/share/${token}`;
+                    try {
+                      await navigator.clipboard.writeText(url);
+                      alert("Link copiato negli appunti");
+                    } catch {
+                      prompt("Copia il link:", url);
+                    }
+                  }}
+                  className={
+                    canExport ? "lp-btn-secondary" : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-400"
+                  }
+                >
+                  Condividi
                 </button>
                 {billing?.betaProEnabled ? <div className="text-xs text-fuchsia-700">Beta</div> : null}
                 </div>
