@@ -85,29 +85,60 @@ export default function Dashboard() {
 
   async function quickAddLog(type: LogType) {
     if (!user || !activePetId) return;
+    const now = Date.now();
+    const defaultNote =
+      type === "food"
+        ? "Pasto"
+        : type === "water"
+          ? "Acqua"
+          : type === "activity"
+            ? "Attività"
+            : type === "weight"
+              ? "Peso"
+              : type === "symptom"
+                ? "Sintomi"
+                : "Nota";
+
+    const note = (prompt("Nota (opzionale):", defaultNote) ?? "").trim() || defaultNote;
+
+    const askNumber = (label: string, def: number) => {
+      const raw = prompt(label, String(def));
+      if (raw === null) return null;
+      const v = Number(String(raw).replace(",", "."));
+      if (!Number.isFinite(v) || v <= 0) return null;
+      return v;
+    };
+
+    const value =
+      type === "water"
+        ? (() => {
+            const amount = askNumber("Quanta acqua (ml)?", 250);
+            return amount ? { amount, unit: "ml" } : undefined;
+          })()
+        : type === "activity"
+          ? (() => {
+              const amount = askNumber("Durata attività (min)?", 30);
+              return amount ? { amount, unit: "min" } : undefined;
+            })()
+          : type === "food"
+            ? (() => {
+                const amount = askNumber("Quanto cibo (g)?", 100);
+                return amount ? { amount, unit: "g" } : undefined;
+              })()
+            : type === "weight"
+              ? (() => {
+                  const amount = askNumber("Peso (kg)?", 10);
+                  return amount ? { amount, unit: "kg" } : undefined;
+                })()
+              : undefined;
+
     await createLog(activePetId, {
       petId: activePetId,
       type,
-      occurredAt: Date.now(),
-      note:
-        type === "food"
-          ? "Pasto registrato"
-          : type === "water"
-            ? "Acqua"
-            : type === "activity"
-              ? "Attività"
-              : type === "weight"
-                ? "Peso"
-                : type === "symptom"
-                  ? "Sintomi"
-                  : "Nota",
-      value:
-        type === "water"
-          ? { amount: 250, unit: "ml" }
-          : type === "activity"
-            ? { amount: 30, unit: "min" }
-            : undefined,
-      createdAt: Date.now(),
+      occurredAt: now,
+      note,
+      value,
+      createdAt: now,
       createdBy: user.uid,
     });
   }

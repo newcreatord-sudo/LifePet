@@ -7,6 +7,7 @@ import {
   orderBy,
   query,
   limit,
+  updateDoc,
   where,
   type QueryConstraint,
 } from "firebase/firestore";
@@ -83,4 +84,17 @@ export async function deleteLog(petId: string, logId: string) {
   }
   const { db } = getFirebase();
   await deleteDoc(doc(db, "pets", petId, "logs", logId));
+}
+
+export async function updateLog(
+  petId: string,
+  logId: string,
+  patch: Partial<Omit<PetLog, "id" | "petId" | "createdAt" | "createdBy">>
+) {
+  if (shouldUseDemoData()) {
+    demoUpdate<PetLog[]>(demoKey(petId), [], (prev) => prev.map((l) => (l.id === logId ? { ...l, ...patch } : l)));
+    return;
+  }
+  const { db } = getFirebase();
+  await updateDoc(doc(db, "pets", petId, "logs", logId), patch);
 }

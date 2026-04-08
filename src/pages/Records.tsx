@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Crown, FileText, HeartPulse, ListTodo, NotebookPen, Search, ShieldPlus } from "lucide-react";
+import { Crown, FileText, HeartPulse, ListTodo, NotebookPen, Pencil, Search, ShieldPlus, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { usePetStore } from "@/stores/petStore";
 import { subscribeRecentHealthEvents } from "@/data/health";
-import { subscribeLogsRange } from "@/data/logs";
+import { deleteLog, subscribeLogsRange, updateLog } from "@/data/logs";
 import { subscribeDocuments, getPetDocumentDownloadUrl } from "@/data/documents";
 import { subscribeTasks } from "@/data/tasks";
 import type { HealthEvent, PetDocument, PetLog, PetTask } from "@/types";
@@ -24,6 +24,7 @@ type TimelineItem = {
   title: string;
   subtitle?: string;
   note?: string;
+  valueText?: string;
   attachment?: { name: string; storagePath: string };
 };
 
@@ -43,6 +44,14 @@ function labelForLogType(type: string) {
   if (type === "water") return "Acqua";
   if (type === "activity") return "Attività";
   return type.toUpperCase();
+}
+
+function logValueText(l: PetLog) {
+  const v = l.value;
+  if (!v) return null;
+  if (typeof v.amount !== "number" || !Number.isFinite(v.amount)) return null;
+  if (!v.unit) return String(v.amount);
+  return `${v.amount} ${v.unit}`;
 }
 
 export default function Records() {
@@ -129,8 +138,9 @@ export default function Records() {
         id: l.id,
         ts: l.occurredAt,
         title: labelForLogType(l.type),
-        subtitle: new Date(l.occurredAt).toLocaleString(),
+        subtitle: logValueText(l) ?? new Date(l.occurredAt).toLocaleString(),
         note: l.note,
+        valueText: logValueText(l) ?? undefined,
       });
     }
 
@@ -341,7 +351,50 @@ export default function Records() {
                             ) : null}
                           </div>
                         </div>
-                        <div className="text-xs text-slate-600 whitespace-nowrap">{new Date(it.ts).toLocaleString()}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-xs text-slate-600 whitespace-nowrap">{new Date(it.ts).toLocaleString()}</div>
+                          {activePetId && it.kind === "log" ? (
+                            <>
+                              <button
+                                className="lp-btn-icon"
+                                onClick={async () => {
+                                  const l = logs.find((x) => x.id === it.id);
+                                  if (!l) return;
+                                  const nextNote = (prompt("Nota:", l.note ?? "") ?? "").trim();
+                                  let nextValue = l.value;
+                                  if (l.type === "water" || l.type === "food" || l.type === "activity" || l.type === "weight") {
+                                    const current = typeof l.value?.amount === "number" ? l.value.amount : "";
+                                    const raw = prompt("Valore numerico (lascia vuoto per rimuovere):", String(current));
+                                    if (raw === null) return;
+                                    const v = String(raw).trim();
+                                    if (!v) {
+                                      nextValue = undefined;
+                                    } else {
+                                      const n = Number(v.replace(",", "."));
+                                      if (Number.isFinite(n) && n > 0) {
+                                        const unit =
+                                          l.type === "water" ? "ml" : l.type === "food" ? "g" : l.type === "activity" ? "min" : "kg";
+                                        nextValue = { amount: n, unit };
+                                      }
+                                    }
+                                  }
+                                  await updateLog(activePetId, l.id, { note: nextNote || undefined, value: nextValue });
+                                }}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                className="lp-btn-icon"
+                                onClick={async () => {
+                                  if (!confirm("Eliminare questo log?")) return;
+                                  await deleteLog(activePetId, it.id);
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   );
