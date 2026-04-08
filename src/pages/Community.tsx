@@ -10,9 +10,11 @@ import { getFirebase } from "@/lib/firebase";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useToastStore } from "@/stores/toastStore";
 
 export default function Community() {
   const user = useAuthStore((s) => s.user);
+  const pushToast = useToastStore((s) => s.push);
   const [tab, setTab] = useState<"feed" | "groups">("feed");
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [text, setText] = useState("");
@@ -156,6 +158,9 @@ export default function Community() {
     try {
       await createPost({ authorId: user.uid, createdAt: Date.now(), text: t });
       setText("");
+      pushToast({ type: "success", title: "Post", message: "Pubblicato." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Post", message: err instanceof Error ? err.message : "Pubblicazione fallita" });
     } finally {
       setPosting(false);
     }
@@ -176,6 +181,9 @@ export default function Community() {
         text: t,
       });
       setChatText("");
+      pushToast({ type: "success", title: "Messaggio", message: "Inviato." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Messaggio", message: err instanceof Error ? err.message : "Invio fallito" });
     } finally {
       setSending(false);
     }
@@ -190,6 +198,9 @@ export default function Community() {
     try {
       await createComment(openPostId, { authorId: user.uid, createdAt: Date.now(), text: t });
       setCommentText("");
+      pushToast({ type: "success", title: "Commento", message: "Pubblicato." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Commento", message: err instanceof Error ? err.message : "Pubblicazione fallita" });
     } finally {
       setCommenting(false);
     }

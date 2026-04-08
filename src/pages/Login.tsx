@@ -5,6 +5,7 @@ import { getFirebase, getFirebaseConfigError } from "@/lib/firebase";
 import { HeartPulse, PawPrint, ShieldPlus, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { authUserMessage } from "@/lib/authErrors";
+import { useToastStore } from "@/stores/toastStore";
 
 export default function Login() {
   const configError = getFirebaseConfigError();
@@ -17,6 +18,7 @@ export default function Login() {
   const [resetSent, setResetSent] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const navigate = useNavigate();
+  const pushToast = useToastStore((s) => s.push);
 
   const title = useMemo(() => (mode === "signin" ? "Accedi" : "Crea account"), [mode]);
 
@@ -33,12 +35,15 @@ export default function Login() {
       const { auth } = getFirebase();
       if (mode === "signin") {
         await signInWithEmailAndPassword(auth, email.trim(), password);
+        pushToast({ type: "success", title: "Login", message: "Accesso riuscito." });
       } else {
         await createUserWithEmailAndPassword(auth, email.trim(), password);
+        pushToast({ type: "success", title: "Account", message: "Creato." });
       }
       navigate("/app/dashboard", { replace: true });
     } catch (err) {
       setError(authUserMessage(err));
+      pushToast({ type: "error", title: "Autenticazione", message: authUserMessage(err) });
     } finally {
       setLoading(false);
     }
@@ -60,8 +65,10 @@ export default function Login() {
       const { auth } = getFirebase();
       await sendPasswordResetEmail(auth, addr);
       setResetSent(true);
+      pushToast({ type: "success", title: "Reset password", message: "Email inviata (se l’account esiste)." });
     } catch (err) {
       setError(authUserMessage(err));
+      pushToast({ type: "error", title: "Reset password", message: authUserMessage(err) });
     } finally {
       setResetBusy(false);
     }

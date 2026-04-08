@@ -12,7 +12,7 @@ import { markNotificationRead, subscribeUnreadNotifications } from "@/data/notif
 import { subscribeRecentHealthEvents } from "@/data/health";
 import { subscribeVaccines } from "@/data/vaccines";
 import { computePetStatus, statusClass, statusEmoji, statusLabel } from "@/lib/petStatus";
-import type { HealthEvent, LogType, PetLog, PetTask, PetVaccine } from "@/types";
+import type { HealthEvent, LogType, Pet, PetLog, PetTask, PetVaccine } from "@/types";
 import type { AgendaEvent, PetNotification } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -30,6 +30,29 @@ export default function Dashboard() {
 
   const [petName, setPetName] = useState("");
   const [petSpecies, setPetSpecies] = useState("dog");
+  const [petSpeciesOther, setPetSpeciesOther] = useState("");
+  const [createAdvanced, setCreateAdvanced] = useState(false);
+  const [petBreed, setPetBreed] = useState("");
+  const [petDob, setPetDob] = useState("");
+  const [petSex, setPetSex] = useState<"male" | "female" | "unknown">("unknown");
+  const [petNeutered, setPetNeutered] = useState(false);
+  const [petWeightKg, setPetWeightKg] = useState("");
+  const [petActivityLevel, setPetActivityLevel] = useState<"low" | "medium" | "high">("medium");
+  const [petTemperamentTags, setPetTemperamentTags] = useState("");
+  const [petAllergies, setPetAllergies] = useState("");
+  const [petConditions, setPetConditions] = useState("");
+  const [petMedications, setPetMedications] = useState("");
+  const [petMicrochipId, setPetMicrochipId] = useState("");
+  const [petPassportId, setPetPassportId] = useState("");
+  const [petRegistry, setPetRegistry] = useState("");
+  const [petFoodLabel, setPetFoodLabel] = useState("");
+  const [petFoodKcalPerG, setPetFoodKcalPerG] = useState("");
+  const [petFoodNotes, setPetFoodNotes] = useState("");
+  const [petDietNotes, setPetDietNotes] = useState("");
+  const [petVetClinicName, setPetVetClinicName] = useState("");
+  const [petVetPhone, setPetVetPhone] = useState("");
+  const [petVetEmergencyPhone, setPetVetEmergencyPhone] = useState("");
+  const [petVetAddress, setPetVetAddress] = useState("");
   const [creatingPet, setCreatingPet] = useState(false);
 
   const [dueTasks, setDueTasks] = useState<PetTask[]>([]);
@@ -111,17 +134,132 @@ export default function Dashboard() {
     e.preventDefault();
     if (!user) return;
     const n = petName.trim();
-    if (!n) return;
+    if (!n) {
+      pushToast({ type: "error", title: "Nome obbligatorio", message: "Inserisci il nome del pet." });
+      return;
+    }
+
+    const toList = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
+    const compact = <T extends Record<string, unknown>>(obj: T) => {
+      const entries = Object.entries(obj).filter(([, v]) => v !== undefined);
+      return entries.length ? (Object.fromEntries(entries) as T) : undefined;
+    };
+
+    const species = petSpecies === "other" ? petSpeciesOther.trim() : petSpecies;
+    if (petSpecies === "other" && !species) {
+      pushToast({ type: "error", title: "Specie obbligatoria", message: "Compila il campo Specie (testo)." });
+      return;
+    }
+    const weight = Number(petWeightKg.replace(",", "."));
+    const kcalPerG = Number(petFoodKcalPerG.replace(",", "."));
+    const temperamentTags = toList(petTemperamentTags);
+    const allergies = toList(petAllergies);
+    const conditions = toList(petConditions);
+    const medications = toList(petMedications);
+
+    const identification: Pet["identification"] = compact({
+      passportId: petPassportId.trim() || undefined,
+      registry: petRegistry.trim() || undefined,
+    });
+
+    const currentFood: Pet["currentFood"] = compact({
+      label: petFoodLabel.trim() || undefined,
+      kcalPerG: Number.isFinite(kcalPerG) && kcalPerG > 0 ? kcalPerG : undefined,
+      notes: petFoodNotes.trim() || undefined,
+    });
+
+    const healthProfile: Pet["healthProfile"] = allergies.length || conditions.length || medications.length ? { allergies, conditions, medications } : undefined;
+
+    const vetContact: Pet["vetContact"] = compact({
+      clinicName: petVetClinicName.trim() || undefined,
+      phone: petVetPhone.trim() || undefined,
+      emergencyPhone: petVetEmergencyPhone.trim() || undefined,
+      address: petVetAddress.trim() || undefined,
+    });
+
+    if (createAdvanced && petDob.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(petDob.trim())) {
+      pushToast({ type: "error", title: "Data non valida", message: "Usa formato YYYY-MM-DD." });
+      return;
+    }
+
+    const now = Date.now();
     setCreatingPet(true);
     try {
       const id = await createPet({
         ownerId: user.uid,
         name: n,
-        species: petSpecies,
-        createdAt: Date.now(),
+        species,
+        ...(createAdvanced
+          ? {
+              breed: petBreed.trim() || undefined,
+              dob: petDob.trim() || undefined,
+              sex: petSex,
+              neutered: petNeutered,
+              weightKg: Number.isFinite(weight) && weight > 0 ? weight : undefined,
+              activityLevel: petActivityLevel,
+              temperamentTags: temperamentTags.length ? temperamentTags : undefined,
+              microchipId: petMicrochipId.trim() || undefined,
+              identification,
+              currentFood,
+              healthProfile,
+              vetContact,
+              dietNotes: petDietNotes.trim() || undefined,
+            }
+          : {}),
+        createdAt: now,
       });
-      setPets([{ id, ownerId: user.uid, name: n, species: petSpecies, createdAt: Date.now() }, ...pets]);
+      setPets([
+        {
+          id,
+          ownerId: user.uid,
+          name: n,
+          species,
+          ...(createAdvanced
+            ? {
+                breed: petBreed.trim() || undefined,
+                dob: petDob.trim() || undefined,
+                sex: petSex,
+                neutered: petNeutered,
+                weightKg: Number.isFinite(weight) && weight > 0 ? weight : undefined,
+                activityLevel: petActivityLevel,
+                temperamentTags: temperamentTags.length ? temperamentTags : undefined,
+                microchipId: petMicrochipId.trim() || undefined,
+                identification,
+                currentFood,
+                healthProfile,
+                vetContact,
+                dietNotes: petDietNotes.trim() || undefined,
+              }
+            : {}),
+          createdAt: now,
+        },
+        ...pets,
+      ]);
       setPetName("");
+      setPetSpecies("dog");
+      setPetSpeciesOther("");
+      setCreateAdvanced(false);
+      setPetBreed("");
+      setPetDob("");
+      setPetSex("unknown");
+      setPetNeutered(false);
+      setPetWeightKg("");
+      setPetActivityLevel("medium");
+      setPetTemperamentTags("");
+      setPetAllergies("");
+      setPetConditions("");
+      setPetMedications("");
+      setPetMicrochipId("");
+      setPetPassportId("");
+      setPetRegistry("");
+      setPetFoodLabel("");
+      setPetFoodKcalPerG("");
+      setPetFoodNotes("");
+      setPetDietNotes("");
+      setPetVetClinicName("");
+      setPetVetPhone("");
+      setPetVetEmergencyPhone("");
+      setPetVetAddress("");
       setActivePetId(id);
       pushToast({ type: "success", title: "Pet creato", message: `${n} è stato aggiunto.` });
     } catch (err) {
@@ -133,14 +271,19 @@ export default function Dashboard() {
 
   async function quickAddTask() {
     if (!user || !activePetId) return;
-    await createTask(activePetId, {
-      petId: activePetId,
-      title: "Controlla la ciotola dell’acqua",
-      dueAt: Date.now() + 60 * 60 * 1000,
-      status: "due",
-      createdAt: Date.now(),
-      createdBy: user.uid,
-    });
+    try {
+      await createTask(activePetId, {
+        petId: activePetId,
+        title: "Controlla la ciotola dell’acqua",
+        dueAt: Date.now() + 60 * 60 * 1000,
+        status: "due",
+        createdAt: Date.now(),
+        createdBy: user.uid,
+      });
+      pushToast({ type: "success", title: "Task", message: "Creato." });
+    } catch (e) {
+      pushToast({ type: "error", title: "Task", message: e instanceof Error ? e.message : "Creazione fallita" });
+    }
   }
 
   async function quickAddLog(type: LogType) {
@@ -192,15 +335,20 @@ export default function Dashboard() {
                 })()
               : undefined;
 
-    await createLog(activePetId, {
-      petId: activePetId,
-      type,
-      occurredAt: now,
-      note,
-      value,
-      createdAt: now,
-      createdBy: user.uid,
-    });
+    try {
+      await createLog(activePetId, {
+        petId: activePetId,
+        type,
+        occurredAt: now,
+        note,
+        value,
+        createdAt: now,
+        createdBy: user.uid,
+      });
+      pushToast({ type: "success", title: "Log", message: "Salvato." });
+    } catch (e) {
+      pushToast({ type: "error", title: "Log", message: e instanceof Error ? e.message : "Salvataggio fallito" });
+    }
   }
 
   return (
@@ -480,7 +628,7 @@ export default function Dashboard() {
           <Card id="create-pet" className="scroll-mt-24">
             <CardHeader>
               <CardTitle>Crea pet</CardTitle>
-              <CardDescription>Profilo base: puoi aggiungere dettagli dopo</CardDescription>
+              <CardDescription>Puoi inserire subito tutti i dati oppure completarli dopo</CardDescription>
             </CardHeader>
             <CardContent>
             <form onSubmit={onCreatePet} className="space-y-3">
@@ -490,6 +638,7 @@ export default function Dashboard() {
                   value={petName}
                   onChange={(e) => setPetName(e.target.value)}
                   required
+                  maxLength={60}
                   className="lp-input"
                 />
               </label>
@@ -505,6 +654,142 @@ export default function Dashboard() {
                   <option value="other">Altro</option>
                 </select>
               </label>
+
+              {petSpecies === "other" ? (
+                <label className="block">
+                  <div className="text-xs text-slate-600 mb-1">Specie (testo)</div>
+                  <input value={petSpeciesOther} onChange={(e) => setPetSpeciesOther(e.target.value)} className="lp-input" placeholder="Es. anatra" />
+                </label>
+              ) : null}
+
+              <button
+                type="button"
+                className="w-full lp-btn-secondary"
+                onClick={() => setCreateAdvanced((v) => !v)}
+                disabled={creatingPet}
+              >
+                {createAdvanced ? "Nascondi dati avanzati" : "Inserisci dati avanzati"}
+              </button>
+
+              {createAdvanced ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Razza</div>
+                    <input value={petBreed} onChange={(e) => setPetBreed(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Data nascita</div>
+                    <input value={petDob} onChange={(e) => setPetDob(e.target.value)} className="lp-input" placeholder="YYYY-MM-DD" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Sesso</div>
+                    <select value={petSex} onChange={(e) => setPetSex(e.target.value as "male" | "female" | "unknown")} className="lp-select">
+                      <option value="unknown">Non specificato</option>
+                      <option value="male">Maschio</option>
+                      <option value="female">Femmina</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Attività</div>
+                    <select value={petActivityLevel} onChange={(e) => setPetActivityLevel(e.target.value as "low" | "medium" | "high")} className="lp-select">
+                      <option value="low">Bassa</option>
+                      <option value="medium">Media</option>
+                      <option value="high">Alta</option>
+                    </select>
+                  </label>
+
+                  <label className="flex items-center gap-2 sm:col-span-2">
+                    <input type="checkbox" checked={petNeutered} onChange={(e) => setPetNeutered(e.target.checked)} />
+                    <div className="text-sm">Sterilizzato/a</div>
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Peso (kg)</div>
+                    <input value={petWeightKg} onChange={(e) => setPetWeightKg(e.target.value)} className="lp-input" inputMode="decimal" placeholder="Es. 12.5" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Microchip</div>
+                    <input value={petMicrochipId} onChange={(e) => setPetMicrochipId(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block sm:col-span-2">
+                    <div className="text-xs text-slate-600 mb-1">Carattere (tag, separati da virgola)</div>
+                    <input value={petTemperamentTags} onChange={(e) => setPetTemperamentTags(e.target.value)} className="lp-input" placeholder="Es. socievole, timido" />
+                  </label>
+
+                  <label className="block sm:col-span-2">
+                    <div className="text-xs text-slate-600 mb-1">Allergie (virgola)</div>
+                    <input value={petAllergies} onChange={(e) => setPetAllergies(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block sm:col-span-2">
+                    <div className="text-xs text-slate-600 mb-1">Patologie (virgola)</div>
+                    <input value={petConditions} onChange={(e) => setPetConditions(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block sm:col-span-2">
+                    <div className="text-xs text-slate-600 mb-1">Farmaci (virgola)</div>
+                    <input value={petMedications} onChange={(e) => setPetMedications(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Passaporto</div>
+                    <input value={petPassportId} onChange={(e) => setPetPassportId(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Registro</div>
+                    <input value={petRegistry} onChange={(e) => setPetRegistry(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block sm:col-span-2">
+                    <div className="text-xs text-slate-600 mb-1">Alimentazione attuale</div>
+                    <input value={petFoodLabel} onChange={(e) => setPetFoodLabel(e.target.value)} className="lp-input" placeholder="Marca / tipo" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Kcal per grammo</div>
+                    <input value={petFoodKcalPerG} onChange={(e) => setPetFoodKcalPerG(e.target.value)} className="lp-input" inputMode="decimal" placeholder="Es. 3.6" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Note cibo</div>
+                    <input value={petFoodNotes} onChange={(e) => setPetFoodNotes(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block sm:col-span-2">
+                    <div className="text-xs text-slate-600 mb-1">Note dieta</div>
+                    <input value={petDietNotes} onChange={(e) => setPetDietNotes(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <div className="sm:col-span-2 text-xs text-slate-600 mt-2">Contatto veterinario</div>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Clinica</div>
+                    <input value={petVetClinicName} onChange={(e) => setPetVetClinicName(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Telefono</div>
+                    <input value={petVetPhone} onChange={(e) => setPetVetPhone(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Emergenza</div>
+                    <input value={petVetEmergencyPhone} onChange={(e) => setPetVetEmergencyPhone(e.target.value)} className="lp-input" />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-xs text-slate-600 mb-1">Indirizzo</div>
+                    <input value={petVetAddress} onChange={(e) => setPetVetAddress(e.target.value)} className="lp-input" />
+                  </label>
+                </div>
+              ) : null}
+
               <button
                 disabled={creatingPet}
                 className="w-full lp-btn-primary"

@@ -35,6 +35,43 @@ beforeEach(() => {
 });
 
 describe("demo mode CRUD", () => {
+  it("pets CRUD", async () => {
+    const { subscribeMyPets, createPet, updatePet, deletePet } = await import("@/data/pets");
+    const userId = "u";
+    let latest: Array<{ id: string; name: string; breed?: string; microchipId?: string }> = [];
+    const unsub = subscribeMyPets(userId, (items) => {
+      latest = items.map((p) => ({ id: p.id, name: p.name, breed: p.breed, microchipId: p.microchipId }));
+    });
+
+    const id = await createPet({
+      ownerId: userId,
+      name: "Luna",
+      species: "dog",
+      breed: "Meticcio",
+      dob: "2020-01-02",
+      sex: "female",
+      neutered: true,
+      weightKg: 12.5,
+      activityLevel: "medium",
+      temperamentTags: ["socievole"],
+      microchipId: "1234567890",
+      currentFood: { label: "Kibble", kcalPerG: 3.6 },
+      healthProfile: { allergies: ["pollo"], conditions: [], medications: [] },
+      vetContact: { clinicName: "Vet", phone: "123", emergencyPhone: "999" },
+      createdAt: Date.now(),
+    });
+
+    expect(latest.find((p) => p.id === id)?.breed).toBe("Meticcio");
+    expect(latest.find((p) => p.id === id)?.microchipId).toBe("1234567890");
+
+    await updatePet(id, { name: "Luna 2" });
+    expect(latest.find((p) => p.id === id)?.name).toBe("Luna 2");
+
+    await deletePet(id);
+    expect(latest.find((p) => p.id === id)).toBeUndefined();
+    unsub();
+  });
+
   it("agenda CRUD", async () => {
     const { subscribeAgendaRange, createAgendaEvent, updateAgendaEvent, deleteAgendaEvent } = await import("@/data/agenda");
     const petId = "pet_demo_agenda";
@@ -183,6 +220,122 @@ describe("demo mode CRUD", () => {
 
     await deletePetDocument(petId, docId, storagePath);
     expect(latest.find((d) => d.id === docId)).toBeUndefined();
+    unsub();
+  });
+
+  it("vaccines CRUD", async () => {
+    const { subscribeVaccines, createVaccine, updateVaccine, deleteVaccine, markVaccineGiven } = await import("@/data/vaccines");
+    const petId = "pet_demo_vaccines";
+    let latest: Array<{ id: string; name: string; intervalDays: number }> = [];
+    const unsub = subscribeVaccines(petId, (items) => {
+      latest = items.map((v) => ({ id: v.id, name: v.name, intervalDays: v.intervalDays }));
+    });
+
+    const id = await createVaccine(petId, {
+      petId,
+      name: "Rabbia",
+      intervalDays: 365,
+      reminderDaysBefore: 7,
+      createdAt: Date.now(),
+      createdBy: "u",
+    });
+
+    const v = latest.find((x) => x.id === id);
+    expect(v?.name).toBe("Rabbia");
+
+    const base = {
+      id,
+      petId,
+      name: "Rabbia",
+      intervalDays: 365,
+      reminderDaysBefore: 7,
+      nextDueAt: Date.now(),
+      createdAt: Date.now(),
+      createdBy: "u",
+      updatedAt: Date.now(),
+    };
+
+    await updateVaccine(petId, base, { intervalDays: 180 });
+    expect(latest.find((x) => x.id === id)?.intervalDays).toBe(180);
+
+    await markVaccineGiven(
+      petId,
+      { ...base, intervalDays: 180 },
+      Date.now()
+    );
+
+    await deleteVaccine(petId, id);
+    expect(latest.find((x) => x.id === id)).toBeUndefined();
+    unsub();
+  });
+
+  it("medications CRUD", async () => {
+    const { subscribeMedications, createMedication, updateMedication, deleteMedication, setMedicationEnabled } = await import("@/data/medications");
+    const petId = "pet_demo_meds";
+    let latest: Array<{ id: string; name: string; enabled: boolean }> = [];
+    const unsub = subscribeMedications(petId, (items) => {
+      latest = items.map((m) => ({ id: m.id, name: m.name, enabled: m.enabled }));
+    });
+
+    const id = await createMedication(petId, {
+      petId,
+      name: "Antibiotico",
+      times: ["08:00"],
+      startAt: Date.now(),
+      enabled: true,
+      createdAt: Date.now(),
+      createdBy: "u",
+    });
+    expect(latest.find((m) => m.id === id)?.name).toBe("Antibiotico");
+
+    await setMedicationEnabled(petId, id, false);
+    expect(latest.find((m) => m.id === id)?.enabled).toBe(false);
+
+    await updateMedication(
+      petId,
+      { id, petId, name: "Antibiotico", times: ["08:00"], startAt: Date.now(), enabled: false, createdAt: Date.now(), createdBy: "u" },
+      { name: "Antibiotico 2" }
+    );
+    expect(latest.find((m) => m.id === id)?.name).toBe("Antibiotico 2");
+
+    await deleteMedication(petId, id);
+    expect(latest.find((m) => m.id === id)).toBeUndefined();
+    unsub();
+  });
+
+  it("gps CRUD", async () => {
+    const { subscribeGpsHistory, createGpsPoint, deleteGpsPoint, clearGpsHistory } = await import("@/data/gps");
+    const petId = "pet_demo_gps";
+    let latest: Array<{ id: string; recordedAt: number }> = [];
+    const unsub = subscribeGpsHistory(petId, 50, (points) => {
+      latest = points.map((p) => ({ id: p.id, recordedAt: p.recordedAt }));
+    });
+
+    const id = await createGpsPoint(petId, {
+      petId,
+      lat: 45,
+      lng: 9,
+      accuracyM: 10,
+      recordedAt: Date.now(),
+      createdAt: Date.now(),
+      createdBy: "u",
+    });
+    expect(latest.find((p) => p.id === id)).toBeTruthy();
+
+    await deleteGpsPoint(petId, id);
+    expect(latest.find((p) => p.id === id)).toBeUndefined();
+
+    const id2 = await createGpsPoint(petId, {
+      petId,
+      lat: 45,
+      lng: 9,
+      accuracyM: 10,
+      recordedAt: Date.now(),
+      createdAt: Date.now(),
+      createdBy: "u",
+    });
+    expect(latest.find((p) => p.id === id2)).toBeTruthy();
+    await clearGpsHistory(petId, 50);
     unsub();
   });
 });

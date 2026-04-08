@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ExternalLink, KeyRound, Trash2 } from "lucide-react";
 import { subscribeUserProfile } from "@/data/users";
 import { Link } from "react-router-dom";
+import { useToastStore } from "@/stores/toastStore";
 
 function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const R = 6371000;
@@ -33,6 +34,7 @@ export default function Gps() {
   const user = useAuthStore((s) => s.user);
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
 
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
 
@@ -89,14 +91,19 @@ export default function Gps() {
       return;
     }
     setError(null);
-    await updatePet(activePetId, {
-      geofence: {
-        enabled: geofenceEnabled,
-        centerLat: latest.lat,
-        centerLng: latest.lng,
-        radiusM: r,
-      },
-    });
+    try {
+      await updatePet(activePetId, {
+        geofence: {
+          enabled: geofenceEnabled,
+          centerLat: latest.lat,
+          centerLng: latest.lng,
+          radiusM: r,
+        },
+      });
+      pushToast({ type: "success", title: "Geofence", message: "Salvata." });
+    } catch (e) {
+      pushToast({ type: "error", title: "Geofence", message: e instanceof Error ? e.message : "Salvataggio fallito" });
+    }
   }
 
   async function recordOnce() {
@@ -121,8 +128,10 @@ export default function Gps() {
         createdAt: Date.now(),
         createdBy: user.uid,
       });
+      pushToast({ type: "success", title: "GPS", message: "Punto registrato." });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Impossibile leggere la posizione GPS");
+      pushToast({ type: "error", title: "GPS", message: e instanceof Error ? e.message : "Impossibile leggere la posizione GPS" });
     } finally {
       setTracking(false);
     }
@@ -137,23 +146,29 @@ export default function Gps() {
     setError(null);
     setWatching(true);
     const id = navigator.geolocation.watchPosition(
-      async (pos) => {
-        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        const now = Date.now();
-        const last = lastSavedRef.current;
-        const moved = !last ? Infinity : distanceMeters({ lat: last.lat, lng: last.lng }, p);
-        const elapsed = !last ? Infinity : now - last.at;
-        if (moved < 12 && elapsed < 45_000) return;
-        lastSavedRef.current = { lat: p.lat, lng: p.lng, at: now };
-        await createGpsPoint(activePetId, {
-          petId: activePetId,
-          lat: p.lat,
-          lng: p.lng,
-          accuracyM: pos.coords.accuracy,
-          recordedAt: now,
-          createdAt: now,
-          createdBy: user.uid,
-        });
+      (pos) => {
+        void (async () => {
+          try {
+            const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            const now = Date.now();
+            const last = lastSavedRef.current;
+            const moved = !last ? Infinity : distanceMeters({ lat: last.lat, lng: last.lng }, p);
+            const elapsed = !last ? Infinity : now - last.at;
+            if (moved < 12 && elapsed < 45_000) return;
+            lastSavedRef.current = { lat: p.lat, lng: p.lng, at: now };
+            await createGpsPoint(activePetId, {
+              petId: activePetId,
+              lat: p.lat,
+              lng: p.lng,
+              accuracyM: pos.coords.accuracy,
+              recordedAt: now,
+              createdAt: now,
+              createdBy: user.uid,
+            });
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Errore salvataggio GPS");
+          }
+        })();
       },
       (e) => {
         setError(e.message || "Impossibile leggere la posizione GPS");
@@ -251,6 +266,9 @@ export default function Gps() {
                         try {
                           const token = generateToken();
                           await updatePet(activePetId, { gpsIngestToken: token });
+                          pushToast({ type: "success", title: "Token GPS", message: "Aggiornato." });
+                        } catch (e) {
+                          pushToast({ type: "error", title: "Token GPS", message: e instanceof Error ? e.message : "Operazione fallita" });
                         } finally {
                           setCreatingToken(false);
                         }
@@ -267,7 +285,12 @@ export default function Gps() {
                         onClick={async () => {
                           if (!activePetId) return;
                           if (!confirm("Disattivare l’integrazione (rimuovere token)?")) return;
-                          await updatePet(activePetId, { gpsIngestToken: undefined });
+                          try {
+                            await updatePet(activePetId, { gpsIngestToken: undefined });
+                            pushToast({ type: "success", title: "Token GPS", message: "Rimosso." });
+                          } catch (e) {
+                            pushToast({ type: "error", title: "Token GPS", message: e instanceof Error ? e.message : "Operazione fallita" });
+                          }
                         }}
                       >
                         <Trash2 className="w-4 h-4" />

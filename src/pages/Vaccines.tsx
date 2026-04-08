@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pencil, Syringe, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
+import { useToastStore } from "@/stores/toastStore";
 import { createVaccine, deleteVaccine, markVaccineGiven, subscribeVaccines, updateVaccine } from "@/data/vaccines";
 import type { PetVaccine } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -11,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 export default function Vaccines() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
   const [items, setItems] = useState<PetVaccine[]>([]);
 
   const [name, setName] = useState("");
@@ -38,9 +40,15 @@ export default function Vaccines() {
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!user || !activePetId) return;
+    if (!user || !activePetId) {
+      pushToast({ type: "error", title: "Seleziona un pet", message: "Accedi e scegli un profilo prima di aggiungere un vaccino." });
+      return;
+    }
     const n = name.trim();
-    if (!n) return;
+    if (!n) {
+      pushToast({ type: "error", title: "Nome obbligatorio", message: "Inserisci il nome del vaccino." });
+      return;
+    }
     const intDays = Number(intervalDays);
     const remDays = Number(reminderDays);
     const parsedLast = lastAt ? new Date(lastAt).getTime() : null;
@@ -59,6 +67,9 @@ export default function Vaccines() {
       setName("");
       setNotes("");
       setLastAt("");
+      pushToast({ type: "success", title: "Vaccino aggiunto", message: "Salvato in calendario." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione vaccino fallita" });
     } finally {
       setCreating(false);
     }
@@ -141,19 +152,27 @@ export default function Vaccines() {
                     onSubmit={async (e) => {
                       e.preventDefault();
                       if (!activePetId) return;
+                      const nn = editName.trim();
+                      if (!nn) {
+                        pushToast({ type: "error", title: "Nome obbligatorio", message: "Inserisci il nome del vaccino." });
+                        return;
+                      }
                       const intDays = Number(editIntervalDays);
                       const remDays = Number(editReminderDays);
                       const parsedLast = editLastAt ? new Date(editLastAt).getTime() : null;
                       setSavingEdit(true);
                       try {
                         await updateVaccine(activePetId, v, {
-                          name: editName.trim(),
+                          name: nn,
                           notes: editNotes.trim() || undefined,
                           intervalDays: Number.isFinite(intDays) && intDays > 0 ? intDays : v.intervalDays,
                           reminderDaysBefore: Number.isFinite(remDays) && remDays >= 0 ? remDays : v.reminderDaysBefore,
                           lastAt: parsedLast && Number.isFinite(parsedLast) ? parsedLast : undefined,
                         });
                         setEditingId(null);
+                        pushToast({ type: "success", title: "Vaccino aggiornato", message: "Modifiche salvate." });
+                      } catch (err) {
+                        pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
                       } finally {
                         setSavingEdit(false);
                       }
@@ -222,6 +241,9 @@ export default function Vaccines() {
                           setBusyId(v.id);
                           try {
                             await deleteVaccine(activePetId, v.id);
+                            pushToast({ type: "success", title: "Vaccino eliminato", message: "Rimosso dal calendario." });
+                          } catch (err) {
+                            pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione fallita" });
                           } finally {
                             setBusyId(null);
                           }
@@ -237,6 +259,9 @@ export default function Vaccines() {
                           setBusyId(v.id);
                           try {
                             await markVaccineGiven(activePetId, v, Date.now());
+                            pushToast({ type: "success", title: "Registrato", message: "Somministrazione salvata." });
+                          } catch (err) {
+                            pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Operazione fallita" });
                           } finally {
                             setBusyId(null);
                           }

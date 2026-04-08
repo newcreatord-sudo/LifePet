@@ -32,17 +32,38 @@ import Settings from "@/pages/Settings";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShellLayout } from "@/components/AppShellLayout";
 import { useAuthStore } from "@/stores/authStore";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useToastStore } from "@/stores/toastStore";
 
 export default function App() {
   const start = useAuthStore((s) => s.start);
+  const pushToast = useToastStore((s) => s.push);
   useEffect(() => {
     const unsub = start();
     return () => unsub();
   }, [start]);
 
+  useEffect(() => {
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const msg = e.reason instanceof Error ? e.reason.message : "Errore imprevisto";
+      pushToast({ type: "error", title: "Errore", message: msg });
+    };
+    const onError = (e: ErrorEvent) => {
+      const msg = e.error instanceof Error ? e.error.message : (e.message || "Errore imprevisto");
+      pushToast({ type: "error", title: "Errore", message: msg });
+    };
+    window.addEventListener("unhandledrejection", onRejection);
+    window.addEventListener("error", onError);
+    return () => {
+      window.removeEventListener("unhandledrejection", onRejection);
+      window.removeEventListener("error", onError);
+    };
+  }, [pushToast]);
+
   return (
-    <Router>
-      <Routes>
+    <ErrorBoundary>
+      <Router>
+        <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/share/:token" element={<SharedRecords />} />
@@ -83,7 +104,8 @@ export default function App() {
           <Route path="settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
+        </Routes>
+      </Router>
+    </ErrorBoundary>
   );
 }

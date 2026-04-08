@@ -67,6 +67,16 @@ export default function Pets() {
   const [newWeight, setNewWeight] = useState("");
   const [addingWeight, setAddingWeight] = useState(false);
 
+  function parseNumber(v: string) {
+    const n = Number(String(v).trim().replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function validateUpload(file: File, maxMb: number) {
+    if (file.size > maxMb * 1024 * 1024) return `Massimo ${maxMb}MB.`;
+    return null;
+  }
+
   useEffect(() => {
     setName(activePet?.name ?? "");
     setBreed(activePet?.breed ?? "");
@@ -193,8 +203,11 @@ export default function Pets() {
 
   async function addWeightLog() {
     if (!user || !activePetId) return;
-    const v = Number(newWeight);
-    if (!Number.isFinite(v) || v <= 0) return;
+    const v = parseNumber(newWeight);
+    if (!v || v <= 0) {
+      pushToast({ type: "error", title: "Peso non valido", message: "Inserisci un valore maggiore di 0." });
+      return;
+    }
     setAddingWeight(true);
     try {
       await createLog(activePetId, {
@@ -207,6 +220,9 @@ export default function Pets() {
       });
       await updatePet(activePetId, { weightKg: v });
       setNewWeight("");
+      pushToast({ type: "success", title: "Peso salvato", message: "Registrazione aggiunta." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio peso fallito" });
     } finally {
       setAddingWeight(false);
     }
@@ -214,7 +230,13 @@ export default function Pets() {
 
   async function removeWeightLog(logId: string) {
     if (!activePetId) return;
-    await deleteLog(activePetId, logId);
+    if (!confirm("Eliminare questa registrazione peso?")) return;
+    try {
+      await deleteLog(activePetId, logId);
+      pushToast({ type: "success", title: "Peso eliminato", message: "Registrazione rimossa." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione fallita" });
+    }
   }
 
   async function onSave() {
@@ -303,6 +325,17 @@ export default function Pets() {
   async function onUploadPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !activePetId) return;
+    const validation = validateUpload(file, 10);
+    if (validation) {
+      pushToast({ type: "error", title: "File non valido", message: validation });
+      e.target.value = "";
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      pushToast({ type: "error", title: "File non valido", message: "Carica un’immagine." });
+      e.target.value = "";
+      return;
+    }
     setPhotoBusy(true);
     try {
       await uploadPetPhoto(activePetId, file);
@@ -331,6 +364,12 @@ export default function Pets() {
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !activePetId || !user) return;
+    const validation = validateUpload(file, 20);
+    if (validation) {
+      pushToast({ type: "error", title: "File non valido", message: validation });
+      e.target.value = "";
+      return;
+    }
     setUploading(true);
     try {
       await uploadPetDocument(activePetId, user.uid, file);
