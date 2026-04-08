@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Heart, MessageSquare, Plus } from "lucide-react";
+import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { useAuthStore } from "@/stores/authStore";
 import { createComment, createPost, likePost, reportComment, reportPost, subscribeComments, subscribePosts } from "@/data/community";
-import { ensureDefaultGroups, joinGroup, leaveGroup, sendGroupMessage, subscribeGroupMembership, subscribeGroupMessages, subscribeGroups } from "@/data/groups";
+import { ensureDefaultGroups, joinGroup, leaveGroup, reportGroupMessage, sendGroupMessage, subscribeGroupMembership, subscribeGroupMessages, subscribeGroups } from "@/data/groups";
 import type { CommunityComment, CommunityGroup, CommunityGroupMessage, CommunityPost } from "@/types";
 import { subscribePublicProfile, subscribeUserProfile, type PublicProfile } from "@/data/users";
+import { getFirebase } from "@/lib/firebase";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -81,6 +83,22 @@ export default function Community() {
     });
     return () => unsub();
   }, [user]);
+
+  const [isModerator, setIsModerator] = useState(false);
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setIsModerator(false);
+      return;
+    }
+    const { db } = getFirebase();
+    const unsub = onSnapshot(doc(db, "moderators", user.uid), (snap) => setIsModerator(snap.exists()));
+    return () => unsub();
+  }, [user]);
+
+  const visibleMessages = useMemo(() => {
+    if (isModerator) return messages;
+    return messages.filter((m) => m.status !== "hidden" && m.status !== "removed");
+  }, [isModerator, messages]);
 
   useEffect(() => {
     const ids = new Set<string>();
@@ -272,10 +290,10 @@ export default function Community() {
             <CardContent>
 
             <div className="rounded-xl border border-slate-200/70 bg-white/70 p-3 h-72 overflow-auto space-y-2">
-              {messages.length === 0 ? (
+              {visibleMessages.length === 0 ? (
                 <div className="text-sm text-slate-600">Nessun messaggio. Inizia tu.</div>
               ) : (
-                messages.map((m) => (
+                visibleMessages.map((m) => (
                   <div
                     key={m.id}
                     className={
@@ -296,6 +314,46 @@ export default function Community() {
                     </div>
                     <div className="whitespace-pre-wrap">{m.text}</div>
                     <div className="text-[10px] text-slate-600 mt-1">{new Date(m.createdAt).toLocaleString()}</div>
+
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      {user && m.authorId !== user.uid ? (
+                        <button
+                          type="button"
+                          className="lp-btn-icon"
+                          onClick={async () => {
+                            const reason = prompt("Motivo segnalazione (opzionale):") ?? "";
+                            await reportGroupMessage(activeGroupId, m.id, user.uid, reason);
+                          }}
+                        >
+                          Segnala
+                        </button>
+                      ) : null}
+
+                      {isModerator ? (
+                        <>
+                          <button
+                            type="button"
+                            className="lp-btn-icon"
+                            onClick={async () => {
+                              const { db } = getFirebase();
+                              await updateDoc(doc(db, "groups", activeGroupId, "messages", m.id), { status: "hidden" });
+                            }}
+                          >
+                            Nascondi
+                          </button>
+                          <button
+                            type="button"
+                            className="lp-btn-icon"
+                            onClick={async () => {
+                              const { db } = getFirebase();
+                              await updateDoc(doc(db, "groups", activeGroupId, "messages", m.id), { status: "active" });
+                            }}
+                          >
+                            Ripristina
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 ))
               )}

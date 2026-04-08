@@ -299,6 +299,8 @@ export type CommunityGroupMessage = {
   authorId: string;
   createdAt: number;
   text: string;
+  status?: "active" | "hidden" | "removed";
+  reportCount?: number;
 };
 
 export type CommunityGroupMember = {

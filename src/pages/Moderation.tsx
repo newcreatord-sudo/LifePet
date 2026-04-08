@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getIdTokenResult } from "firebase/auth";
-import { collection, doc, limit, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
+import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { useAuthStore } from "@/stores/authStore";
 import type { CommunityPost } from "@/types";
@@ -13,6 +13,7 @@ type PostReport = { reporterId: string; reason?: string; createdAt: number };
 export default function Moderation() {
   const user = useAuthStore((s) => s.user);
   const [role, setRole] = useState<string | null>(null);
+  const [isModeratorDoc, setIsModeratorDoc] = useState(false);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [openPostId, setOpenPostId] = useState<string | null>(null);
   const [reports, setReports] = useState<Record<string, PostReport[]>>({});
@@ -20,12 +21,14 @@ export default function Moderation() {
   useEffect(() => {
     if (!user || user.isDemo) {
       setRole(null);
+      setIsModeratorDoc(false);
       return;
     }
     const { auth } = getFirebase();
     const cu = auth.currentUser;
     if (!cu) {
       setRole(null);
+      setIsModeratorDoc(false);
       return;
     }
     getIdTokenResult(cu, true)
@@ -37,7 +40,15 @@ export default function Moderation() {
       .catch(() => setRole(null));
   }, [user]);
 
-  const isModerator = role === "admin" || role === "moderator";
+  useEffect(() => {
+    if (!user || user.isDemo) return;
+    const { db } = getFirebase();
+    getDoc(doc(db, "moderators", user.uid))
+      .then((snap) => setIsModeratorDoc(snap.exists()))
+      .catch(() => setIsModeratorDoc(false));
+  }, [user]);
+
+  const isModerator = role === "admin" || role === "moderator" || isModeratorDoc;
 
   useEffect(() => {
     if (!isModerator) return;

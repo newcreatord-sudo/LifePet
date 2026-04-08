@@ -2,13 +2,13 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  doc,
   getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
   setDoc,
-  doc,
 } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import type { CommunityGroup, CommunityGroupMember, CommunityGroupMessage } from "@/types";
@@ -134,6 +134,16 @@ export async function sendGroupMessage(groupId: string, input: Omit<CommunityGro
     demoUpdate<CommunityGroupMessage[]>(demoMessagesKey(groupId), [], (prev) => [...prev, next]);
     return id;
   }
-  const ref = await addDoc(messagesCol(groupId), input);
+  const ref = await addDoc(messagesCol(groupId), { ...input, status: "active", reportCount: 0 });
   return ref.id;
+}
+
+export async function reportGroupMessage(groupId: string, messageId: string, reporterId: string, reason: string) {
+  if (shouldUseDemoData()) return;
+  const { db } = getFirebase();
+  await setDoc(
+    doc(db, "groups", groupId, "messages", messageId, "reports", reporterId),
+    { reporterId, reason: reason.trim(), createdAt: Date.now() },
+    { merge: true }
+  );
 }
