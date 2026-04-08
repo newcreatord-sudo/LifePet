@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, Plus, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
-import { createBooking, deleteBooking, setBookingStatus, subscribeUpcomingBookings } from "@/data/bookings";
+import { createBooking, deleteBooking, setBookingStatus, subscribeBookingsHistoryRange, subscribeUpcomingBookings } from "@/data/bookings";
 import { createProvider, seedDefaultProviders, subscribeProviders } from "@/data/providers";
-import type { Booking, Provider, ProviderKind } from "@/types";
+import type { Booking, BookingStatus, Provider, ProviderKind } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -25,6 +25,17 @@ export default function Bookings() {
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [items, setItems] = useState<Booking[]>([]);
+  const [history, setHistory] = useState<Booking[]>([]);
+
+  const [tab, setTab] = useState<"upcoming" | "history">("upcoming");
+  const [rangeDays, setRangeDays] = useState("365");
+  const [statusFilter, setStatusFilter] = useState<Record<BookingStatus, boolean>>({
+    requested: true,
+    confirmed: true,
+    completed: true,
+    cancelled: true,
+    no_show: true,
+  });
 
   const [providerKind, setProviderKind] = useState<ProviderKind>("vet");
   const [providerId, setProviderId] = useState<string>("");
@@ -53,6 +64,15 @@ export default function Bookings() {
     return () => unsub();
   }, [activePetId]);
 
+  useEffect(() => {
+    if (!activePetId) return;
+    const toMs = Date.now();
+    const days = Number(rangeDays);
+    const fromMs = toMs - (Number.isFinite(days) && days > 0 ? days : 365) * 24 * 60 * 60 * 1000;
+    const unsub = subscribeBookingsHistoryRange(activePetId, fromMs, toMs, 200, setHistory);
+    return () => unsub();
+  }, [activePetId, rangeDays]);
+
   const filteredProviders = useMemo(() => providers.filter((p) => p.kind === providerKind), [providerKind, providers]);
 
   useEffect(() => {
@@ -61,6 +81,9 @@ export default function Bookings() {
   }, [filteredProviders, providerId]);
 
   const selectedProvider = useMemo(() => providers.find((p) => p.id === providerId) ?? null, [providerId, providers]);
+
+  const filteredUpcoming = useMemo(() => items.filter((b) => statusFilter[b.status]), [items, statusFilter]);
+  const filteredHistory = useMemo(() => history.filter((b) => statusFilter[b.status]), [history, statusFilter]);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -115,6 +138,55 @@ export default function Bookings() {
     <div className="space-y-6">
       <PageHeader title="Prenotazioni" description="Veterinario, toelettatura, pet sitter: con flusso anti no‑show." />
 
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setTab("upcoming")}
+          className={
+            tab === "upcoming"
+              ? "rounded-xl bg-white border border-slate-200/70 px-3 py-2 text-sm"
+              : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-sm text-slate-700 hover:bg-white"
+          }
+        >
+          Prossime
+        </button>
+        <button
+          onClick={() => setTab("history")}
+          className={
+            tab === "history"
+              ? "rounded-xl bg-white border border-slate-200/70 px-3 py-2 text-sm"
+              : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-sm text-slate-700 hover:bg-white"
+          }
+        >
+          Storico
+        </button>
+
+        <div className="ml-auto flex items-center gap-2">
+          <div className="text-xs text-slate-600">Filtri</div>
+          {(
+            [
+              ["requested", "Rich."],
+              ["confirmed", "Conf."],
+              ["completed", "Ok"],
+              ["cancelled", "Ann."],
+              ["no_show", "No‑show"],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setStatusFilter((s) => ({ ...s, [k]: !s[k] }))}
+              className={
+                statusFilter[k]
+                  ? "rounded-xl bg-fuchsia-600/10 border border-fuchsia-600/20 px-3 py-2 text-xs text-fuchsia-800"
+                  : "rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Crea prenotazione</CardTitle>
@@ -127,11 +199,11 @@ export default function Bookings() {
           <div className="space-y-3">
           <form onSubmit={onCreate} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
             <label className="lg:col-span-2 block">
-              <div className="text-xs text-slate-400 mb-1">Tipo</div>
+              <div className="text-xs text-slate-600 mb-1">Tipo</div>
               <select
                 value={providerKind}
                 onChange={(e) => setProviderKind(e.target.value as ProviderKind)}
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-select"
               >
                 <option value="vet">Veterinario</option>
                 <option value="groomer">Toelettatore</option>
@@ -139,11 +211,11 @@ export default function Bookings() {
               </select>
             </label>
             <label className="lg:col-span-4 block">
-              <div className="text-xs text-slate-400 mb-1">Professionista</div>
+              <div className="text-xs text-slate-600 mb-1">Professionista</div>
               <select
                 value={providerId}
                 onChange={(e) => setProviderId(e.target.value)}
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-select"
               >
                 {filteredProviders.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -152,82 +224,82 @@ export default function Bookings() {
                 ))}
               </select>
               {filteredProviders.length === 0 ? (
-                <div className="text-xs text-slate-500 mt-1">Nessun professionista in questa categoria.</div>
+                <div className="text-xs text-slate-600 mt-1">Nessun professionista in questa categoria.</div>
               ) : null}
             </label>
             <label className="lg:col-span-3 block">
-              <div className="text-xs text-slate-400 mb-1">Quando</div>
+              <div className="text-xs text-slate-600 mb-1">Quando</div>
               <input
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
                 type="datetime-local"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
             <label className="lg:col-span-2 block">
-              <div className="text-xs text-slate-400 mb-1">Conferma entro (ore)</div>
+              <div className="text-xs text-slate-600 mb-1">Conferma entro (ore)</div>
               <input
                 value={String(confirmHours)}
                 onChange={(e) => setConfirmHours(Number(e.target.value))}
                 inputMode="numeric"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
             <button
               disabled={creating || !selectedProvider}
               type="submit"
-              className="lg:col-span-1 rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+              className="lg:col-span-1 lp-btn-primary disabled:opacity-60"
             >
               {creating ? "…" : <Plus className="w-4 h-4" />}
             </button>
             <label className="lg:col-span-12 block">
-              <div className="text-xs text-slate-400 mb-1">Note</div>
+              <div className="text-xs text-slate-600 mb-1">Note</div>
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Motivo, preferenze, indirizzo…"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
-            <div className="lg:col-span-12 text-xs text-slate-500">
+            <div className="lg:col-span-12 text-xs text-slate-600">
               Anti no‑show: se non confermata entro la scadenza, può essere annullata automaticamente. Dopo l’orario può essere segnata come no‑show.
             </div>
           </form>
           {error ? <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{error}</div> : null}
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+          <div className="lp-surface p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="font-semibold">Professionisti</div>
-                <div className="text-xs text-slate-500">Aggiungi un contatto se manca in lista.</div>
+                <div className="text-xs text-slate-600">Aggiungi un contatto se manca in lista.</div>
               </div>
-              <button onClick={() => setAddingProvider((v) => !v)} className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+              <button onClick={() => setAddingProvider((v) => !v)} className="lp-btn-secondary">
                 {addingProvider ? "Chiudi" : "Aggiungi"}
               </button>
             </div>
             {addingProvider ? (
               <form onSubmit={onCreateProvider} className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="block">
-                  <div className="text-xs text-slate-400 mb-1">Nome</div>
-                  <input value={providerName} onChange={(e) => setProviderName(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                  <div className="text-xs text-slate-600 mb-1">Nome</div>
+                  <input value={providerName} onChange={(e) => setProviderName(e.target.value)} className="lp-input" />
                 </label>
                 <label className="block">
-                  <div className="text-xs text-slate-400 mb-1">Città</div>
-                  <input value={providerCity} onChange={(e) => setProviderCity(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                  <div className="text-xs text-slate-600 mb-1">Città</div>
+                  <input value={providerCity} onChange={(e) => setProviderCity(e.target.value)} className="lp-input" />
                 </label>
                 <label className="block">
-                  <div className="text-xs text-slate-400 mb-1">Telefono</div>
-                  <input value={providerPhone} onChange={(e) => setProviderPhone(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                  <div className="text-xs text-slate-600 mb-1">Telefono</div>
+                  <input value={providerPhone} onChange={(e) => setProviderPhone(e.target.value)} className="lp-input" />
                 </label>
                 <label className="block">
-                  <div className="text-xs text-slate-400 mb-1">Descrizione</div>
-                  <input value={providerDescription} onChange={(e) => setProviderDescription(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                  <div className="text-xs text-slate-600 mb-1">Descrizione</div>
+                  <input value={providerDescription} onChange={(e) => setProviderDescription(e.target.value)} className="lp-input" />
                 </label>
                 <div className="md:col-span-2 flex items-center justify-end gap-2">
-                  <button type="button" onClick={() => setAddingProvider(false)} className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                  <button type="button" onClick={() => setAddingProvider(false)} className="lp-btn-secondary">
                     Annulla
                   </button>
-                  <button disabled={savingProvider} type="submit" className="rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60">
+                  <button disabled={savingProvider} type="submit" className="lp-btn-primary disabled:opacity-60">
                     {savingProvider ? "Salvataggio…" : "Salva contatto"}
                   </button>
                 </div>
@@ -241,35 +313,51 @@ export default function Bookings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Prossime prenotazioni</CardTitle>
-          <CardDescription>Conferma, completa o annulla.</CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>{tab === "upcoming" ? "Prossime prenotazioni" : "Storico prenotazioni"}</CardTitle>
+              <CardDescription>{tab === "upcoming" ? "Conferma, completa o annulla." : "Ultime prenotazioni e stati."}</CardDescription>
+            </div>
+            {tab === "history" ? (
+              <div className="w-56">
+                <div className="text-xs text-slate-600 mb-1">Periodo</div>
+                <select value={rangeDays} onChange={(e) => setRangeDays(e.target.value)} className="lp-select">
+                  <option value="30">Ultimi 30 giorni</option>
+                  <option value="90">Ultimi 90 giorni</option>
+                  <option value="365">Ultimo anno</option>
+                </select>
+              </div>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent>
         {!activePetId ? (
           <EmptyState title="Seleziona un pet" description="Scegli un profilo per vedere le prenotazioni." />
-        ) : items.length === 0 ? (
+        ) : tab === "upcoming" && filteredUpcoming.length === 0 ? (
           <EmptyState title="Nessuna prenotazione" description="Crea una prenotazione per tenere tutto sotto controllo." />
+        ) : tab === "history" && filteredHistory.length === 0 ? (
+          <EmptyState title="Nessuno storico" description="Non ci sono prenotazioni nel periodo selezionato." />
         ) : (
           <div className="space-y-2">
-            {items.map((b) => (
-              <div key={b.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+            {(tab === "upcoming" ? filteredUpcoming : filteredHistory).map((b) => (
+              <div key={b.id} className="lp-panel px-3 py-2">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium flex items-center gap-2">
-                      <CalendarCheck className="w-4 h-4 text-emerald-200" />
+                      <CalendarCheck className="w-4 h-4 text-fuchsia-700" />
                       {b.providerName} · {providerKindLabel(b.providerKind)}
                     </div>
-                    <div className="text-xs text-slate-500 mt-0.5">{new Date(b.scheduledAt).toLocaleString()}</div>
+                    <div className="text-xs text-slate-600 mt-0.5">{new Date(b.scheduledAt).toLocaleString()}</div>
                     {b.confirmBy ? (
-                      <div className="text-xs text-slate-400 mt-1">Conferma entro: {new Date(b.confirmBy).toLocaleString()}</div>
+                      <div className="text-xs text-slate-600 mt-1">Conferma entro: {new Date(b.confirmBy).toLocaleString()}</div>
                     ) : null}
-                    {b.notes ? <div className="text-sm text-slate-300 mt-1">{b.notes}</div> : null}
+                    {b.notes ? <div className="text-sm text-slate-800 mt-1">{b.notes}</div> : null}
                   </div>
                   <div className="flex items-center gap-2">
                     {b.status === "requested" ? (
                       <button
                         onClick={() => activePetId && setBookingStatus(activePetId, b.id, "confirmed")}
-                        className="rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-emerald-300"
+                        className="lp-btn-primary"
                       >
                         Conferma
                       </button>
@@ -277,7 +365,7 @@ export default function Bookings() {
                     {b.status === "confirmed" ? (
                       <button
                         onClick={() => activePetId && setBookingStatus(activePetId, b.id, "completed")}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="lp-btn-secondary"
                       >
                         Completata
                       </button>
@@ -285,7 +373,7 @@ export default function Bookings() {
                     {b.status !== "cancelled" && b.status !== "completed" ? (
                       <button
                         onClick={() => activePetId && setBookingStatus(activePetId, b.id, "cancelled", "user_cancel")}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="lp-btn-secondary"
                       >
                         Annulla
                       </button>
@@ -296,13 +384,13 @@ export default function Bookings() {
                         if (!confirm("Eliminare questa prenotazione?")) return;
                         await deleteBooking(activePetId, b.id);
                       }}
-                      className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                      className="lp-btn-icon"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-                <div className="mt-2 text-xs text-slate-500">Stato: {b.status}{b.cancelReason ? ` (${b.cancelReason})` : ""}</div>
+                <div className="mt-2 text-xs text-slate-600">Stato: {b.status}{b.cancelReason ? ` (${b.cancelReason})` : ""}</div>
               </div>
             ))}
           </div>

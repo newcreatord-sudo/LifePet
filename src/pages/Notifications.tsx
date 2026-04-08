@@ -17,6 +17,7 @@ function severityChip(sev: NotificationSeverity) {
 function targetForType(type: string) {
   if (type.startsWith("agenda_due")) return "/app/agenda";
   if (type.startsWith("task_due")) return "/app/planner";
+  if (type.startsWith("booking_")) return "/app/bookings";
   if (type.startsWith("gps_")) return "/app/gps";
   if (type.startsWith("health_")) return "/app/health";
   return "/app/dashboard";
@@ -161,4 +162,3 @@ export default function Notifications() {
     </div>
   );
 }
-

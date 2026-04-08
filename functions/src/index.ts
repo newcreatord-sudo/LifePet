@@ -654,6 +654,68 @@ export const bookingNoShowSweep = onSchedule("every 10 minutes", async () => {
   );
 });
 
+export const bookingReminderSweep = onSchedule("every 10 minutes", async () => {
+  const now = Date.now();
+  const in2h = now + 2 * 60 * 60 * 1000;
+  const in24h = now + 24 * 60 * 60 * 1000;
+
+  const confirmSoonSnap = await db
+    .collectionGroup("bookings")
+    .where("status", "==", "requested")
+    .where("confirmBy", ">=", now)
+    .where("confirmBy", "<=", in2h)
+    .orderBy("confirmBy", "asc")
+    .limit(50)
+    .get();
+
+  await Promise.all(
+    confirmSoonSnap.docs.map(async (d) => {
+      const b = d.data() as { petId?: unknown; providerName?: unknown; confirmBy?: unknown };
+      const petId = typeof b.petId === "string" ? b.petId : null;
+      const providerName = typeof b.providerName === "string" ? b.providerName : "prenotazione";
+      const confirmBy = typeof b.confirmBy === "number" ? b.confirmBy : null;
+      if (!petId || !confirmBy) return;
+      const type = `booking_confirm_soon:${d.id}`;
+      const dedupeFrom = now - 6 * 60 * 60 * 1000;
+      if (await hasRecentNotification(petId, type, dedupeFrom)) return;
+      await createPetNotification(petId, {
+        type,
+        title: "Conferma prenotazione",
+        body: `Conferma entro ${new Date(confirmBy).toLocaleString()} per ${providerName}.`,
+        severity: "warning",
+      });
+    })
+  );
+
+  const upcomingSnap = await db
+    .collectionGroup("bookings")
+    .where("status", "==", "confirmed")
+    .where("scheduledAt", ">=", now)
+    .where("scheduledAt", "<=", in24h)
+    .orderBy("scheduledAt", "asc")
+    .limit(50)
+    .get();
+
+  await Promise.all(
+    upcomingSnap.docs.map(async (d) => {
+      const b = d.data() as { petId?: unknown; providerName?: unknown; scheduledAt?: unknown };
+      const petId = typeof b.petId === "string" ? b.petId : null;
+      const providerName = typeof b.providerName === "string" ? b.providerName : "prenotazione";
+      const scheduledAt = typeof b.scheduledAt === "number" ? b.scheduledAt : null;
+      if (!petId || !scheduledAt) return;
+      const type = `booking_upcoming_24h:${d.id}`;
+      const dedupeFrom = now - 20 * 60 * 60 * 1000;
+      if (await hasRecentNotification(petId, type, dedupeFrom)) return;
+      await createPetNotification(petId, {
+        type,
+        title: "Prenotazione imminente",
+        body: `Appuntamento il ${new Date(scheduledAt).toLocaleString()} (${providerName}).`,
+        severity: "info",
+      });
+    })
+  );
+});
+
 export const smartCareSweep = onSchedule("every 6 hours", async () => {
   const now = Date.now();
   const from24h = now - 24 * 60 * 60 * 1000;

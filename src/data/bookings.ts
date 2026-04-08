@@ -49,6 +49,36 @@ export function subscribeUpcomingBookings(petId: string, onData: (items: Booking
   });
 }
 
+export function subscribeBookingsHistoryRange(
+  petId: string,
+  fromMs: number,
+  toMs: number,
+  limitCount: number,
+  onData: (items: Booking[]) => void
+) {
+  if (shouldUseDemoData()) {
+    return demoSubscribe<Booking[]>(demoKey(petId), [], (all) => {
+      const items = all
+        .filter((b) => b.scheduledAt >= fromMs && b.scheduledAt <= toMs)
+        .slice()
+        .sort((a, b) => b.scheduledAt - a.scheduledAt)
+        .slice(0, limitCount);
+      onData(items);
+    });
+  }
+  const q = query(
+    bookingsCol(petId),
+    where("scheduledAt", ">=", fromMs),
+    where("scheduledAt", "<=", toMs),
+    orderBy("scheduledAt", "desc"),
+    limit(limitCount)
+  );
+  return onSnapshot(q, (snap) => {
+    const items: Booking[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Booking, "id">) }));
+    onData(items);
+  });
+}
+
 export async function createBooking(petId: string, userId: string, provider: Provider, scheduledAt: number, confirmBy: number | null, notes?: string) {
   const base: Omit<Booking, "id"> = {
     petId,
