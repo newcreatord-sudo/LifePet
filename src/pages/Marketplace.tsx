@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { subscribeUserProfile } from "@/data/users";
+import { useToastStore } from "@/stores/toastStore";
 
 function categoryLabel(cat: ListingCategory) {
   if (cat === "food") return "Cibo";
@@ -25,6 +26,7 @@ export default function Marketplace() {
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
   const [items, setItems] = useState<MarketplaceListing[]>([]);
+  const pushToast = useToastStore((s) => s.push);
 
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
   const [aiLoading, setAiLoading] = useState(false);
@@ -140,6 +142,9 @@ export default function Marketplace() {
       setCategory("accessories");
       setContact("");
       setPhotos([]);
+      pushToast({ type: "success", title: "Annuncio", message: "Pubblicato." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Annuncio", message: err instanceof Error ? err.message : "Pubblicazione fallita" });
     } finally {
       setCreating(false);
     }

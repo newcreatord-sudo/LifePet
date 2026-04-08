@@ -11,6 +11,7 @@ import type { HealthEvent, PetDocument, PetLog, PetTask } from "@/types";
 import { getBillingStatus, type BillingStatus } from "@/data/billing";
 import { exportPetData } from "@/data/export";
 import { createRecordsShare } from "@/data/recordsShare";
+import { useToastStore } from "@/stores/toastStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -65,6 +66,7 @@ export default function Records() {
   const user = useAuthStore((s) => s.user);
   const profile = useUserProfile(user?.uid);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
   const [health, setHealth] = useState<HealthEvent[]>([]);
   const [logs, setLogs] = useState<PetLog[]>([]);
   const [docs, setDocs] = useState<PetDocument[]>([]);
@@ -302,12 +304,17 @@ export default function Records() {
                   disabled={!canExport}
                   onClick={() => {
                     (async () => {
-                      const payload = await exportPetData(activePetId, range);
-                      const url = (payload as { url?: string }).url;
-                      if (!url) throw new Error("Export non disponibile");
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.click();
+                      try {
+                        const payload = await exportPetData(activePetId, range);
+                        const url = (payload as { url?: string }).url;
+                        if (!url) throw new Error("Export non disponibile");
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.click();
+                        pushToast({ type: "success", title: "Export", message: "Download avviato." });
+                      } catch (e) {
+                        pushToast({ type: "error", title: "Export", message: e instanceof Error ? e.message : "Export fallito" });
+                      }
                     })();
                   }}
                   className={
@@ -345,20 +352,25 @@ export default function Records() {
                         : { kind: t.kind, ts: t.ts, title: t.title, subtitle: t.subtitle, note: t.note }
                     );
 
-                    const token = await createRecordsShare({
-                      ownerId: user.uid,
-                      petId: activePetId,
-                      createdAt: Date.now(),
-                      expiresAt,
-                      range,
-                      items: withAttachments,
-                    });
-                    const url = `${window.location.origin}/share/${token}`;
                     try {
-                      await navigator.clipboard.writeText(url);
-                      alert("Link copiato negli appunti");
-                    } catch {
-                      prompt("Copia il link:", url);
+                      const token = await createRecordsShare({
+                        ownerId: user.uid,
+                        petId: activePetId,
+                        createdAt: Date.now(),
+                        expiresAt,
+                        range,
+                        items: withAttachments,
+                      });
+                      const url = `${window.location.origin}/share/${token}`;
+                      try {
+                        await navigator.clipboard.writeText(url);
+                        pushToast({ type: "success", title: "Condivisione", message: "Link copiato." });
+                      } catch {
+                        prompt("Copia il link:", url);
+                        pushToast({ type: "info", title: "Condivisione", message: "Link generato." });
+                      }
+                    } catch (e) {
+                      pushToast({ type: "error", title: "Condivisione", message: e instanceof Error ? e.message : "Creazione link fallita" });
                     }
                   }}
                   className={

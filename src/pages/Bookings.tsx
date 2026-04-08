@@ -8,6 +8,7 @@ import type { Booking, BookingStatus, Provider, ProviderKind } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useToastStore } from "@/stores/toastStore";
 
 function hoursToMs(h: number) {
   return h * 60 * 60 * 1000;
@@ -23,6 +24,7 @@ function providerKindLabel(kind: ProviderKind) {
 export default function Bookings() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
+  const pushToast = useToastStore((s) => s.push);
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [items, setItems] = useState<Booking[]>([]);
@@ -106,6 +108,11 @@ export default function Bookings() {
       await createBooking(activePetId, user.uid, selectedProvider, when, confirmHours > 0 ? confirmBy : null, notes);
       setScheduledAt("");
       setNotes("");
+      pushToast({ type: "success", title: "Prenotazione", message: "Creata." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Creazione prenotazione fallita";
+      setError(msg);
+      pushToast({ type: "error", title: "Prenotazione", message: msg });
     } finally {
       setCreating(false);
     }
@@ -133,6 +140,9 @@ export default function Bookings() {
       setProviderMeetingUrl("");
       setProviderDescription("");
       setAddingProvider(false);
+      pushToast({ type: "success", title: "Professionista", message: "Aggiunto." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Professionista", message: err instanceof Error ? err.message : "Creazione fallita" });
     } finally {
       setSavingProvider(false);
     }

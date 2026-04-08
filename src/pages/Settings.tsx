@@ -9,6 +9,7 @@ import { billingCreateCheckoutSession, billingCreatePortalSession, getBillingSta
 import { exportAccountData } from "@/data/export";
 import { deleteAccountCascade } from "@/data/account";
 import { useTutorialStore } from "@/stores/tutorialStore";
+import { useToastStore } from "@/stores/toastStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -19,6 +20,7 @@ export default function Settings() {
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const tutorialEnabled = useTutorialStore((s) => s.enabled);
+  const pushToast = useToastStore((s) => s.push);
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
   const [pushTokens, setPushTokens] = useState<string[]>([]);
@@ -362,8 +364,10 @@ export default function Settings() {
                   const a = document.createElement("a");
                   a.href = url;
                   a.click();
+                  pushToast({ type: "success", title: "Export", message: "Download avviato." });
                 } catch (e) {
                   setPrivacyError(e instanceof Error ? e.message : "Export fallito");
+                  pushToast({ type: "error", title: "Export", message: e instanceof Error ? e.message : "Export fallito" });
                 } finally {
                   setPrivacyBusy(false);
                 }
@@ -390,6 +394,7 @@ export default function Settings() {
                   navigate("/login", { replace: true });
                 } catch (e) {
                   setPrivacyError(e instanceof Error ? e.message : "Cancellazione fallita");
+                  pushToast({ type: "error", title: "Account", message: e instanceof Error ? e.message : "Cancellazione fallita" });
                 } finally {
                   setPrivacyBusy(false);
                 }
@@ -436,9 +441,11 @@ export default function Settings() {
               setBillingError(null);
               try {
                 const { url } = await billingCreateCheckoutSession();
+                pushToast({ type: "info", title: "Checkout", message: "Apertura pagamento…" });
                 window.location.href = url;
               } catch (e) {
                 setBillingError(e instanceof Error ? e.message : "Checkout failed");
+                pushToast({ type: "error", title: "Checkout", message: e instanceof Error ? e.message : "Checkout fallito" });
               } finally {
                 setBillingBusy(false);
               }
@@ -461,9 +468,11 @@ export default function Settings() {
               setBillingError(null);
               try {
                 const { url } = await billingCreatePortalSession();
+                pushToast({ type: "info", title: "Abbonamento", message: "Apertura portale…" });
                 window.location.href = url;
               } catch (e) {
                 setBillingError(e instanceof Error ? e.message : "Portal failed");
+                pushToast({ type: "error", title: "Abbonamento", message: e instanceof Error ? e.message : "Apertura portale fallita" });
               } finally {
                 setBillingBusy(false);
               }
@@ -571,8 +580,10 @@ export default function Settings() {
                   const token = await enablePushNotifications();
                   await savePushToken(user.uid, token);
                   setPushToken(token);
+                  pushToast({ type: "success", title: "Push", message: "Attivate." });
                 } catch (e) {
                   setPushError(e instanceof Error ? e.message : "Failed to enable push");
+                  pushToast({ type: "error", title: "Push", message: e instanceof Error ? e.message : "Attivazione fallita" });
                 } finally {
                   setPushBusy(false);
                 }
@@ -591,8 +602,10 @@ export default function Settings() {
                   await deletePushToken(user.uid, pushToken);
                   await disablePushNotifications();
                   setPushToken(null);
+                  pushToast({ type: "success", title: "Push", message: "Disattivate." });
                 } catch (e) {
                   setPushError(e instanceof Error ? e.message : "Failed to disable push");
+                  pushToast({ type: "error", title: "Push", message: e instanceof Error ? e.message : "Disattivazione fallita" });
                 } finally {
                   setPushBusy(false);
                 }
