@@ -21,6 +21,7 @@ import Documents from "@/pages/Documents";
 import Medications from "@/pages/Medications";
 import Vaccines from "@/pages/Vaccines";
 import Vision from "@/pages/Vision";
+import Video from "@/pages/Video";
 import Gps from "@/pages/Gps";
 import Expenses from "@/pages/Expenses";
 import Community from "@/pages/Community";
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="medications" element={<Medications />} />
           <Route path="vaccines" element={<Vaccines />} />
           <Route path="vision" element={<Vision />} />
+          <Route path="video" element={<Video />} />
           <Route path="gps" element={<Gps />} />
           <Route path="expenses" element={<Expenses />} />
           <Route path="community" element={<Community />} />

@@ -690,6 +690,58 @@ export const aiVisionAnalyze = SKIP_AI
       return { answer, citations };
     });
 
+export const aiVisionAnalyzeMulti = SKIP_AI
+  ? onCall(async () => {
+      throw new HttpsError("failed-precondition", "AI is not configured");
+    })
+  : onCall({ secrets: [OPENAI_API_KEY!] }, async (req) => {
+      const uid = req.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+      await enforceAiQuota(uid);
+
+      const petId = String(req.data?.petId ?? "");
+      const prompt = String(req.data?.prompt ?? "");
+      const imageDataUrlsRaw = Array.isArray(req.data?.imageDataUrls) ? req.data.imageDataUrls : null;
+      const imageDataUrls = imageDataUrlsRaw ? imageDataUrlsRaw.map((x: unknown) => String(x)).filter(Boolean).slice(0, 6) : [];
+
+      if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+      if (!prompt.trim()) throw new HttpsError("invalid-argument", "prompt is required");
+      if (imageDataUrls.length === 0) throw new HttpsError("invalid-argument", "imageDataUrls is required");
+      if (imageDataUrls.some((u: string) => !u.startsWith("data:image/"))) throw new HttpsError("invalid-argument", "all images must be data URLs");
+      if (imageDataUrls.some((u: string) => u.length > 900_000)) throw new HttpsError("invalid-argument", "one image is too large");
+
+      await assertPetAccess(petId, uid);
+
+      const model = process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
+      const client = getOpenAi(OPENAI_API_KEY!.value());
+
+      const system = [
+        "You are LifePet AI.",
+        "You may be given multiple images extracted from a short video.",
+        "Do not diagnose or prescribe.",
+        "If the images are unclear, say what to improve (lighting, focus) and what data is missing.",
+      ].join("\n");
+
+      const content = [
+        { type: "text" as const, text: prompt },
+        ...imageDataUrls.map((url: string) => ({ type: "image_url" as const, image_url: { url } })),
+      ];
+
+      const completion = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content },
+        ],
+        temperature: 0.2,
+      });
+
+      const answer = completion.choices[0]?.message?.content ?? "";
+      const citations: Array<{ kind: "log" | "task"; id: string }> = [];
+      return { answer, citations };
+    });
+
 export const likePost = onCall(async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required");

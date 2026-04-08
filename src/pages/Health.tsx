@@ -143,6 +143,9 @@ export default function Health() {
         <Link to="/app/vision" className="lp-btn-secondary">
           Analisi Foto AI
         </Link>
+        <Link to="/app/video" className="lp-btn-secondary">
+          Analisi Video AI
+        </Link>
       </div>
 
       <div className="flex items-center gap-2">
