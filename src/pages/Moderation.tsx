@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { getIdTokenResult } from "firebase/auth";
-import { collection, collectionGroup, doc, getDoc, limit, onSnapshot, orderBy, query, setDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  collectionGroup,
+  deleteDoc,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { useAuthStore } from "@/stores/authStore";
 import type { CommunityPost } from "@/types";
@@ -33,6 +45,7 @@ export default function Moderation() {
   const [banHours, setBanHours] = useState("24");
   const [banReason, setBanReason] = useState("");
   const [savingBan, setSavingBan] = useState(false);
+  const [bans, setBans] = useState<BanDoc[]>([]);
 
   useEffect(() => {
     if (!user || user.isDemo) {
@@ -183,6 +196,18 @@ export default function Moderation() {
       .slice()
       .sort((a, b) => (b.reportCount ?? 0) - (a.reportCount ?? 0));
   }, [comments]);
+
+  useEffect(() => {
+    if (!isModerator) return;
+    const { db } = getFirebase();
+    const q = query(collection(db, "bans"), orderBy("untilMs", "desc"), limit(200));
+    return onSnapshot(q, (snap) => {
+      const items: BanDoc[] = snap.docs
+        .map((d) => ({ ...(d.data() as BanDoc) }))
+        .filter((x) => typeof x.uid === "string" && typeof x.untilMs === "number");
+      setBans(items);
+    });
+  }, [isModerator]);
 
   if (!user) return <EmptyState title="Accedi" description="Serve un account per accedere alla moderazione." />;
   if (!isModerator) return <EmptyState title="Accesso negato" description="Questa sezione è riservata a moderatori/admin." />;
@@ -401,7 +426,42 @@ export default function Moderation() {
               {savingBan ? "…" : "Banna"}
             </button>
           </div>
-          <div className="mt-2 text-xs text-slate-600">Per revocare: imposta 1 ora e poi aggiorna manualmente fino a passato, o elimina il doc da console.</div>
+          <div className="mt-2 text-xs text-slate-600">Revoca: usa “Sblocca” nella lista qui sotto.</div>
+
+          <div className="mt-4">
+            <div className="text-xs text-slate-600 mb-2">Bans attivi</div>
+            {bans.filter((b) => Date.now() < b.untilMs).length === 0 ? (
+              <div className="text-sm text-slate-600">Nessun ban attivo.</div>
+            ) : (
+              <div className="space-y-2">
+                {bans
+                  .filter((b) => Date.now() < b.untilMs)
+                  .map((b) => (
+                    <div key={b.uid} className="lp-panel px-3 py-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium">{b.uid}</div>
+                          <div className="text-xs text-slate-600">Scade: {new Date(b.untilMs).toLocaleString()}</div>
+                          {b.reason ? <div className="text-xs text-slate-600 mt-0.5">{b.reason}</div> : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="lp-btn-secondary"
+                            onClick={async () => {
+                              const { db } = getFirebase();
+                              await deleteDoc(doc(db, "bans", b.uid));
+                            }}
+                          >
+                            Sblocca
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 

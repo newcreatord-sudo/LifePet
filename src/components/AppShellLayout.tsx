@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
 import {
   CalendarCheck,
   HeartPulse,
@@ -26,6 +27,7 @@ import {
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getFirebase } from "@/lib/firebase";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { subscribeMyPets } from "@/data/pets";
@@ -75,12 +77,25 @@ export function AppShellLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isModerator, setIsModerator] = useState(false);
 
   useEffect(() => {
     if (!user) return;
     const unsub = subscribeMyPets(user.uid, (p) => setPets(p));
     return () => unsub();
   }, [setPets, user]);
+
+  useEffect(() => {
+    if (!user || user.isDemo) {
+      setIsModerator(false);
+      return;
+    }
+    const { db } = getFirebase();
+    const unsub = onSnapshot(doc(db, "moderators", user.uid), (snap) => setIsModerator(snap.exists()));
+    return () => unsub();
+  }, [user]);
+
+  const navItems = useMemo(() => (isModerator ? nav : nav.filter((i) => i.to !== "/app/moderation")), [isModerator]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -131,7 +146,7 @@ export function AppShellLayout() {
             <PetSwitcher pets={pets as Pet[]} activePet={activePet} />
 
             <nav className="flex flex-col gap-1 overflow-y-auto">
-              {nav.map((item) => {
+              {navItems.map((item) => {
                 const Icon = item.icon;
                 return (
                   <NavLink
@@ -171,7 +186,7 @@ export function AppShellLayout() {
               <PetSwitcher pets={pets as Pet[]} activePet={activePet} />
             </div>
             <nav className="flex flex-col gap-2">
-              {nav.map((item) => {
+              {navItems.map((item) => {
                 const Icon = item.icon;
                 return (
                   <NavLink

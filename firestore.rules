@@ -18,7 +18,11 @@ service cloud.firestore {
     }
 
     function isBanned(uid) {
-      return exists(/databases/$(database)/documents/bans/$(uid)) && get(/databases/$(database)/documents/bans/$(uid)).data.untilMs > request.time.toMillis();
+      return (
+        exists(/databases/$(database)/documents/bans/$(uid)) &&
+        get(/databases/$(database)/documents/bans/$(uid)).data.untilMs is int &&
+        get(/databases/$(database)/documents/bans/$(uid)).data.untilMs > request.time.toMillis()
+      );
     }
 
     match /bans/{userId} {
