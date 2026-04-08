@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { CheckCircle2, Sparkles } from "lucide-react";
 import { usePetStore } from "@/stores/petStore";
 import { useAuthStore } from "@/stores/authStore";
 import { aiChat } from "@/data/ai";
-import { createTask } from "@/data/tasks";
+import { createTask, setTaskDone, subscribeTasks } from "@/data/tasks";
 import { aiUserMessage } from "@/lib/aiErrors";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Link } from "react-router-dom";
 import { subscribeUserProfile } from "@/data/users";
-import type { AiCitation } from "@/types";
+import type { AiCitation, PetTask } from "@/types";
 
 const guides: Record<string, Array<{ title: string; bullets: string[] }>> = {
   dog: [
@@ -56,6 +56,7 @@ export default function Training() {
   const [creatingPlan, setCreatingPlan] = useState(false);
   const [planTime, setPlanTime] = useState("18:00");
   const [aiAllowed, setAiAllowed] = useState(true);
+  const [tasks, setTasks] = useState<PetTask[]>([]);
 
   const bucket = useMemo(() => {
     const s = (pet?.species || "other").toLowerCase();
@@ -80,6 +81,42 @@ export default function Training() {
     });
     return () => unsub();
   }, [user]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeTasks(activePetId, setTasks);
+    return () => unsub();
+  }, [activePetId]);
+
+  const trainingTasks = useMemo(() => tasks.filter((t) => t.title.startsWith("Training:")), [tasks]);
+
+  const trainingProgress = useMemo(() => {
+    const now = Date.now();
+    const dayStart = (ms: number) => {
+      const d = new Date(ms);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    };
+    const start7d = now - 7 * 24 * 60 * 60 * 1000;
+    const done7d = trainingTasks.filter((t) => t.status === "done" && (t.completedAt ?? 0) >= start7d).length;
+    const due7d = trainingTasks.filter((t) => t.status === "due" && (t.dueAt ?? 0) >= now && (t.dueAt ?? 0) <= now + 7 * 24 * 60 * 60 * 1000).length;
+
+    const doneByDay = new Set(trainingTasks.filter((t) => t.status === "done" && t.completedAt).map((t) => dayStart(t.completedAt!)));
+    let streak = 0;
+    for (let i = 0; i < 60; i += 1) {
+      const d = dayStart(now - i * 24 * 60 * 60 * 1000);
+      if (!doneByDay.has(d)) break;
+      streak += 1;
+    }
+
+    const upcoming = trainingTasks
+      .filter((t) => t.status === "due" && (t.dueAt ?? 0) >= now - 24 * 60 * 60 * 1000)
+      .slice()
+      .sort((a, b) => (a.dueAt ?? 0) - (b.dueAt ?? 0))
+      .slice(0, 10);
+
+    return { done7d, due7d, streak, upcoming };
+  }, [trainingTasks]);
 
   async function onAskAi() {
     if (!activePetId) return;
@@ -254,6 +291,58 @@ export default function Training() {
 
             <div className="lp-panel p-3 text-sm whitespace-pre-wrap min-h-28">
               {aiText ?? "Descrivi un problema e chiedi un piano step-by-step."}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold">Progress</div>
+                  <div className="text-xs text-slate-600">Basato sui task Training nel planner.</div>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="lp-panel p-3">
+                  <div className="text-xs text-slate-600">Completati (7g)</div>
+                  <div className="text-sm font-semibold">{trainingProgress.done7d}</div>
+                </div>
+                <div className="lp-panel p-3">
+                  <div className="text-xs text-slate-600">Streak (giorni)</div>
+                  <div className="text-sm font-semibold">{trainingProgress.streak}</div>
+                </div>
+                <div className="lp-panel p-3">
+                  <div className="text-xs text-slate-600">In arrivo (7g)</div>
+                  <div className="text-sm font-semibold">{trainingProgress.due7d}</div>
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <div className="text-xs text-slate-600 mb-2">Prossime sessioni</div>
+                {trainingProgress.upcoming.length === 0 ? (
+                  <div className="text-sm text-slate-600">Nessuna sessione in lista.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {trainingProgress.upcoming.map((t) => (
+                      <div key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white px-3 py-2">
+                        <div>
+                          <div className="text-sm font-medium">{t.title.replace(/^Training:\s*/, "")}</div>
+                          <div className="text-xs text-slate-600">{t.dueAt ? new Date(t.dueAt).toLocaleString() : "Senza scadenza"}</div>
+                        </div>
+                        <button
+                          type="button"
+                          className="lp-btn-primary inline-flex items-center gap-2"
+                          onClick={async () => {
+                            if (!activePetId) return;
+                            await setTaskDone(activePetId, t.id, true, Date.now());
+                          }}
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Fatto
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {citations.length ? (
