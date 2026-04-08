@@ -14,6 +14,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Link } from "react-router-dom";
 import { computeLongevitySnapshot } from "@/lib/longevity";
+import { updatePet } from "@/data/pets";
+import { KeyRound, Trash2 } from "lucide-react";
+
+function generateToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -59,6 +69,7 @@ export default function Wellness() {
   const [saving, setSaving] = useState(false);
 
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
+  const [creatingToken, setCreatingToken] = useState(false);
 
   const now = useMemo(() => Date.now(), []);
   const from30d = useMemo(() => now - 30 * 24 * 60 * 60 * 1000, [now]);
@@ -201,6 +212,80 @@ export default function Wellness() {
         <EmptyState title="Seleziona un pet" description="Scegli un profilo per vedere i trend di benessere." />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <Card className="lg:col-span-12">
+            <CardHeader>
+              <CardTitle>Integrazione sensori</CardTitle>
+              <CardDescription>Invia log automatici (acqua/attività/cibo/peso) da un dispositivo.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!user || user.isDemo || creatingToken}
+                  className="lp-btn-secondary inline-flex items-center gap-2"
+                  onClick={async () => {
+                    if (!activePetId) return;
+                    setCreatingToken(true);
+                    try {
+                      await updatePet(activePetId, { deviceIngestToken: generateToken() });
+                    } finally {
+                      setCreatingToken(false);
+                    }
+                  }}
+                >
+                  <KeyRound className="w-4 h-4" />
+                  {activePet?.deviceIngestToken ? "Rigenera token" : "Genera token"}
+                </button>
+
+                {activePet?.deviceIngestToken ? (
+                  <button
+                    type="button"
+                    className="lp-btn-icon"
+                    onClick={async () => {
+                      if (!activePetId) return;
+                      if (!confirm("Disattivare integrazione sensori (rimuovere token)?")) return;
+                      await updatePet(activePetId, { deviceIngestToken: undefined });
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                ) : null}
+              </div>
+
+              {activePet?.deviceIngestToken ? (
+                <div className="mt-3 lp-surface p-4">
+                  <div className="text-sm font-medium">Webhook</div>
+                  <div className="mt-1 text-xs text-slate-600">Token segreto: chi lo possiede può inviare log per il pet.</div>
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    <div className="text-xs text-slate-600">Endpoint</div>
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-xs break-all">
+                      {`https://${(import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION as string) || "us-central1"}-${import.meta.env.VITE_FIREBASE_PROJECT_ID as string}.cloudfunctions.net/deviceIngestLog`}
+                    </div>
+                    <div className="text-xs text-slate-600">Esempio payload</div>
+                    <div className="rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-xs whitespace-pre-wrap">
+                      {JSON.stringify(
+                        {
+                          petId: activePetId,
+                          token: activePet.deviceIngestToken,
+                          type: "water",
+                          occurredAt: Date.now(),
+                          amount: 250,
+                          unit: "ml",
+                          tags: ["bowl"],
+                          note: "Sensore cucina",
+                        },
+                        null,
+                        2
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-2 text-sm text-slate-600">Genera un token per abilitare l’invio log da sensore.</div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="lg:col-span-5">
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
