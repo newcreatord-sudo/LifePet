@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { createPet } from "@/data/pets";
+import { useToastStore } from "@/stores/toastStore";
 import { createTask, subscribeDueTasks } from "@/data/tasks";
 import { createLog, subscribeRecentLogs } from "@/data/logs";
 import { subscribeUpcomingAgenda } from "@/data/agenda";
@@ -19,6 +20,8 @@ export default function Dashboard() {
   const user = useAuthStore((s) => s.user);
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
+  const setActivePetId = usePetStore((s) => s.setActivePetId);
+  const pushToast = useToastStore((s) => s.push);
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? pets[0] ?? null, [activePetId, pets]);
 
   const [petName, setPetName] = useState("");
@@ -57,15 +60,21 @@ export default function Dashboard() {
   async function onCreatePet(e: React.FormEvent) {
     e.preventDefault();
     if (!user) return;
+    const n = petName.trim();
+    if (!n) return;
     setCreatingPet(true);
     try {
-      await createPet({
+      const id = await createPet({
         ownerId: user.uid,
-        name: petName.trim(),
+        name: n,
         species: petSpecies,
         createdAt: Date.now(),
       });
       setPetName("");
+      setActivePetId(id);
+      pushToast({ type: "success", title: "Pet creato", message: `${n} è stato aggiunto.` });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione pet fallita" });
     } finally {
       setCreatingPet(false);
     }

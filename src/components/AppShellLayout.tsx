@@ -39,6 +39,7 @@ import { subscribeMyPets } from "@/data/pets";
 import type { Pet } from "@/types";
 import { PetSwitcher } from "@/components/PetSwitcher";
 import { TutorialOverlay } from "@/components/TutorialOverlay";
+import { Toasts } from "@/components/Toasts";
 
 const nav = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -291,6 +292,7 @@ export function AppShellLayout() {
           </div>
 
           <TutorialOverlay />
+          <Toasts />
 
           {tutorialSection ? (
             <button

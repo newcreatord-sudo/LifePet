@@ -14,11 +14,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ExternalLink, FileText, LineChart, PhoneCall, Save, ShieldPlus, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useToastStore } from "@/stores/toastStore";
 
 export default function Pets() {
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
+  const setActivePetId = usePetStore((s) => s.setActivePetId);
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
+  const pushToast = useToastStore((s) => s.push);
 
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
   const [name, setName] = useState(activePet?.name ?? "");
@@ -230,6 +235,9 @@ export default function Pets() {
         microchipId: microchipId.trim() ? microchipId.trim() : deleteField(),
         dietNotes: dietNotes.trim() ? dietNotes.trim() : deleteField(),
       });
+      pushToast({ type: "success", title: "Salvato", message: "Profilo aggiornato." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
     } finally {
       setSaving(false);
     }
@@ -240,9 +248,11 @@ export default function Pets() {
     if (!confirm(`Eliminare definitivamente ${activePet.name}? Questa azione cancella anche dati e documenti.`)) return;
     try {
       await deletePetCascade(activePetId);
-      window.location.href = "/app/dashboard";
+      setActivePetId(null);
+      navigate("/app/dashboard", { replace: true });
+      pushToast({ type: "success", title: "Pet eliminato", message: "Dati rimossi." });
     } catch {
-      return;
+      pushToast({ type: "error", title: "Errore", message: "Eliminazione fallita" });
     }
   }
 
@@ -253,6 +263,9 @@ export default function Pets() {
     try {
       await uploadPetPhoto(activePetId, file);
       e.target.value = "";
+      pushToast({ type: "success", title: "Foto", message: "Foto aggiornata." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Upload foto fallito" });
     } finally {
       setPhotoBusy(false);
     }
@@ -263,6 +276,9 @@ export default function Pets() {
     setPhotoBusy(true);
     try {
       await deletePetPhoto(activePetId, activePet.photoPath);
+      pushToast({ type: "success", title: "Foto", message: "Foto rimossa." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Rimozione foto fallita" });
     } finally {
       setPhotoBusy(false);
     }
@@ -275,6 +291,9 @@ export default function Pets() {
     try {
       await uploadPetDocument(activePetId, user.uid, file);
       e.target.value = "";
+      pushToast({ type: "success", title: "Documento", message: "Caricato." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Upload documento fallito" });
     } finally {
       setUploading(false);
     }
