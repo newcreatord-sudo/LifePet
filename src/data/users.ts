@@ -13,6 +13,7 @@ export type UserProfile = {
     aiEnabled?: boolean;
     gpsEnabled?: boolean;
     communityEnabled?: boolean;
+    providerConsoleProviderId?: string;
   };
   createdAt: number;
   updatedAt: number;
@@ -65,6 +66,7 @@ export async function updateUserPreferences(uid: string, patch: NonNullable<User
   if (patch.aiEnabled !== undefined) update["preferences.aiEnabled"] = patch.aiEnabled;
   if (patch.gpsEnabled !== undefined) update["preferences.gpsEnabled"] = patch.gpsEnabled;
   if (patch.communityEnabled !== undefined) update["preferences.communityEnabled"] = patch.communityEnabled;
+  if (patch.providerConsoleProviderId !== undefined) update["preferences.providerConsoleProviderId"] = patch.providerConsoleProviderId;
   await updateDoc(ref, update);
 }
 

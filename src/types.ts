@@ -330,7 +330,7 @@ export type Booking = {
   scheduledAt: number;
   confirmBy?: number;
   status: BookingStatus;
-  cancelReason?: "user_cancel" | "no_confirm";
+  cancelReason?: "user_cancel" | "no_confirm" | "provider_cancel";
   notes?: string;
   createdAt: number;
   updatedAt: number;

@@ -768,17 +768,32 @@ export const setBookingStatusSecure = onCall({ maxInstances: 1 }, async (req) =>
   const bookingId = String(req.data?.bookingId ?? "");
   const nextStatus = String(req.data?.status ?? "");
   const cancelReason = typeof req.data?.cancelReason === "string" ? req.data.cancelReason : null;
+  const providerId = typeof req.data?.providerId === "string" ? req.data.providerId : "";
 
   if (!petId) throw new HttpsError("invalid-argument", "petId is required");
   if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
   if (!nextStatus) throw new HttpsError("invalid-argument", "status is required");
 
-  await assertPetAccess(petId, uid);
+  let isProviderActor = false;
+  if (providerId) {
+    const userSnap = await db.collection("users").doc(uid).get();
+    const prefs = (userSnap.data() as { preferences?: { providerConsoleProviderId?: unknown } } | undefined)?.preferences;
+    const allowedProviderId = typeof prefs?.providerConsoleProviderId === "string" ? prefs?.providerConsoleProviderId : "";
+    isProviderActor = allowedProviderId === providerId;
+  }
+
+  if (!isProviderActor) {
+    await assertPetAccess(petId, uid);
+  }
   const ref = db.collection("pets").doc(petId).collection("bookings").doc(bookingId);
   const snap = await ref.get();
   if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
-  const cur = snap.data() as { status?: unknown };
+  const cur = snap.data() as { status?: unknown; providerId?: unknown; providerName?: unknown; scheduledAt?: unknown };
   const curStatus = typeof cur.status === "string" ? cur.status : "requested";
+
+  if (isProviderActor && String(cur.providerId ?? "") !== providerId) {
+    throw new HttpsError("permission-denied", "Not allowed");
+  }
 
   const allowed: Record<string, string[]> = {
     requested: ["confirmed", "cancelled"],
@@ -790,8 +805,13 @@ export const setBookingStatusSecure = onCall({ maxInstances: 1 }, async (req) =>
   if (!allowed[curStatus]?.includes(nextStatus)) {
     throw new HttpsError("failed-precondition", `Invalid transition ${curStatus} -> ${nextStatus}`);
   }
-  if (nextStatus === "cancelled" && cancelReason !== "user_cancel") {
-    throw new HttpsError("invalid-argument", "cancelReason must be user_cancel");
+  if (nextStatus === "cancelled") {
+    if (isProviderActor && cancelReason !== "provider_cancel") {
+      throw new HttpsError("invalid-argument", "cancelReason must be provider_cancel");
+    }
+    if (!isProviderActor && cancelReason !== "user_cancel") {
+      throw new HttpsError("invalid-argument", "cancelReason must be user_cancel");
+    }
   }
 
   await ref.set(
@@ -802,6 +822,15 @@ export const setBookingStatusSecure = onCall({ maxInstances: 1 }, async (req) =>
     },
     { merge: true }
   );
+
+  const providerName = typeof cur.providerName === "string" ? cur.providerName : "Professionista";
+  const scheduledAt = typeof cur.scheduledAt === "number" ? cur.scheduledAt : null;
+  await createPetNotification(petId, {
+    type: `booking_${nextStatus}`,
+    title: "Aggiornamento prenotazione",
+    body: scheduledAt ? `${providerName}: ${nextStatus} · ${new Date(scheduledAt).toLocaleString()}` : `${providerName}: ${nextStatus}`,
+    severity: nextStatus === "cancelled" ? "warning" : "info",
+  });
   return { ok: true };
 });
 
@@ -816,6 +845,31 @@ export const deleteBookingSecure = onCall({ maxInstances: 1 }, async (req) => {
   await db.collection("pets").doc(petId).collection("bookings").doc(bookingId).delete();
   return { ok: true };
 });
+
+export const getProviderBookings = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  const providerId = String(req.data?.providerId ?? "");
+  if (!providerId) throw new HttpsError("invalid-argument", "providerId is required");
+
+  const userSnap = await db.collection("users").doc(uid).get();
+  const prefs = (userSnap.data() as { preferences?: { providerConsoleProviderId?: unknown } } | undefined)?.preferences;
+  const allowedProviderId = typeof prefs?.providerConsoleProviderId === "string" ? prefs?.providerConsoleProviderId : "";
+  if (allowedProviderId !== providerId) throw new HttpsError("permission-denied", "Not allowed");
+
+  const snap = await db.collectionGroup("bookings").where("providerId", "==", providerId).limit(200).get();
+  const items = snap.docs
+    .map(
+      (d) =>
+        ({ id: d.id, ...(d.data() as Record<string, unknown>) } as Record<string, unknown> & {
+          id: string;
+          scheduledAt?: unknown;
+        })
+    )
+    .sort((a, b) => Number(a.scheduledAt ?? 0) - Number(b.scheduledAt ?? 0));
+  return { items };
+});
+
 
 export const smartCareSweep = onSchedule("every 6 hours", async () => {
   const now = Date.now();

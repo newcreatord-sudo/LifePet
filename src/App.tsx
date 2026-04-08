@@ -13,6 +13,7 @@ import Agenda from "@/pages/Agenda";
 import Planner from "@/pages/Planner";
 import Training from "@/pages/Training";
 import Bookings from "@/pages/Bookings";
+import ProviderConsole from "@/pages/ProviderConsole";
 import Records from "@/pages/Records";
 import Documents from "@/pages/Documents";
 import Medications from "@/pages/Medications";
@@ -60,6 +61,7 @@ export default function App() {
           <Route path="planner" element={<Planner />} />
           <Route path="training" element={<Training />} />
           <Route path="bookings" element={<Bookings />} />
+          <Route path="provider" element={<ProviderConsole />} />
           <Route path="records" element={<Records />} />
           <Route path="documents" element={<Documents />} />
           <Route path="medications" element={<Medications />} />

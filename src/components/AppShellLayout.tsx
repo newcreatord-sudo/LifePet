@@ -49,6 +49,7 @@ const nav = [
   { to: "/app/planner", label: "Planner", icon: CalendarCheck },
   { to: "/app/training", label: "Training", icon: GraduationCap },
   { to: "/app/bookings", label: "Prenotazioni", icon: ClipboardList },
+  { to: "/app/provider", label: "Console pro", icon: ClipboardList },
   { to: "/app/gps", label: "GPS", icon: MapPin },
   { to: "/app/expenses", label: "Spese", icon: Receipt },
   { to: "/app/community", label: "Community", icon: Users },
