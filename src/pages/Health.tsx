@@ -139,6 +139,12 @@ export default function Health() {
     <div className="space-y-6">
       <PageHeader title="Salute" description="Visite, vaccini, terapie, sintomi e cartella clinica digitale." />
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Link to="/app/vision" className="lp-btn-secondary">
+          Analisi Foto AI
+        </Link>
+      </div>
+
       <div className="flex items-center gap-2">
         <Link
           to="/app/symptoms"
