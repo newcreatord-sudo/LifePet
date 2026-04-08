@@ -97,7 +97,7 @@ export default function Community() {
 
   const visibleMessages = useMemo(() => {
     if (isModerator) return messages;
-    return messages.filter((m) => m.status !== "hidden" && m.status !== "removed");
+    return messages.filter((m) => m.status !== "hidden" && m.status !== "removed" && (m.reportCount ?? 0) < 3);
   }, [isModerator, messages]);
 
   useEffect(() => {

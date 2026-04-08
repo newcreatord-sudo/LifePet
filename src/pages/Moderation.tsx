@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getIdTokenResult } from "firebase/auth";
-import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, limit, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { useAuthStore } from "@/stores/authStore";
 import type { CommunityPost } from "@/types";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/EmptyState";
 
 type PostReport = { reporterId: string; reason?: string; createdAt: number };
+type GroupMessage = { id: string; groupId: string; authorId: string; createdAt: number; text: string; status?: string; reportCount?: number };
 
 export default function Moderation() {
   const user = useAuthStore((s) => s.user);
@@ -17,6 +18,10 @@ export default function Moderation() {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [openPostId, setOpenPostId] = useState<string | null>(null);
   const [reports, setReports] = useState<Record<string, PostReport[]>>({});
+
+  const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
+  const [openMsgKey, setOpenMsgKey] = useState<string | null>(null);
+  const [msgReports, setMsgReports] = useState<Record<string, PostReport[]>>({});
 
   useEffect(() => {
     if (!user || user.isDemo) {
@@ -76,6 +81,52 @@ export default function Moderation() {
       .slice()
       .sort((a, b) => (b.reportCount ?? 0) - (a.reportCount ?? 0));
   }, [posts]);
+
+  useEffect(() => {
+    if (!isModerator) return;
+    const { db } = getFirebase();
+    const q = query(collectionGroup(db, "messages"), orderBy("createdAt", "desc"), limit(200));
+    return onSnapshot(q, (snap) => {
+      const items: GroupMessage[] = [];
+      for (const d of snap.docs) {
+        const p = d.ref.path;
+        if (!p.startsWith("groups/") || !p.includes("/messages/")) continue;
+        const parts = p.split("/");
+        const groupId = parts[1] ?? "";
+        const msgId = d.id;
+        const data = d.data() as Record<string, unknown>;
+        items.push({
+          id: msgId,
+          groupId,
+          authorId: String(data.authorId ?? ""),
+          createdAt: Number(data.createdAt ?? 0),
+          text: String(data.text ?? ""),
+          status: typeof data.status === "string" ? data.status : undefined,
+          reportCount: typeof data.reportCount === "number" ? data.reportCount : undefined,
+        });
+      }
+      setGroupMessages(items);
+    });
+  }, [isModerator]);
+
+  useEffect(() => {
+    if (!isModerator || !openMsgKey) return;
+    const [groupId, messageId] = openMsgKey.split(":");
+    if (!groupId || !messageId) return;
+    const { db } = getFirebase();
+    const q = query(collection(db, "groups", groupId, "messages", messageId, "reports"), orderBy("createdAt", "desc"), limit(50));
+    return onSnapshot(q, (snap) => {
+      const items = snap.docs.map((d) => ({ ...(d.data() as PostReport) }));
+      setMsgReports((prev) => ({ ...prev, [openMsgKey]: items }));
+    });
+  }, [isModerator, openMsgKey]);
+
+  const groupQueue = useMemo(() => {
+    return groupMessages
+      .filter((m) => (m.reportCount ?? 0) > 0 || m.status === "hidden")
+      .slice()
+      .sort((a, b) => (b.reportCount ?? 0) - (a.reportCount ?? 0));
+  }, [groupMessages]);
 
   if (!user) return <EmptyState title="Accedi" description="Serve un account per accedere alla moderazione." />;
   if (!isModerator) return <EmptyState title="Accesso negato" description="Questa sezione è riservata a moderatori/admin." />;
@@ -167,6 +218,83 @@ export default function Moderation() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Messaggi gruppi segnalati</CardTitle>
+          <CardDescription>Queue per chat gruppi (reportCount o hidden).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {groupQueue.length === 0 ? (
+            <EmptyState title="Nessun messaggio segnalato" description="Non ci sono messaggi segnalati al momento." />
+          ) : (
+            <div className="space-y-2">
+              {groupQueue.map((m) => {
+                const key = `${m.groupId}:${m.id}`;
+                return (
+                  <div key={key} className="lp-panel px-3 py-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">{m.text}</div>
+                        <div className="text-xs text-slate-600 mt-1">
+                          group: {m.groupId} · author: {m.authorId} · reports: {m.reportCount ?? 0} · status: {m.status ?? "active"}
+                        </div>
+                        <div className="text-xs text-slate-600">{new Date(m.createdAt).toLocaleString()}</div>
+
+                        {openMsgKey === key ? (
+                          <div className="mt-2 rounded-xl border border-slate-200/70 bg-white/70 p-2">
+                            <div className="text-xs text-slate-600">Reports</div>
+                            {(msgReports[key] ?? []).length === 0 ? (
+                              <div className="text-sm text-slate-600 mt-1">Nessun dettaglio.</div>
+                            ) : (
+                              <div className="mt-1 space-y-1">
+                                {(msgReports[key] ?? []).map((r) => (
+                                  <div key={r.reporterId} className="text-sm">
+                                    <div className="text-xs text-slate-600">{r.reporterId} · {new Date(r.createdAt).toLocaleString()}</div>
+                                    {r.reason ? <div className="text-sm text-slate-800">{r.reason}</div> : null}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="flex items-center gap-2">
+                          <button className="lp-btn-secondary" type="button" onClick={() => setOpenMsgKey((cur) => (cur === key ? null : key))}>
+                            {openMsgKey === key ? "Chiudi" : "Dettagli"}
+                          </button>
+                          <button
+                            className="lp-btn-secondary"
+                            type="button"
+                            onClick={async () => {
+                              const { db } = getFirebase();
+                              await updateDoc(doc(db, "groups", m.groupId, "messages", m.id), { status: "active" });
+                            }}
+                          >
+                            Ripristina
+                          </button>
+                          <button
+                            className="lp-btn-secondary"
+                            type="button"
+                            onClick={async () => {
+                              const { db } = getFirebase();
+                              await updateDoc(doc(db, "groups", m.groupId, "messages", m.id), { status: "hidden" });
+                            }}
+                          >
+                            Nascondi
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
