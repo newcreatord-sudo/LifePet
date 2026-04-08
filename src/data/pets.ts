@@ -37,14 +37,23 @@ export function subscribeMyPets(userId: string, onData: (pets: Pet[]) => void) {
 }
 
 export async function createPet(input: Omit<Pet, "id">) {
+  const name = input.name.trim();
+  if (!name) throw new Error("Nome pet obbligatorio");
+  if (name.length > 60) throw new Error("Nome troppo lungo (max 60 caratteri)");
+  if (!input.ownerId) throw new Error("OwnerId mancante");
+  const safe: Omit<Pet, "id"> = {
+    ...input,
+    name,
+    createdAt: Number.isFinite(input.createdAt) ? input.createdAt : Date.now(),
+  };
   if (shouldUseDemoData()) {
     const id = demoId();
-    demoUpdate<Pet[]>("lifepet:demo:pets", [], (prev) => [{ id, ...(input as Omit<Pet, "id">) }, ...prev]);
+    demoUpdate<Pet[]>("lifepet:demo:pets", [], (prev) => [{ id, ...safe }, ...prev]);
     return id;
   }
   const { db } = getFirebase();
   const petsCol = collection(db, "pets");
-  const ref = await addDoc(petsCol, input);
+  const ref = await addDoc(petsCol, safe);
   return ref.id;
 }
 

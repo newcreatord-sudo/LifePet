@@ -14,8 +14,7 @@ export const usePetStore = create<PetState>((set) => ({
   setPets: (pets) =>
     set((s) => ({
       pets,
-      activePetId: s.activePetId ?? (pets[0]?.id ?? null),
+      activePetId: s.activePetId && pets.some((p) => p.id === s.activePetId) ? s.activePetId : (pets[0]?.id ?? null),
     })),
   setActivePetId: (activePetId) => set({ activePetId }),
 }));
-

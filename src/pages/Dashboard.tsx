@@ -20,6 +20,7 @@ export default function Dashboard() {
   const user = useAuthStore((s) => s.user);
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
+  const setPets = usePetStore((s) => s.setPets);
   const setActivePetId = usePetStore((s) => s.setActivePetId);
   const pushToast = useToastStore((s) => s.push);
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? pets[0] ?? null, [activePetId, pets]);
@@ -70,6 +71,7 @@ export default function Dashboard() {
         species: petSpecies,
         createdAt: Date.now(),
       });
+      setPets([{ id, ownerId: user.uid, name: n, species: petSpecies, createdAt: Date.now() }, ...pets]);
       setPetName("");
       setActivePetId(id);
       pushToast({ type: "success", title: "Pet creato", message: `${n} è stato aggiunto.` });

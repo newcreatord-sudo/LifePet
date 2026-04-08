@@ -18,24 +18,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { computeLongevitySnapshot } from "@/lib/longevity";
-
-type PetTraffic = "green" | "yellow" | "red";
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function trafficLabel(t: PetTraffic) {
-  if (t === "green") return "Sano";
-  if (t === "yellow") return "Attenzione";
-  return "Rischio";
-}
-
-function trafficClass(t: PetTraffic) {
-  if (t === "green") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-800";
-  if (t === "yellow") return "border-amber-400/30 bg-amber-400/10 text-amber-900";
-  return "border-rose-400/30 bg-rose-500/10 text-rose-900";
-}
+import { computePetStatus, statusClass, statusEmoji, statusLabel } from "@/lib/petStatus";
 
 function ymd(d: Date) {
   const y = d.getFullYear();
@@ -149,35 +132,14 @@ export default function Status() {
 
   const computed = useMemo(() => {
     const now = Date.now();
-    const symptom30d = logs30d.filter((l) => l.type === "symptom").length;
-    const weight30d = logs30d.filter((l) => l.type === "weight").length;
-    const activity7d = logs30d.filter((l) => l.type === "activity" && l.occurredAt >= range.from7d).length;
-    const water24h = logs30d.filter((l) => l.type === "water" && l.occurredAt >= range.from24h).length;
-
-    const due7d = tasks.filter((t) => (t.dueAt ?? 0) >= range.from7d && (t.dueAt ?? 0) <= now && t.status === "due").length;
-    const done7d = tasks.filter((t) => (t.completedAt ?? 0) >= range.from7d && (t.completedAt ?? 0) <= now && t.status === "done").length;
-    const adherence = due7d === 0 ? 0.7 : clamp(done7d / (done7d + due7d), 0, 1);
-
-    const highHealth72h = healthEvents.some((e) => e.type === "symptom" && e.severity === "high" && e.occurredAt >= range.from72h);
-
-    const base = 55;
-    const symptomPenalty = clamp(symptom30d * 7, 0, 50);
-    const weightBonus = clamp(weight30d * 4, 0, 25);
-    const activityBonus = clamp(activity7d * 2, 0, 12);
-    const hydrationBonus = clamp(water24h > 0 ? 6 : 0, 0, 10);
-    const adherenceScore = Math.round(adherence * 35);
-    const score = clamp(base + weightBonus + activityBonus + hydrationBonus + adherenceScore - symptomPenalty, 0, 100);
-
-    let traffic: PetTraffic = score >= 75 ? "green" : score >= 45 ? "yellow" : "red";
-    if (highHealth72h) traffic = "red";
-
-    const suggestions: string[] = [];
-    if (highHealth72h) suggestions.push("Sintomo severità alta negli ultimi 3 giorni: valuta contatto veterinario.");
-    if (water24h === 0) suggestions.push("Nessun log acqua nelle ultime 24h: controlla idratazione e ciotola.");
-    if (activity7d === 0) suggestions.push("Nessun log attività negli ultimi 7 giorni: aggiungi gioco/passeggiata breve.");
-    if (symptom30d >= 3) suggestions.push("Sintomi ricorrenti: registra dettagli e monitora trend.");
-    if (due7d > 0 && adherence < 0.6) suggestions.push("Aderenza task bassa: semplifica routine o cambia orari.");
-    if (suggestions.length === 0) suggestions.push("Continua così: routine e log regolari migliorano la prevenzione.");
+    const status = computePetStatus({
+      pet: activePet,
+      logs30d,
+      tasks,
+      healthEvents,
+      vaccines,
+      nowMs: now,
+    });
 
     const weights = logs30d
       .filter((l) => l.type === "weight")
@@ -197,10 +159,7 @@ export default function Status() {
     const waterSeries = last7Keys.map((k) => waterByDay.get(k) ?? 0);
 
     return {
-      score,
-      traffic,
-      metrics: { symptom30d, weight30d, activity7d, water24h, due7d, done7d },
-      suggestions,
+      ...status,
       charts: {
         scoreSpark: simpleSpark(scores.slice(-14)),
         weightSpark: simpleSpark(weights),
@@ -208,7 +167,7 @@ export default function Status() {
         waterSpark: simpleSpark(waterSeries),
       },
     };
-  }, [healthEvents, logs30d, range.from24h, range.from72h, range.from7d, scores, tasks]);
+  }, [activePet, healthEvents, logs30d, scores, tasks, vaccines]);
 
   const longevity = useMemo(() => {
     if (!activePet) return null;
@@ -257,9 +216,47 @@ export default function Status() {
                 <div className="text-lg font-semibold">{activePet?.name ?? "—"}</div>
                 <div className="text-xs text-slate-600">{activePet?.species ?? "—"}{activePet?.breed ? ` · ${activePet.breed}` : ""}</div>
               </div>
-              <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${trafficClass(computed.traffic)}`}>
-                <span className="h-2.5 w-2.5 rounded-full bg-current opacity-80" />
-                {trafficLabel(computed.traffic)}
+              <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${statusClass(computed.overall)}`}>
+                <span className="text-sm">{statusEmoji(computed.overall)}</span>
+                {statusLabel(computed.overall)}
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-slate-600">Alimentazione</div>
+                  <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${statusClass(computed.food)}`}>
+                    <span>{statusEmoji(computed.food)}</span>
+                    {statusLabel(computed.food)}
+                  </div>
+                </div>
+                <div className="mt-1 text-sm text-slate-700">Log 24h: {computed.metrics.food24h} · 7g: {computed.metrics.food7d}</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-slate-600">Attività</div>
+                  <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${statusClass(computed.activity)}`}>
+                    <span>{statusEmoji(computed.activity)}</span>
+                    {statusLabel(computed.activity)}
+                  </div>
+                </div>
+                <div className="mt-1 text-sm text-slate-700">Log 7g: {computed.metrics.activity7d}</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-slate-600">Storico salute</div>
+                  <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${statusClass(computed.health)}`}>
+                    <span>{statusEmoji(computed.health)}</span>
+                    {statusLabel(computed.health)}
+                  </div>
+                </div>
+                <div className="mt-1 text-sm text-slate-700">
+                  Sintomi 30g: {computed.metrics.symptom30d}
+                  {computed.metrics.overdueVaccines ? ` · Vaccini in ritardo: ${computed.metrics.overdueVaccines}` : ""}
+                </div>
               </div>
             </div>
 

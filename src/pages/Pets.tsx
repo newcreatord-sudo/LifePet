@@ -180,6 +180,11 @@ export default function Pets() {
 
   async function onSave() {
     if (!activePetId) return;
+    const n = name.trim();
+    if (!n) {
+      pushToast({ type: "error", title: "Nome obbligatorio", message: "Inserisci il nome del pet." });
+      return;
+    }
     setSaving(true);
     try {
       const weight = Number(weightKg);
@@ -218,7 +223,7 @@ export default function Pets() {
         : null;
 
       await updatePet(activePetId, {
-        name: name.trim(),
+        name: n,
         breed: breed.trim() ? breed.trim() : deleteField(),
         dob: dob.trim() ? dob.trim() : deleteField(),
         weightKg: Number.isFinite(weight) && weight > 0 ? weight : deleteField(),
@@ -300,6 +305,21 @@ export default function Pets() {
   }
 
   if (!activePet) {
+    if (activePetId) {
+      return (
+        <div className="space-y-6">
+          <PageHeader title="Profilo Pet" description="Caricamento profilo…" />
+          <Card>
+            <CardContent>
+              <div className="py-10">
+                <div className="h-4 w-40 bg-slate-200/70 rounded animate-pulse" />
+                <div className="mt-3 h-3 w-64 bg-slate-200/60 rounded animate-pulse" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
     return (
       <EmptyState
         icon={ShieldPlus}
