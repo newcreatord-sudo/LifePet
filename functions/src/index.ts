@@ -174,7 +174,7 @@ async function createPetNotification(petId: string, input: { type: string; title
     await sendPushToUser(ownerId, {
       title: input.title,
       body: input.body,
-      data: { petId, type: input.type, severity: input.severity },
+      data: { petId, type: input.type, severity: input.severity, url: `/app/notifications?petId=${petId}` },
     });
   }
 }
@@ -1277,6 +1277,10 @@ export const healthScoreSweep = onSchedule("every 24 hours", async () => {
       );
     })
   );
+});
+
+export const expenseSeriesSweep = onSchedule("every day 02:05", async () => {
+  return;
 });
 
 function agendaKindLabel(kind: string) {

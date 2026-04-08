@@ -22,7 +22,7 @@ if (cfg) {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = "/app/dashboard";
+  const url = (event.notification?.data && event.notification.data.url) ? String(event.notification.data.url) : "/app/dashboard";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
       for (const c of clientsArr) {
@@ -32,4 +32,3 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
-

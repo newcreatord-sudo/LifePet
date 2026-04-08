@@ -76,6 +76,7 @@ export function AppShellLayout() {
   const setPets = usePetStore((s) => s.setPets);
   const pets = usePetStore((s) => s.pets);
   const activePetId = usePetStore((s) => s.activePetId);
+  const setActivePetId = usePetStore((s) => s.setActivePetId);
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -86,6 +87,14 @@ export function AppShellLayout() {
     const unsub = subscribeMyPets(user.uid, (p) => setPets(p));
     return () => unsub();
   }, [setPets, user]);
+
+  useEffect(() => {
+    const petId = new URLSearchParams(location.search).get("petId");
+    if (!petId) return;
+    if (pets.some((p) => p.id === petId) && petId !== activePetId) {
+      setActivePetId(petId);
+    }
+  }, [activePetId, location.search, pets, setActivePetId]);
 
   useEffect(() => {
     if (!user || user.isDemo) {
