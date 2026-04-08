@@ -74,7 +74,8 @@ service cloud.firestore {
       }
 
       match /bookings/{bookingId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create, update, delete: if false;
       }
 
       match /medications/{medId} {

@@ -716,6 +716,107 @@ export const bookingReminderSweep = onSchedule("every 10 minutes", async () => {
   );
 });
 
+export const createBookingSecure = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  const petId = String(req.data?.petId ?? "");
+  const providerId = String(req.data?.providerId ?? "");
+  const scheduledAt = Number(req.data?.scheduledAt ?? NaN);
+  const confirmByRaw = req.data?.confirmBy;
+  const confirmBy = confirmByRaw === null || confirmByRaw === undefined ? null : Number(confirmByRaw);
+  const notes = typeof req.data?.notes === "string" ? req.data.notes.trim() : "";
+
+  if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+  if (!providerId) throw new HttpsError("invalid-argument", "providerId is required");
+  if (!Number.isFinite(scheduledAt) || scheduledAt < Date.now() + 5 * 60 * 1000) {
+    throw new HttpsError("invalid-argument", "scheduledAt must be at least 5 minutes in the future");
+  }
+  if (confirmBy !== null && (!Number.isFinite(confirmBy) || confirmBy > scheduledAt)) {
+    throw new HttpsError("invalid-argument", "confirmBy must be <= scheduledAt");
+  }
+
+  await assertPetAccess(petId, uid);
+  const providerSnap = await db.collection("providers").doc(providerId).get();
+  if (!providerSnap.exists) throw new HttpsError("not-found", "Provider not found");
+  const provider = providerSnap.data() as { kind?: unknown; name?: unknown };
+  const providerKind = typeof provider.kind === "string" ? provider.kind : "vet";
+  const providerName = typeof provider.name === "string" ? provider.name : "Professionista";
+
+  const base = {
+    petId,
+    userId: uid,
+    providerId,
+    providerKind,
+    providerName,
+    scheduledAt,
+    confirmBy: confirmBy ?? null,
+    status: "requested",
+    cancelReason: null,
+    notes: notes || null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  const ref = await db.collection("pets").doc(petId).collection("bookings").add(base);
+  return { bookingId: ref.id };
+});
+
+export const setBookingStatusSecure = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  const petId = String(req.data?.petId ?? "");
+  const bookingId = String(req.data?.bookingId ?? "");
+  const nextStatus = String(req.data?.status ?? "");
+  const cancelReason = typeof req.data?.cancelReason === "string" ? req.data.cancelReason : null;
+
+  if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+  if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
+  if (!nextStatus) throw new HttpsError("invalid-argument", "status is required");
+
+  await assertPetAccess(petId, uid);
+  const ref = db.collection("pets").doc(petId).collection("bookings").doc(bookingId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
+  const cur = snap.data() as { status?: unknown };
+  const curStatus = typeof cur.status === "string" ? cur.status : "requested";
+
+  const allowed: Record<string, string[]> = {
+    requested: ["confirmed", "cancelled"],
+    confirmed: ["completed", "cancelled"],
+    completed: [],
+    cancelled: [],
+    no_show: [],
+  };
+  if (!allowed[curStatus]?.includes(nextStatus)) {
+    throw new HttpsError("failed-precondition", `Invalid transition ${curStatus} -> ${nextStatus}`);
+  }
+  if (nextStatus === "cancelled" && cancelReason !== "user_cancel") {
+    throw new HttpsError("invalid-argument", "cancelReason must be user_cancel");
+  }
+
+  await ref.set(
+    {
+      status: nextStatus,
+      cancelReason: nextStatus === "cancelled" ? cancelReason : null,
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
+  return { ok: true };
+});
+
+export const deleteBookingSecure = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  const petId = String(req.data?.petId ?? "");
+  const bookingId = String(req.data?.bookingId ?? "");
+  if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+  if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
+  await assertPetAccess(petId, uid);
+  await db.collection("pets").doc(petId).collection("bookings").doc(bookingId).delete();
+  return { ok: true };
+});
+
 export const smartCareSweep = onSchedule("every 6 hours", async () => {
   const now = Date.now();
   const from24h = now - 24 * 60 * 60 * 1000;

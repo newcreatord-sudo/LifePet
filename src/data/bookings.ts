@@ -1,15 +1,5 @@
-import {
-  addDoc,
-  collection,
-  doc,
-  deleteDoc,
-  onSnapshot,
-  orderBy,
-  query,
-  updateDoc,
-  where,
-  limit,
-} from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, where, limit } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "@/lib/firebase";
 import type { Booking, BookingStatus, Provider, PetNotification } from "@/types";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
@@ -115,8 +105,12 @@ export async function createBooking(petId: string, userId: string, provider: Pro
     return id;
   }
 
-  const ref = await addDoc(bookingsCol(petId), base);
-  return ref.id;
+  const { functions } = getFirebase();
+  const fn = httpsCallable(functions, "createBookingSecure");
+  const res = await fn({ petId, providerId: provider.id, scheduledAt, confirmBy: confirmBy ?? null, notes: notes?.trim() || "" });
+  const bookingId = String((res.data as { bookingId?: string } | null)?.bookingId ?? "");
+  if (!bookingId) throw new Error("Booking creation failed");
+  return bookingId;
 }
 
 export async function setBookingStatus(petId: string, bookingId: string, status: BookingStatus, cancelReason?: Booking["cancelReason"]) {
@@ -126,12 +120,9 @@ export async function setBookingStatus(petId: string, bookingId: string, status:
     );
     return;
   }
-  const { db } = getFirebase();
-  await updateDoc(doc(db, "pets", petId, "bookings", bookingId), {
-    status,
-    cancelReason: cancelReason ?? null,
-    updatedAt: Date.now(),
-  });
+  const { functions } = getFirebase();
+  const fn = httpsCallable(functions, "setBookingStatusSecure");
+  await fn({ petId, bookingId, status, cancelReason: cancelReason ?? null });
 }
 
 export async function deleteBooking(petId: string, bookingId: string) {
@@ -139,6 +130,7 @@ export async function deleteBooking(petId: string, bookingId: string) {
     demoUpdate<Booking[]>(demoKey(petId), [], (prev) => prev.filter((b) => b.id !== bookingId));
     return;
   }
-  const { db } = getFirebase();
-  await deleteDoc(doc(db, "pets", petId, "bookings", bookingId));
+  const { functions } = getFirebase();
+  const fn = httpsCallable(functions, "deleteBookingSecure");
+  await fn({ petId, bookingId });
 }
