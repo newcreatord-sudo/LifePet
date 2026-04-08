@@ -734,6 +734,71 @@ export const onGpsPointCreated = onDocumentCreated("pets/{petId}/gpsPoints/{poin
   }
 });
 
+export const gpsIngestPoint = onRequest(async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+  res.set("Cache-Control", "no-store");
+
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+  if (req.method !== "POST") {
+    res.status(405).send("Method not allowed");
+    return;
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const petId = typeof body.petId === "string" ? body.petId : "";
+  const token = typeof body.token === "string" ? body.token : "";
+  const lat = typeof body.lat === "number" ? body.lat : NaN;
+  const lng = typeof body.lng === "number" ? body.lng : NaN;
+  const accuracyM = typeof body.accuracyM === "number" ? body.accuracyM : undefined;
+  const recordedAt = typeof body.recordedAt === "number" ? body.recordedAt : Date.now();
+
+  if (!petId || !token) {
+    res.status(400).json({ error: "missing_params" });
+    return;
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    res.status(400).json({ error: "invalid_coords" });
+    return;
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    res.status(400).json({ error: "coords_out_of_range" });
+    return;
+  }
+
+  const petSnap = await db.collection("pets").doc(petId).get();
+  if (!petSnap.exists) {
+    res.status(404).json({ error: "pet_not_found" });
+    return;
+  }
+  const pet = petSnap.data() as { gpsIngestToken?: unknown };
+  if (typeof pet.gpsIngestToken !== "string" || pet.gpsIngestToken !== token) {
+    res.status(403).json({ error: "forbidden" });
+    return;
+  }
+
+  const now = Date.now();
+  await db
+    .collection("pets")
+    .doc(petId)
+    .collection("gpsPoints")
+    .add({
+      petId,
+      lat,
+      lng,
+      accuracyM,
+      recordedAt,
+      createdAt: now,
+      createdBy: "device",
+    });
+
+  res.status(200).json({ ok: true });
+});
+
 export const onBookingCreated = onDocumentCreated("pets/{petId}/bookings/{bookingId}", async (event) => {
   const petId = event.params.petId as string;
   const data = event.data?.data() as { providerName?: string; providerKind?: string; scheduledAt?: number; confirmBy?: number; status?: string } | undefined;

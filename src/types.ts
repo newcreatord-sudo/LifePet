@@ -45,6 +45,7 @@ export type Pet = {
     centerLng: number;
     radiusM: number;
   };
+  gpsIngestToken?: string;
   createdAt: number;
 };
 

@@ -7,7 +7,7 @@ import type { GpsPoint } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ExternalLink, Trash2 } from "lucide-react";
+import { ExternalLink, KeyRound, Trash2 } from "lucide-react";
 import { subscribeUserProfile } from "@/data/users";
 import { Link } from "react-router-dom";
 
@@ -19,6 +19,14 @@ function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: 
   const s2 = Math.sin(dLng / 2);
   const x = s1 * s1 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * s2 * s2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+}
+
+function generateToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export default function Gps() {
@@ -35,6 +43,7 @@ export default function Gps() {
   const [watching, setWatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gpsAllowed, setGpsAllowed] = useState(true);
+  const [creatingToken, setCreatingToken] = useState(false);
 
   const watchIdRef = useRef<number | null>(null);
   const lastSavedRef = useRef<{ lat: number; lng: number; at: number } | null>(null);
@@ -220,6 +229,85 @@ export default function Gps() {
         />
       ) : (
         <>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Integrazione dispositivo</CardTitle>
+              <CardDescription>Invia punti GPS via webhook con token segreto per pet.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!activePetId ? (
+                <EmptyState title="Seleziona un pet" description="Scegli un profilo per configurare l’integrazione GPS." />
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={creatingToken || !user || user.isDemo}
+                      className="lp-btn-secondary inline-flex items-center gap-2"
+                      onClick={async () => {
+                        if (!activePetId) return;
+                        setCreatingToken(true);
+                        try {
+                          const token = generateToken();
+                          await updatePet(activePetId, { gpsIngestToken: token });
+                        } finally {
+                          setCreatingToken(false);
+                        }
+                      }}
+                    >
+                      <KeyRound className="w-4 h-4" />
+                      {activePet?.gpsIngestToken ? "Rigenera token" : "Genera token"}
+                    </button>
+
+                    {activePet?.gpsIngestToken ? (
+                      <button
+                        type="button"
+                        className="lp-btn-icon"
+                        onClick={async () => {
+                          if (!activePetId) return;
+                          if (!confirm("Disattivare l’integrazione (rimuovere token)?")) return;
+                          await updatePet(activePetId, { gpsIngestToken: undefined });
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {activePet?.gpsIngestToken ? (
+                    <div className="lp-surface p-4">
+                      <div className="text-sm font-medium">Webhook</div>
+                      <div className="mt-1 text-xs text-slate-600">Conserva il token in modo sicuro: chi lo possiede può inviare posizioni.</div>
+                      <div className="mt-3 grid grid-cols-1 gap-2">
+                        <div className="text-xs text-slate-600">Endpoint</div>
+                        <div className="rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-xs break-all">
+                          {`https://${(import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION as string) || "us-central1"}-${import.meta.env.VITE_FIREBASE_PROJECT_ID as string}.cloudfunctions.net/gpsIngestPoint`}
+                        </div>
+                        <div className="text-xs text-slate-600">Payload (POST JSON)</div>
+                        <div className="rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-xs whitespace-pre-wrap">
+                          {JSON.stringify(
+                            {
+                              petId: activePetId,
+                              token: activePet.gpsIngestToken,
+                              lat: 45.0,
+                              lng: 9.0,
+                              accuracyM: 15,
+                              recordedAt: Date.now(),
+                            },
+                            null,
+                            2
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-600">Nessun token: genera un token per abilitare l’invio da dispositivo.</div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
       <Card>
         <CardHeader>
