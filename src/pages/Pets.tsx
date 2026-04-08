@@ -5,10 +5,14 @@ import { deletePetCascade, updatePet } from "@/data/pets";
 import { createLog, deleteLog, subscribeLogsRange } from "@/data/logs";
 import { getPetDocumentDownloadUrl, subscribeDocuments, uploadPetDocument } from "@/data/documents";
 import { deletePetPhoto, uploadPetPhoto } from "@/data/profilePhotos";
+import { subscribeTasks } from "@/data/tasks";
+import { subscribeRecentHealthEvents } from "@/data/health";
+import { subscribeVaccines } from "@/data/vaccines";
 import { PetAvatar } from "@/components/PetAvatar";
 import { useEffect } from "react";
 import { deleteField } from "firebase/firestore";
-import type { Pet, PetDocument } from "@/types";
+import { computePetStatus, statusClass, statusEmoji, statusLabel } from "@/lib/petStatus";
+import type { HealthEvent, Pet, PetDocument, PetLog, PetTask, PetVaccine } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -56,6 +60,10 @@ export default function Pets() {
   const [uploading, setUploading] = useState(false);
   const [weightLogs, setWeightLogs] = useState<{ at: number; kg: number }[]>([]);
   const [weightLogIds, setWeightLogIds] = useState<{ id: string; at: number; kg: number }[]>([]);
+  const [logs30d, setLogs30d] = useState<PetLog[]>([]);
+  const [tasks, setTasks] = useState<PetTask[]>([]);
+  const [healthEvents, setHealthEvents] = useState<HealthEvent[]>([]);
+  const [vaccines, setVaccines] = useState<PetVaccine[]>([]);
   const [newWeight, setNewWeight] = useState("");
   const [addingWeight, setAddingWeight] = useState(false);
 
@@ -114,6 +122,8 @@ export default function Pets() {
     const toMs = Date.now();
     const fromMs = toMs - 365 * 24 * 60 * 60 * 1000;
     const unsub = subscribeLogsRange(activePetId, fromMs, toMs, (all) => {
+      const recent30d = all.filter((l) => l.occurredAt >= toMs - 30 * 24 * 60 * 60 * 1000);
+      setLogs30d(recent30d);
       const points = all
         .filter((l) => l.type === "weight")
         .map((l) => ({ at: l.occurredAt, kg: Number(l.value?.amount) }))
@@ -131,6 +141,35 @@ export default function Pets() {
     });
     return () => unsub();
   }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeTasks(activePetId, setTasks);
+    return () => unsub();
+  }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeRecentHealthEvents(activePetId, 30, setHealthEvents);
+    return () => unsub();
+  }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeVaccines(activePetId, setVaccines);
+    return () => unsub();
+  }, [activePetId]);
+
+  const petStatus = useMemo(() => {
+    return computePetStatus({
+      pet: activePet,
+      logs30d,
+      tasks,
+      healthEvents,
+      vaccines,
+      nowMs: Date.now(),
+    });
+  }, [activePet, healthEvents, logs30d, tasks, vaccines]);
 
   const weightSpark = useMemo(() => {
     if (weightLogs.length < 2) return null;
@@ -339,7 +378,18 @@ export default function Pets() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Profilo Pet" description="Dettagli, salute, contatti veterinario, foto e documenti." />
+      <PageHeader
+        title="Profilo Pet"
+        description="Dettagli, salute, contatti veterinario, foto e documenti."
+        actions={
+          <Link to="/app/status" className="lp-btn-secondary">
+            <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${statusClass(petStatus.overall)}`}>
+              <span>{statusEmoji(petStatus.overall)}</span>
+              {statusLabel(petStatus.overall)}
+            </span>
+          </Link>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <Card className="lg:col-span-7">

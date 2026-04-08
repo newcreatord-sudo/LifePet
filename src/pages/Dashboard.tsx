@@ -5,11 +5,14 @@ import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { createPet } from "@/data/pets";
 import { useToastStore } from "@/stores/toastStore";
-import { createTask, subscribeDueTasks } from "@/data/tasks";
-import { createLog, subscribeRecentLogs } from "@/data/logs";
+import { createTask, subscribeDueTasks, subscribeTasks } from "@/data/tasks";
+import { createLog, subscribeLogsRange, subscribeRecentLogs } from "@/data/logs";
 import { subscribeUpcomingAgenda } from "@/data/agenda";
 import { markNotificationRead, subscribeUnreadNotifications } from "@/data/notifications";
-import type { LogType, PetLog, PetTask } from "@/types";
+import { subscribeRecentHealthEvents } from "@/data/health";
+import { subscribeVaccines } from "@/data/vaccines";
+import { computePetStatus, statusClass, statusEmoji, statusLabel } from "@/lib/petStatus";
+import type { HealthEvent, LogType, PetLog, PetTask, PetVaccine } from "@/types";
 import type { AgendaEvent, PetNotification } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -34,6 +37,17 @@ export default function Dashboard() {
   const [upcoming, setUpcoming] = useState<AgendaEvent[]>([]);
   const [notifications, setNotifications] = useState<PetNotification[]>([]);
 
+  const [statusLogs30d, setStatusLogs30d] = useState<PetLog[]>([]);
+  const [statusTasks, setStatusTasks] = useState<PetTask[]>([]);
+  const [statusHealthEvents, setStatusHealthEvents] = useState<HealthEvent[]>([]);
+  const [statusVaccines, setStatusVaccines] = useState<PetVaccine[]>([]);
+
+  const statusRange = useMemo(() => {
+    const toMs = Date.now();
+    const fromMs = toMs - 30 * 24 * 60 * 60 * 1000;
+    return { fromMs, toMs };
+  }, []);
+
   useEffect(() => {
     if (!activePetId) return;
     const unsub = subscribeDueTasks(activePetId, Date.now(), setDueTasks);
@@ -45,6 +59,41 @@ export default function Dashboard() {
     const unsub = subscribeRecentLogs(activePetId, 10, setRecentLogs);
     return () => unsub();
   }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeLogsRange(activePetId, statusRange.fromMs, statusRange.toMs, setStatusLogs30d);
+    return () => unsub();
+  }, [activePetId, statusRange.fromMs, statusRange.toMs]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeTasks(activePetId, setStatusTasks);
+    return () => unsub();
+  }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeRecentHealthEvents(activePetId, 30, setStatusHealthEvents);
+    return () => unsub();
+  }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeVaccines(activePetId, setStatusVaccines);
+    return () => unsub();
+  }, [activePetId]);
+
+  const petStatus = useMemo(() => {
+    return computePetStatus({
+      pet: activePet,
+      logs30d: statusLogs30d,
+      tasks: statusTasks,
+      healthEvents: statusHealthEvents,
+      vaccines: statusVaccines,
+      nowMs: Date.now(),
+    });
+  }, [activePet, statusHealthEvents, statusLogs30d, statusTasks, statusVaccines]);
 
   useEffect(() => {
     if (!activePetId) return;
@@ -211,7 +260,10 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Link to="/app/status" className="lp-btn-icon">
-                        Status
+                        <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${statusClass(petStatus.overall)}`}>
+                          <span>{statusEmoji(petStatus.overall)}</span>
+                          {statusLabel(petStatus.overall)}
+                        </span>
                       </Link>
                       <Link to="/app/records" className="lp-btn-icon">
                         Records
