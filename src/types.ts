@@ -212,6 +212,23 @@ export type Expense = {
   category: ExpenseCategory;
   occurredAt: number;
   note?: string;
+  seriesId?: string;
+  createdAt: number;
+  createdBy: string;
+};
+
+export type ExpenseSeries = {
+  id: string;
+  petId: PetId;
+  title: string;
+  enabled: boolean;
+  amount: number;
+  currency: string;
+  category: ExpenseCategory;
+  note?: string;
+  startAt: number;
+  endAt?: number;
+  recurrence: { type: "monthly"; dayOfMonth: number };
   createdAt: number;
   createdBy: string;
 };

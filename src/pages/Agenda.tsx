@@ -8,6 +8,33 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 
+function icsDate(ms: number) {
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  const ss = String(d.getUTCSeconds()).padStart(2, "0");
+  return `${y}${m}${day}T${hh}${mm}${ss}Z`;
+}
+
+function icsEscape(v: string) {
+  return v.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
+function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function Agenda() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
@@ -112,7 +139,49 @@ export default function Agenda() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Agenda" description="Appuntamenti, promemoria e cura quotidiana, tutti in un posto." />
+      <PageHeader
+        title="Agenda"
+        description="Appuntamenti, promemoria e cura quotidiana, tutti in un posto."
+        actions={
+          activePetId && events.length ? (
+            <button
+              type="button"
+              className="lp-btn-secondary"
+              onClick={() => {
+                const now = Date.now();
+                const lines: string[] = [];
+                lines.push("BEGIN:VCALENDAR");
+                lines.push("VERSION:2.0");
+                lines.push("PRODID:-//LifePet//Agenda//IT");
+                lines.push("CALSCALE:GREGORIAN");
+
+                for (const e of events) {
+                  const uid = `${activePetId}-${e.id}@lifepet`;
+                  lines.push("BEGIN:VEVENT");
+                  lines.push(`UID:${icsEscape(uid)}`);
+                  lines.push(`DTSTAMP:${icsDate(now)}`);
+                  lines.push(`DTSTART:${icsDate(e.dueAt)}`);
+                  lines.push(`SUMMARY:${icsEscape(e.title)}`);
+                  lines.push(`DESCRIPTION:${icsEscape(`Tipo: ${e.kind}`)}`);
+                  if (e.reminderMinutesBefore && e.reminderMinutesBefore > 0) {
+                    lines.push("BEGIN:VALARM");
+                    lines.push("ACTION:DISPLAY");
+                    lines.push(`DESCRIPTION:${icsEscape(e.title)}`);
+                    lines.push(`TRIGGER:-PT${Math.round(e.reminderMinutesBefore)}M`);
+                    lines.push("END:VALARM");
+                  }
+                  lines.push("END:VEVENT");
+                }
+
+                lines.push("END:VCALENDAR");
+                downloadText(`lifepet-agenda-${activePetId}.ics`, lines.join("\r\n"));
+              }}
+            >
+              Esporta ICS
+            </button>
+          ) : null
+        }
+      />
 
       <Card>
         <CardHeader>

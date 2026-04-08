@@ -2,9 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
-import { createExpense, deleteExpense, subscribeExpensesRange, subscribeRecentExpenses } from "@/data/expenses";
+import {
+  createExpense,
+  createExpenseSeries,
+  deleteExpense,
+  deleteExpenseSeries,
+  seedExpenseSeriesOncePerDay,
+  setExpenseSeriesEnabled,
+  subscribeExpensesRange,
+  subscribeExpenseSeries,
+  subscribeRecentExpenses,
+} from "@/data/expenses";
 import { updatePet } from "@/data/pets";
-import type { Expense, ExpenseCategory } from "@/types";
+import type { Expense, ExpenseCategory, ExpenseSeries } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -28,10 +38,19 @@ export default function Expenses() {
   const [monthItems, setMonthItems] = useState<Expense[]>([]);
   const [items90d, setItems90d] = useState<Expense[]>([]);
 
+  const [series, setSeries] = useState<ExpenseSeries[]>([]);
+
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<ExpenseCategory>("food");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [seriesTitle, setSeriesTitle] = useState("Abbonamento");
+  const [seriesAmount, setSeriesAmount] = useState("");
+  const [seriesCategory, setSeriesCategory] = useState<ExpenseCategory>("food");
+  const [seriesNote, setSeriesNote] = useState("");
+  const [seriesDay, setSeriesDay] = useState("1");
+  const [savingSeries, setSavingSeries] = useState(false);
 
   const [budget, setBudget] = useState("");
   const [savingBudget, setSavingBudget] = useState(false);
@@ -58,6 +77,17 @@ export default function Expenses() {
     const unsub = subscribeRecentExpenses(activePetId, 20, setItems);
     return () => unsub();
   }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId) return;
+    const unsub = subscribeExpenseSeries(activePetId, setSeries);
+    return () => unsub();
+  }, [activePetId]);
+
+  useEffect(() => {
+    if (!user || !activePetId) return;
+    void seedExpenseSeriesOncePerDay(activePetId, user.uid, series);
+  }, [activePetId, series, user]);
 
   useEffect(() => {
     if (!activePetId) return;
@@ -126,6 +156,39 @@ export default function Expenses() {
     }
   }
 
+  async function onAddSeries(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !activePetId) return;
+    const value = Number(seriesAmount);
+    const day = Number(seriesDay);
+    if (!Number.isFinite(value) || value <= 0) return;
+    if (!Number.isFinite(day) || day < 1 || day > 28) return;
+    setSavingSeries(true);
+    try {
+      const startAt = Date.now();
+      await createExpenseSeries(activePetId, {
+        petId: activePetId,
+        title: seriesTitle.trim() || "Ricorrente",
+        enabled: true,
+        amount: value,
+        currency: "EUR",
+        category: seriesCategory,
+        note: seriesNote.trim() || undefined,
+        startAt,
+        recurrence: { type: "monthly", dayOfMonth: day },
+        createdAt: Date.now(),
+        createdBy: user.uid,
+      });
+      setSeriesTitle("Abbonamento");
+      setSeriesAmount("");
+      setSeriesNote("");
+      setSeriesCategory("food");
+      setSeriesDay("1");
+    } finally {
+      setSavingSeries(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader title="Spese" description="Traccia costi per pet e monitora trend mensili." />
@@ -187,6 +250,98 @@ export default function Expenses() {
         </Card>
 
         <Card className="lg:col-span-7">
+          <CardHeader>
+            <CardTitle>Ricorrenti</CardTitle>
+            <CardDescription>Abbonamenti e costi mensili automatici.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!activePetId ? (
+              <EmptyState title="Seleziona un pet" description="Scegli un profilo per gestire spese ricorrenti." />
+            ) : (
+              <div className="space-y-4">
+                <form onSubmit={onAddSeries} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                  <label className="md:col-span-4 block">
+                    <div className="text-xs text-slate-600 mb-1">Titolo</div>
+                    <input value={seriesTitle} onChange={(e) => setSeriesTitle(e.target.value)} className="lp-input" />
+                  </label>
+                  <label className="md:col-span-2 block">
+                    <div className="text-xs text-slate-600 mb-1">Importo</div>
+                    <input value={seriesAmount} onChange={(e) => setSeriesAmount(e.target.value)} inputMode="decimal" className="lp-input" />
+                  </label>
+                  <label className="md:col-span-3 block">
+                    <div className="text-xs text-slate-600 mb-1">Categoria</div>
+                    <select value={seriesCategory} onChange={(e) => setSeriesCategory(e.target.value as ExpenseCategory)} className="lp-select">
+                      <option value="food">Cibo</option>
+                      <option value="vet">Veterinario</option>
+                      <option value="medicine">Farmaci</option>
+                      <option value="grooming">Toelettatura</option>
+                      <option value="training">Training</option>
+                      <option value="accessories">Accessori</option>
+                      <option value="other">Altro</option>
+                    </select>
+                  </label>
+                  <label className="md:col-span-2 block">
+                    <div className="text-xs text-slate-600 mb-1">Giorno mese</div>
+                    <input value={seriesDay} onChange={(e) => setSeriesDay(e.target.value)} inputMode="numeric" className="lp-input" />
+                    <div className="text-[10px] text-slate-600 mt-1">1–28</div>
+                  </label>
+                  <button disabled={savingSeries} className="md:col-span-1 lp-btn-primary" type="submit">
+                    {savingSeries ? "…" : "Aggiungi"}
+                  </button>
+                  <label className="md:col-span-12 block">
+                    <div className="text-xs text-slate-600 mb-1">Note</div>
+                    <input value={seriesNote} onChange={(e) => setSeriesNote(e.target.value)} className="lp-input" />
+                  </label>
+                </form>
+
+                {series.length === 0 ? (
+                  <div className="text-sm text-slate-600">Nessuna spesa ricorrente.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {series.map((s) => (
+                      <div key={s.id} className="lp-panel px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-medium">{s.title}</div>
+                            <div className="text-xs text-slate-600">€ {s.amount.toFixed(2)} · {categoryLabel(s.category)} · giorno {s.recurrence.dayOfMonth}</div>
+                            {s.note ? <div className="text-xs text-slate-600 mt-0.5">{s.note}</div> : null}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className={s.enabled ? "lp-btn-primary" : "lp-btn-secondary"}
+                              onClick={async () => {
+                                if (!activePetId) return;
+                                await setExpenseSeriesEnabled(activePetId, s.id, !s.enabled);
+                                if (!s.enabled) await seedExpenseSeriesOncePerDay(activePetId, user?.uid ?? "system", [{ ...s, enabled: true }]);
+                              }}
+                            >
+                              {s.enabled ? "Attiva" : "Pausa"}
+                            </button>
+                            <button
+                              type="button"
+                              className="lp-btn-icon"
+                              onClick={async () => {
+                                if (!activePetId) return;
+                                if (!confirm("Eliminare questa ricorrenza?")) return;
+                                await deleteExpenseSeries(activePetId, s.id);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="text-xs text-slate-600">Le spese vengono generate automaticamente (server-side) quando maturano.</div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-12">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <div>

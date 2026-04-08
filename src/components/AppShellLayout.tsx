@@ -53,6 +53,7 @@ const nav = [
   { to: "/app/gps", label: "GPS", icon: MapPin },
   { to: "/app/expenses", label: "Spese", icon: Receipt },
   { to: "/app/community", label: "Community", icon: Users },
+  { to: "/app/moderation", label: "Moderazione", icon: ShieldPlus },
   { to: "/app/marketplace", label: "Marketplace", icon: ShoppingBag },
   { to: "/app/insights", label: "Insights", icon: Sparkles },
   { to: "/app/settings", label: "Impostazioni", icon: Settings },

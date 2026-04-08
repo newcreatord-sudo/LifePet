@@ -15,6 +15,7 @@ import Training from "@/pages/Training";
 import Bookings from "@/pages/Bookings";
 import ProviderConsole from "@/pages/ProviderConsole";
 import SharedRecords from "@/pages/SharedRecords";
+import Moderation from "@/pages/Moderation";
 import Records from "@/pages/Records";
 import Documents from "@/pages/Documents";
 import Medications from "@/pages/Medications";
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="gps" element={<Gps />} />
           <Route path="expenses" element={<Expenses />} />
           <Route path="community" element={<Community />} />
+          <Route path="moderation" element={<Moderation />} />
           <Route path="marketplace" element={<Marketplace />} />
           <Route path="insights" element={<Insights />} />
           <Route path="notifications" element={<Notifications />} />

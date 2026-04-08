@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Crown, FileText, HeartPulse, ListTodo, NotebookPen, Pencil, Search, ShieldPlus, Trash2 } from "lucide-react";
+import { Crown, FileText, HeartPulse, ListTodo, NotebookPen, Paperclip, Pencil, Search, ShieldPlus, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { usePetStore } from "@/stores/petStore";
 import { subscribeRecentHealthEvents } from "@/data/health";
 import { deleteLog, subscribeLogsRange, updateLog } from "@/data/logs";
-import { subscribeDocuments, getPetDocumentDownloadUrl } from "@/data/documents";
+import { subscribeDocuments, uploadPetDocument, getPetDocumentDownloadUrl } from "@/data/documents";
 import { subscribeTasks } from "@/data/tasks";
 import type { HealthEvent, PetDocument, PetLog, PetTask } from "@/types";
 import { getBillingStatus, type BillingStatus } from "@/data/billing";
@@ -53,6 +53,12 @@ function logValueText(l: PetLog) {
   if (typeof v.amount !== "number" || !Number.isFinite(v.amount)) return null;
   if (!v.unit) return String(v.amount);
   return `${v.amount} ${v.unit}`;
+}
+
+function fileNameFromStoragePath(path: string) {
+  const last = path.split("/").pop() || path;
+  const idx = last.indexOf("_");
+  return idx > 0 ? last.slice(idx + 1) : last;
 }
 
 export default function Records() {
@@ -142,6 +148,10 @@ export default function Records() {
         subtitle: logValueText(l) ?? new Date(l.occurredAt).toLocaleString(),
         note: l.note,
         valueText: logValueText(l) ?? undefined,
+        attachment:
+          l.attachmentPaths && l.attachmentPaths.length
+            ? { name: fileNameFromStoragePath(l.attachmentPaths[0]), storagePath: l.attachmentPaths[0] }
+            : undefined,
       });
     }
 
@@ -402,6 +412,27 @@ export default function Records() {
                           <div className="text-xs text-slate-600 whitespace-nowrap">{new Date(it.ts).toLocaleString()}</div>
                           {activePetId && it.kind === "log" ? (
                             <>
+                              <button
+                                className="lp-btn-icon"
+                                onClick={async () => {
+                                  if (!user || user.isDemo || !activePetId) return;
+                                  const l = logs.find((x) => x.id === it.id);
+                                  if (!l) return;
+                                  const input = document.createElement("input");
+                                  input.type = "file";
+                                  input.accept = "application/pdf,image/*";
+                                  input.onchange = async () => {
+                                    const f = input.files?.[0];
+                                    if (!f) return;
+                                    const uploaded = await uploadPetDocument(activePetId, user.uid, f);
+                                    const next = Array.from(new Set([...(l.attachmentPaths ?? []), uploaded.storagePath]));
+                                    await updateLog(activePetId, l.id, { attachmentPaths: next });
+                                  };
+                                  input.click();
+                                }}
+                              >
+                                <Paperclip className="w-4 h-4" />
+                              </button>
                               <button
                                 className="lp-btn-icon"
                                 onClick={async () => {
