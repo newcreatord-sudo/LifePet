@@ -1,19 +1,44 @@
 ## 1.Architecture design
+
+### MVP (senza AI)
 ```mermaid
 graph TD
   A["User Browser"] --> B["React Frontend Application"]
-  B --> C["Supabase SDK"]
-  C --> D["Supabase Auth"]
-  C --> E["Supabase Database (Postgres)"]
-  C --> F["Supabase Storage"]
-  B --> G["Supabase Edge Function (AI Proxy)"]
+  B --> C["Firebase Web SDK"]
+  C --> D["Firebase Auth"]
+  C --> E["Cloud Firestore"]
+  C --> F["Firebase Storage"]
+  C --> G["Cloud Functions (HTTPS/Callable)"]
+
+  subgraph "Frontend Layer"
+    B
+  end
+
+  subgraph "Service Layer (Firebase)"
+    D
+    E
+    F
+    G
+  end
+```
+
+### Fase 2 (Assistente AI informativo)
+Nota: la Function funge da **proxy** (API key server-side) e può includere rate-limit e logging minimo.
+```mermaid
+graph TD
+  A["User Browser"] --> B["React Frontend Application"]
+  B --> C["Firebase Web SDK"]
+  C --> D["Firebase Auth"]
+  C --> E["Cloud Firestore"]
+  C --> F["Firebase Storage"]
+  B --> G["Cloud Functions (AI Proxy)"]
   G --> H["LLM API Service"]
 
   subgraph "Frontend Layer"
     B
   end
 
-  subgraph "Service Layer (Provided by Supabase)"
+  subgraph "Service Layer (Firebase)"
     D
     E
     F
@@ -27,22 +52,32 @@ graph TD
 
 ## 2.Technology Description
 - Frontend: React@18 + TypeScript + vite + tailwindcss@3
-- Backend: Supabase (Auth, Postgres, Storage, Edge Functions)
-- AI: Edge Function come proxy verso provider LLM (API key **solo server-side**)
+- Backend/Services: Firebase (Auth, Firestore, Storage, Cloud Functions)
+- AI (Fase 2): Cloud Functions come proxy verso provider LLM (API key **solo server-side**)
 
 ## 3.Route definitions
 | Route | Purpose |
 |-------|---------|
 | /login | Login / registrazione / recupero password |
-| /dashboard | Selettore multi-animale e panoramica promemoria/eventi |
-| /pets/:petId | Scheda animale (anagrafica, salute, promemoria, documenti) |
-| /ai | Assistente AI informativo (con disclaimer) |
-| /settings | Privacy, export e cancellazione dati |
+| /app/dashboard | Selettore multi-animale e panoramica |
+| /app/pets | Scheda animale avanzata (anagrafica, salute, documenti, contatti vet) |
+| /app/records | Cartella clinica + condivisione |
+| /app/agenda | Agenda + export ICS |
+| /app/expenses | Spese + ricorrenti |
+| /app/community | Feed + gruppi |
+| /app/moderation | Moderazione (solo moderatori) |
+| /app/settings | Preferenze/AI/privacy |
 
 ## 4.API definitions (If it includes backend services)
-### 4.1 Edge Function: AI informativa
+L’MVP usa Firebase SDK direttamente per Auth/DB/Storage. Le Cloud Functions esistono per:
+- Billing (Stripe)
+- AI proxy
+- Sweep schedulati (promemoria, indici salute, retention, ecc.)
+- Link condivisi allegati (URL firmati)
+
+### 4.1 (Fase 2) Cloud Function: AI informativa
 ```
-POST /functions/v1/ai-chat
+callable aiChat (Firebase Functions)
 ```
 TypeScript (condivise)
 ```ts
@@ -59,9 +94,11 @@ type AiChatResponse = {
 ```
 Note funzionali:
 - La funzione **non** fornisce diagnosi o indicazioni terapeutiche; restituisce solo informazioni generali + disclaimer.
+- La funzione agisce da **proxy** verso LLM (API key server-side); il contesto può essere passato dal client.
 - Opzionale: log minimale (userId, petId, timestamp) per audit/abuso.
 
 ## 5.Server architecture diagram (If it includes backend services)
+(Fase 2)
 ```mermaid
 graph TD
   A["React Frontend"] --> B["Edge Function Endpoint"]
@@ -69,7 +106,7 @@ graph TD
   C --> D["LLM Client"]
   D --> E["LLM API"]
 
-  subgraph "Supabase Edge Functions"
+  subgraph "Cloud Functions"
     B
     C
     D
@@ -81,10 +118,11 @@ graph TD
 ### 6.1 Data model definition
 ```mermaid
 erDiagram
-  AUTH_USERS ||--o{ PETS : owns
-  PETS ||--o{ HEALTH_EVENTS : has
-  PETS ||--o{ REMINDERS : schedules
-  PETS ||--o{ PET_FILES : stores
+  USERS ||--o{ PETS : owns
+  PETS ||--o{ LOGS : has
+  PETS ||--o{ TASKS : schedules
+  PETS ||--o{ DOCUMENTS : stores
+  PETS ||--o{ NOTIFICATIONS : alerts
 
   PETS {
     uuid id
@@ -125,77 +163,15 @@ erDiagram
   }
 ```
 
-### 6.2 Data Definition Language
-Tabelle applicative (senza vincoli FK fisici; FK logiche via campi `owner_id`, `pet_id`).
-```sql
-CREATE TABLE pets (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id uuid NOT NULL,
-  name text NOT NULL,
-  species text NOT NULL,
-  breed text,
-  birth_date date,
-  weight_kg numeric,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+### 6.2 Note modello dati
+I dati sono in Cloud Firestore con collezioni principali:
+- `pets/{petId}`
+- `pets/{petId}/logs` (food/water/activity/weight/symptom/vet)
+- `pets/{petId}/tasks` (promemoria/routine)
+- `pets/{petId}/documents`
+- `pets/{petId}/notifications`
+- `recordShares/{shareId}` (condivisione cartella clinica)
+- `posts/{postId}` + `posts/{postId}/comments` (community)
+- `groups/{groupId}` + `groups/{groupId}/messages` (community chat)
 
-CREATE TABLE health_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id uuid NOT NULL,
-  pet_id uuid NOT NULL,
-  type text NOT NULL,
-  event_date date NOT NULL,
-  notes text,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE reminders (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id uuid NOT NULL,
-  pet_id uuid NOT NULL,
-  title text NOT NULL,
-  due_at timestamptz NOT NULL,
-  recurrence_rule text,
-  done boolean NOT NULL DEFAULT false,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE pet_files (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id uuid NOT NULL,
-  pet_id uuid NOT NULL,
-  file_path text NOT NULL,
-  file_type text,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
--- Abilitare RLS
-ALTER TABLE pets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE health_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pet_files ENABLE ROW LEVEL SECURITY;
-
--- Policy: accesso solo al proprietario
-CREATE POLICY pets_owner_rw ON pets
-  FOR ALL TO authenticated
-  USING (owner_id = auth.uid())
-  WITH CHECK (owner_id = auth.uid());
-
-CREATE POLICY health_events_owner_rw ON health_events
-  FOR ALL TO authenticated
-  USING (owner_id = auth.uid())
-  WITH CHECK (owner_id = auth.uid());
-
-CREATE POLICY reminders_owner_rw ON reminders
-  FOR ALL TO authenticated
-  USING (owner_id = auth.uid())
-  WITH CHECK (owner_id = auth.uid());
-
-CREATE POLICY pet_files_owner_rw ON pet_files
-  FOR ALL TO authenticated
-  USING (owner_id = auth.uid())
-  WITH CHECK (owner_id = auth.uid());
-
--- Privilegi (pattern Supabase)
-GRANT ALL PRIVILEGES ON pets, health_events, reminders, pet_files TO authenticated;
-```
+Le regole Firestore isolano i dati per proprietario e gestiscono moderazione via `moderators/{uid}` e `bans/{uid}`.

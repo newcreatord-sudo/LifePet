@@ -1,4 +1,4 @@
-import { collection, doc, limit, onSnapshot, orderBy, query, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
@@ -11,6 +11,14 @@ function demoKey(petId: string) {
 export function notificationsCol(petId: string) {
   const { db } = getFirebase();
   return collection(db, "pets", petId, "notifications");
+}
+
+export async function createNotification(petId: string, input: Omit<PetNotification, "id">) {
+  if (shouldUseDemoData()) {
+    demoUpdate<PetNotification[]>(demoKey(petId), [], (prev) => [{ id: `n_${Date.now()}`, ...(input as Omit<PetNotification, "id">) }, ...prev]);
+    return;
+  }
+  await addDoc(notificationsCol(petId), input);
 }
 
 export function subscribeUnreadNotifications(petId: string, limitCount: number, onData: (items: PetNotification[]) => void) {
