@@ -14,7 +14,25 @@ import {
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import type { HealthEvent } from "@/types";
+
+function requireUid() {
+  const uid = getFirebase().auth.currentUser?.uid;
+  if (!uid) throw new Error("Devi effettuare l'accesso");
+  return uid;
+}
+
+function normalizeHealthEventInput(petId: string, input: Omit<HealthEvent, "id">) {
+  const uid = requireUid();
+  const next: Omit<HealthEvent, "id"> = {
+    ...input,
+    petId,
+    createdBy: input.createdBy || uid,
+  };
+  if (next.createdBy !== uid) throw new Error("createdBy non valido");
+  return next;
+}
 
 function demoKey(petId: string) {
   return `lifepet:demo:pet:${petId}:healthEvents`;
@@ -25,29 +43,44 @@ export function healthEventsCol(petId: string) {
   return collection(db, "pets", petId, "healthEvents");
 }
 
-export function subscribeRecentHealthEvents(petId: string, limitCount: number, onData: (events: HealthEvent[]) => void) {
+export function subscribeRecentHealthEvents(petId: string, userId: string, limitCount: number, onData: (events: HealthEvent[]) => void) {
   if (shouldUseDemoData()) {
     return demoSubscribe<HealthEvent[]>(demoKey(petId), [], (all) => {
       const events = all.slice().sort((a, b) => b.occurredAt - a.occurredAt).slice(0, limitCount);
       onData(events);
     });
   }
-  const q = query(healthEventsCol(petId), orderBy("occurredAt", "desc"), limit(limitCount));
-  return onSnapshot(q, (snap) => {
-    const events: HealthEvent[] = snap.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Omit<HealthEvent, "id">),
-    }));
-    onData(events);
-  });
+  const q = query(
+    healthEventsCol(petId),
+    where("petId", "==", petId),
+    where("createdBy", "==", userId),
+    orderBy("occurredAt", "desc"),
+    limit(limitCount)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const events: HealthEvent[] = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<HealthEvent, "id">),
+      }));
+      onData(events);
+    },
+    (err) => {
+      reportFirestoreError(err, "salute:recenti");
+      onData([]);
+    }
+  );
 }
 
 export function subscribeHealthEventsRange(
   petId: string,
+  userId: string,
   fromMs: number,
   toMs: number,
   limitCount: number,
-  onData: (events: HealthEvent[]) => void
+  onData: (events: HealthEvent[]) => void,
+  onError?: (err: unknown) => void
 ) {
   if (shouldUseDemoData()) {
     return demoSubscribe<HealthEvent[]>(demoKey(petId), [], (all) => {
@@ -61,15 +94,24 @@ export function subscribeHealthEventsRange(
   }
   const q = query(
     healthEventsCol(petId),
+    where("petId", "==", petId),
+    where("createdBy", "==", userId),
     where("occurredAt", ">=", fromMs),
     where("occurredAt", "<=", toMs),
     orderBy("occurredAt", "desc"),
     limit(limitCount)
   );
-  return onSnapshot(q, (snap) => {
-    const events: HealthEvent[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<HealthEvent, "id">) }));
-    onData(events);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const events: HealthEvent[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<HealthEvent, "id">) }));
+      onData(events);
+    },
+    (err) => {
+      reportFirestoreError(err, "salute:intervallo");
+      onError?.(err);
+    }
+  );
 }
 
 export async function createHealthEvent(petId: string, input: Omit<HealthEvent, "id">) {
@@ -79,7 +121,7 @@ export async function createHealthEvent(petId: string, input: Omit<HealthEvent, 
     demoUpdate<HealthEvent[]>(demoKey(petId), [], (prev) => [next, ...prev]);
     return id;
   }
-  const ref = await addDoc(healthEventsCol(petId), input);
+  const ref = await addDoc(healthEventsCol(petId), normalizeHealthEventInput(petId, input));
   return ref.id;
 }
 

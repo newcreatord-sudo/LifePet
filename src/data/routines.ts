@@ -13,7 +13,25 @@ import { getFirebase } from "@/lib/firebase";
 import type { PetRoutine, RoutineKind } from "@/types";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import { ensureTaskExists } from "@/data/tasks";
+
+function requireUid() {
+  const uid = getFirebase().auth.currentUser?.uid;
+  if (!uid) throw new Error("Devi effettuare l'accesso");
+  return uid;
+}
+
+function normalizeRoutineInput(petId: string, input: Omit<PetRoutine, "id">) {
+  const uid = requireUid();
+  const next: Omit<PetRoutine, "id"> = {
+    ...input,
+    petId,
+    createdBy: input.createdBy || uid,
+  };
+  if (next.createdBy !== uid) throw new Error("createdBy non valido");
+  return next;
+}
 
 function routinesCol(petId: string) {
   const { db } = getFirebase();
@@ -53,7 +71,7 @@ function computeOccurrences(routine: PetRoutine | Omit<PetRoutine, "id">, daysAh
   return occurrences.sort((a, b) => a - b);
 }
 
-export function subscribeRoutines(petId: string, onData: (items: PetRoutine[]) => void) {
+export function subscribeRoutines(petId: string, onData: (items: PetRoutine[]) => void, onError?: (err: unknown) => void) {
   if (shouldUseDemoData()) {
     return demoSubscribe<PetRoutine[]>(demoKey(petId), [], (all) => {
       const items = all.slice().sort((a, b) => b.createdAt - a.createdAt);
@@ -61,10 +79,18 @@ export function subscribeRoutines(petId: string, onData: (items: PetRoutine[]) =
     });
   }
   const q = query(routinesCol(petId), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    const items: PetRoutine[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetRoutine, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: PetRoutine[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetRoutine, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "routine");
+      if (onError) onError(err);
+      else onData([]);
+    }
+  );
 }
 
 export async function createRoutine(petId: string, input: Omit<PetRoutine, "id">) {
@@ -75,8 +101,9 @@ export async function createRoutine(petId: string, input: Omit<PetRoutine, "id">
     await seedUpcomingTasksFromRoutine(petId, next);
     return id;
   }
-  const ref = await addDoc(routinesCol(petId), input);
-  await seedUpcomingTasksFromRoutine(petId, { id: ref.id, ...input });
+  const normalized = normalizeRoutineInput(petId, input);
+  const ref = await addDoc(routinesCol(petId), normalized);
+  await seedUpcomingTasksFromRoutine(petId, { id: ref.id, ...normalized });
   return ref.id;
 }
 

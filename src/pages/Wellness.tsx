@@ -17,7 +17,9 @@ import { deleteField } from "firebase/firestore";
 import { Link } from "react-router-dom";
 import { computeLongevitySnapshot } from "@/lib/longevity";
 import { updatePet } from "@/data/pets";
-import { KeyRound, Trash2 } from "lucide-react";
+import { KeyRound, Sparkles, Trash2 } from "lucide-react";
+import { useAiPanelStore } from "@/stores/aiPanelStore";
+import { useConfirmDialog } from "@/components/confirm";
 
 function generateToken() {
   const bytes = new Uint8Array(24);
@@ -66,6 +68,8 @@ export default function Wellness() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
   const pushToast = useToastStore((s) => s.push);
+  const confirmDialog = useConfirmDialog();
+  const openWithDraft = useAiPanelStore((s) => s.openWithDraft);
   const pets = usePetStore((s) => s.pets);
   const [logs30d, setLogs30d] = useState<PetLog[]>([]);
   const [tasks, setTasks] = useState<PetTask[]>([]);
@@ -79,16 +83,16 @@ export default function Wellness() {
   const from7d = useMemo(() => now - 7 * 24 * 60 * 60 * 1000, [now]);
 
   useEffect(() => {
-    if (!activePetId) return;
-    const unsub = subscribeLogsRange(activePetId, from30d, now, setLogs30d);
+    if (!activePetId || !user) return;
+    const unsub = subscribeLogsRange(activePetId, user.uid, from30d, now, setLogs30d);
     return () => unsub();
-  }, [activePetId, from30d, now]);
+  }, [activePetId, from30d, now, user]);
 
   useEffect(() => {
-    if (!activePetId) return;
-    const unsub = subscribeTasks(activePetId, setTasks);
+    if (!activePetId || !user) return;
+    const unsub = subscribeTasks(activePetId, user.uid, setTasks);
     return () => unsub();
-  }, [activePetId]);
+  }, [activePetId, user]);
 
   const computed = useMemo(() => {
     const symptomCount30d = logs30d.filter((l) => l.type === "symptom").length;
@@ -209,7 +213,12 @@ export default function Wellness() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Benessere" description="Indice orientativo costruito da log e routine (non medico)." />
+      <PageHeader
+        title="Benessere"
+        description="Indice orientativo costruito da log e routine (non medico)."
+        imagePrompt="minimal clean illustration, heart pulse and pet silhouette with wellness score gauge, airy background, accent color, premium, no text, no watermark"
+        imageAlt="Benessere"
+      />
 
       {!activePetId ? (
         <EmptyState title="Seleziona un pet" description="Scegli un profilo per vedere i trend di benessere." />
@@ -249,7 +258,13 @@ export default function Wellness() {
                     className="lp-btn-icon"
                     onClick={async () => {
                       if (!activePetId) return;
-                      if (!confirm("Disattivare integrazione sensori (rimuovere token)?")) return;
+                      const ok = await confirmDialog({
+                        title: "Disattiva sensori",
+                        description: "Vuoi disattivare l’integrazione sensori rimuovendo il token?",
+                        confirmLabel: "Disattiva",
+                        variant: "danger",
+                      });
+                      if (!ok) return;
                       try {
                         await updatePet(activePetId, { deviceIngestToken: deleteField() });
                         pushToast({ type: "success", title: "Token sensori", message: "Rimosso." });
@@ -320,16 +335,18 @@ export default function Wellness() {
               <div className="text-sm text-slate-700 mt-1">
                 Stato: {computed.status === "green" ? "Sano" : computed.status === "yellow" ? "Attenzione" : "Rischio"}
               </div>
-              <div className="mt-3 h-2 rounded-full bg-slate-200 overflow-hidden">
+              <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(var(--lp-ink),0.10)" }}>
                 <div
-                  className={
-                    computed.status === "green"
-                      ? "h-full bg-sky-600"
-                      : computed.status === "yellow"
-                        ? "h-full bg-amber-400"
-                        : "h-full bg-rose-500"
-                  }
-                  style={{ width: `${computed.score}%` }}
+                  className="h-full"
+                  style={{
+                    width: `${computed.score}%`,
+                    backgroundColor:
+                      computed.status === "green"
+                        ? "rgb(var(--lp-primary))"
+                        : computed.status === "yellow"
+                          ? "rgb(var(--lp-warn))"
+                          : "rgb(var(--lp-danger))",
+                  }}
                 />
               </div>
               <div className="mt-3 text-xs text-slate-600">Non è un parere medico. Usalo come segnale orientativo.</div>
@@ -374,7 +391,13 @@ export default function Wellness() {
                   <div className="mt-3">
                     <div className="text-xs text-slate-600">Trend (8 settimane)</div>
                     <svg width={longevityTrend.spark.w} height={longevityTrend.spark.h} className="mt-2">
-                      <path d={longevityTrend.spark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-600" />
+                      <path
+                        d={longevityTrend.spark.d}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        style={{ color: "rgb(var(--lp-primary))" }}
+                      />
                     </svg>
                   </div>
                 ) : null}
@@ -400,9 +423,14 @@ export default function Wellness() {
                   <CardDescription>Azioni pratiche per la prossima settimana.</CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link to="/app/insights" className="lp-btn-icon">
+                  <button
+                    type="button"
+                    className="lp-btn-icon inline-flex items-center gap-2"
+                    onClick={() => openWithDraft("Genera insights pratici per 7 giorni: cosa migliorare, checklist e task. Se mancano dati, dimmi cosa registrare.")}
+                  >
+                    <Sparkles className="w-4 h-4" />
                     Insights
-                  </Link>
+                  </button>
                   <Link to="/app/status" className="lp-btn-icon">
                     Status
                   </Link>

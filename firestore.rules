@@ -6,11 +6,384 @@ service cloud.firestore {
     }
 
     function isOwner(petId) {
-      return get(/databases/$(database)/documents/pets/$(petId)).data.ownerId == request.auth.uid;
+      return exists(/databases/$(database)/documents/pets/$(petId)) &&
+        get(/databases/$(database)/documents/pets/$(petId)).data.ownerId == request.auth.uid;
+    }
+
+    function isPetOwnerId(petId, ownerId) {
+      return exists(/databases/$(database)/documents/pets/$(petId)) &&
+        get(/databases/$(database)/documents/pets/$(petId)).data.ownerId == ownerId;
     }
 
     function intOrZero(v) {
       return v is int ? v : 0;
+    }
+
+    function isStr(v, minLen, maxLen) {
+      return v is string && v.size() >= minLen && v.size() <= maxLen;
+    }
+
+    function isNum(v) {
+      return v is int || v is float;
+    }
+
+    function isOptStr(d, k, minLen, maxLen) {
+      return !(k in d) || d[k] == null || isStr(d[k], minLen, maxLen);
+    }
+
+    function isOptInt(d, k) {
+      return !(k in d) || d[k] == null || d[k] is int;
+    }
+
+    function isOptNum(d, k) {
+      return !(k in d) || d[k] == null || isNum(d[k]);
+    }
+
+    function isOptBool(d, k) {
+      return !(k in d) || d[k] == null || d[k] is bool;
+    }
+
+    function validStringList(v, maxItems, maxLen) {
+      return v is list && v.size() <= maxItems && (v.size() == 0 || (v[0] is string && v[0].size() <= maxLen && v[v.size() - 1] is string && v[v.size() - 1].size() <= maxLen));
+    }
+
+    function validUserPreferences(p) {
+      return p is map && p.keys().hasOnly([
+        'aiEnabled',
+        'gpsEnabled',
+        'communityEnabled',
+        'providerConsoleProviderId',
+        'telemetryEnabled',
+        'pushEnabled',
+        'quietHoursEnabled',
+        'quietHoursStart',
+        'quietHoursEnd'
+      ]) &&
+      (!('aiEnabled' in p) || p.aiEnabled is bool) &&
+      (!('gpsEnabled' in p) || p.gpsEnabled is bool) &&
+      (!('communityEnabled' in p) || p.communityEnabled is bool) &&
+      (!('telemetryEnabled' in p) || p.telemetryEnabled is bool) &&
+      (!('pushEnabled' in p) || p.pushEnabled is bool) &&
+      (!('quietHoursEnabled' in p) || p.quietHoursEnabled is bool) &&
+      (!('providerConsoleProviderId' in p) || p.providerConsoleProviderId == null || isStr(p.providerConsoleProviderId, 1, 120)) &&
+      (!('quietHoursStart' in p) || p.quietHoursStart == null || isStr(p.quietHoursStart, 3, 8)) &&
+      (!('quietHoursEnd' in p) || p.quietHoursEnd == null || isStr(p.quietHoursEnd, 3, 8));
+    }
+
+    function validUserTelemetryDoc(d) {
+      return d is map && d.keys().hasOnly(['event','at','route','props']) &&
+        isStr(d.event, 1, 60) &&
+        d.at is int && d.at <= request.time.toMillis() + 5 * 60 * 1000 &&
+        isOptStr(d, 'route', 1, 220) &&
+        (!('props' in d) || d.props == null || (
+          d.props is map && d.props.size() <= 12
+        ));
+    }
+
+    function validPetDocumentDoc(d, petId, docId) {
+      return d is map && d.keys().hasOnly([
+        'petId','name','title','docType','documentAt','tags','isFavorite',
+        'storagePath','contentType','size','createdAt','createdBy','ownerId',
+        'uploadStatus','uploadError','sha256','updatedAt'
+      ]) &&
+      d.petId == petId &&
+      isStr(d.name, 1, 180) &&
+      isOptStr(d, 'title', 0, 140) &&
+      (!('docType' in d) || d.docType == null || d.docType in ['referto','ricetta','vaccino','analisi','altro']) &&
+      isOptInt(d, 'documentAt') &&
+      (!('tags' in d) || d.tags == null || validStringList(d.tags, 12, 40)) &&
+      isOptBool(d, 'isFavorite') &&
+      isStr(d.storagePath, 6, 600) &&
+      (
+        d.storagePath.matches('^demo://.*') ||
+        d.storagePath.matches('^users/' + request.auth.uid + '/pets/' + petId + '/documents/' + docId + '/.*')
+      ) &&
+      isOptStr(d, 'contentType', 1, 120) &&
+      isOptInt(d, 'size') &&
+      d.createdAt is int && d.createdAt <= request.time.toMillis() + 5 * 60 * 1000 &&
+      d.createdBy == request.auth.uid &&
+      (!('ownerId' in d) || d.ownerId == null || d.ownerId == request.auth.uid) &&
+      (!('uploadStatus' in d) || d.uploadStatus == null || d.uploadStatus in ['uploading','ready','failed']) &&
+      isOptStr(d, 'uploadError', 0, 600) &&
+      (!('sha256' in d) || d.sha256 == null || (d.sha256 is string && d.sha256.size() == 64)) &&
+      isOptInt(d, 'updatedAt');
+    }
+
+    function validUserDoc(d) {
+      return d.keys().hasOnly(['email','plan','preferences','createdAt','updatedAt']) &&
+        (d.plan in ['free','pro']) &&
+        (d.createdAt is int) &&
+        (d.updatedAt is int) &&
+        (!('email' in d) || d.email == null || isStr(d.email, 3, 200)) &&
+        (!('preferences' in d) || d.preferences == null || validUserPreferences(d.preferences));
+    }
+
+    function validUserUpdate() {
+      let cur = resource.data;
+      let next = request.resource.data;
+      return validUserDoc(next) &&
+        next.plan == cur.plan &&
+        next.createdAt == cur.createdAt &&
+        next.diff(cur).changedKeys().hasOnly(['email','preferences','updatedAt']);
+    }
+
+    function validRecordShareItem(item, ownerId, petId) {
+      return item is map && item.keys().hasOnly(['kind','ts','title','subtitle','note','attachment']) &&
+        (item.kind in ['health','log','doc','task']) &&
+        (item.ts is int) &&
+        isStr(item.title, 1, 160) &&
+        (!('subtitle' in item) || item.subtitle == null || isStr(item.subtitle, 1, 200)) &&
+        (!('note' in item) || item.note == null || isStr(item.note, 0, 2000)) &&
+        (!('attachment' in item) || item.attachment == null || (
+          item.attachment is map && item.attachment.keys().hasOnly(['name','storagePath','url']) &&
+          isStr(item.attachment.name, 1, 180) &&
+          (!('url' in item.attachment) || item.attachment.url == null || isStr(item.attachment.url, 8, 1200)) &&
+          (!('storagePath' in item.attachment) || item.attachment.storagePath == null || (
+            item.attachment.storagePath is string &&
+            item.attachment.storagePath.matches('^users/' + ownerId + '/pets/' + petId + '/documents/.*')
+          ))
+        ));
+    }
+
+    function validRecordShareDoc(d) {
+      return d.keys().hasOnly(['ownerId','petId','createdAt','expiresAt','range','items']) &&
+        (d.ownerId is string) &&
+        (d.petId is string) &&
+        (d.createdAt is int) &&
+        (d.expiresAt is int) &&
+        (d.range is map && d.range.keys().hasOnly(['fromMs','toMs']) && d.range.fromMs is int && d.range.toMs is int) &&
+        (d.items is list && d.items.size() <= 250 && (
+          d.items.size() == 0 || (
+            validRecordShareItem(d.items[0], d.ownerId, d.petId) &&
+            validRecordShareItem(d.items[d.items.size() - 1], d.ownerId, d.petId)
+          )
+        ));
+    }
+
+    function validRecordShareCreate() {
+      let d = request.resource.data;
+      return isSignedIn() &&
+        validRecordShareDoc(d) &&
+        d.ownerId == request.auth.uid &&
+        isOwner(d.petId) &&
+        d.createdAt <= request.time.toMillis() + 5 * 60 * 1000 &&
+        d.expiresAt > request.time.toMillis() &&
+        d.expiresAt <= request.time.toMillis() + 30 * 24 * 60 * 60 * 1000;
+    }
+
+    function validRecordShareUpdate() {
+      let cur = resource.data;
+      let next = request.resource.data;
+      return isSignedIn() &&
+        cur.ownerId == request.auth.uid &&
+        validRecordShareDoc(next) &&
+        next.ownerId == cur.ownerId &&
+        next.petId == cur.petId &&
+        next.createdAt == cur.createdAt;
+    }
+
+    function validMsRuleDoc(d) {
+      return d.keys().hasOnly([
+        'id',
+        'type',
+        'enabled',
+        'scope',
+        'subjectId',
+        'subjectType',
+        'metricType',
+        'operator',
+        'threshold',
+        'windowMinutes',
+        'severity',
+        'category',
+        'title',
+        'description',
+        'recommendedActions',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      (d.id is string) &&
+      (d.type in ['threshold','anomaly','trend']) &&
+      (d.enabled is bool) &&
+      (d.scope in ['subject','type']) &&
+      (d.metricType is string) &&
+      (!('operator' in d) || d.operator == null || d.operator in ['>','>=','<','<=','==']) &&
+      (!('threshold' in d) || d.threshold == null || d.threshold is bool || d.threshold is number || d.threshold is string) &&
+      (!('windowMinutes' in d) || d.windowMinutes == null || d.windowMinutes is int) &&
+      (d.severity in ['info','warning','critical']) &&
+      (d.category in ['health','reproductive','safety','device','farm']) &&
+      isStr(d.title, 1, 140) &&
+      isOptStr(d, 'description', 0, 900) &&
+      (!('recommendedActions' in d) || d.recommendedActions == null || (
+        d.recommendedActions is list && d.recommendedActions.size() <= 12 &&
+        (d.recommendedActions.size() == 0 || (
+          d.recommendedActions[0] is string && d.recommendedActions[0].size() <= 120 &&
+          d.recommendedActions[d.recommendedActions.size() - 1] is string && d.recommendedActions[d.recommendedActions.size() - 1].size() <= 120
+        ))
+      )) &&
+      (d.createdAt is int) &&
+      (!('updatedAt' in d) || d.updatedAt == null || d.updatedAt is int) &&
+      (
+        (d.scope == 'subject' && ('subjectId' in d) && d.subjectId is string) ||
+        (d.scope == 'type' && ('subjectType' in d) && d.subjectType is string)
+      );
+    }
+
+    function validMsRuleCreate(docId) {
+      let d = request.resource.data;
+      return isSignedIn() && validMsRuleDoc(d) &&
+        d.id == docId &&
+        d.createdAt <= request.time.toMillis() + 5 * 60 * 1000 &&
+        (!('updatedAt' in d) || d.updatedAt == null || d.updatedAt == d.createdAt);
+    }
+
+    function validMsRuleUpdate(docId) {
+      let cur = resource.data;
+      let next = request.resource.data;
+      return isSignedIn() && validMsRuleDoc(next) &&
+        next.id == docId &&
+        next.createdAt == cur.createdAt &&
+        next.diff(cur).changedKeys().hasOnly([
+          'enabled','scope','subjectId','subjectType','metricType','operator','threshold','windowMinutes','severity','category','title','description','recommendedActions','updatedAt'
+        ]);
+    }
+
+    function validMsIntegrationMappingRow(row) {
+      return row is map && row.keys().hasOnly(['path','metricType','unit','transform']) &&
+        isStr(row.path, 1, 80) &&
+        isStr(row.metricType, 1, 80) &&
+        (!('unit' in row) || row.unit == null || isStr(row.unit, 0, 16)) &&
+        (!('transform' in row) || row.transform == null || isStr(row.transform, 0, 60));
+    }
+
+    function validMsIntegrationDoc(docId) {
+      let d = request.resource.data;
+      return docId == 'mock'
+        ? (
+          d.keys().hasOnly(['enabled','updatedAt']) &&
+          (!('enabled' in d) || d.enabled is bool) &&
+          (!('updatedAt' in d) || d.updatedAt is int)
+        )
+        : (
+          d.keys().hasOnly(['adapterType','mappings','pollingEnabled','pollingExternalDeviceIds','updatedAt']) &&
+          d.adapterType is string && d.adapterType == docId &&
+          (!('updatedAt' in d) || d.updatedAt is int) &&
+          (!('pollingEnabled' in d) || d.pollingEnabled is bool) &&
+          (!('pollingExternalDeviceIds' in d) || d.pollingExternalDeviceIds == null || (
+            d.pollingExternalDeviceIds is list && d.pollingExternalDeviceIds.size() <= 10 &&
+            (d.pollingExternalDeviceIds.size() == 0 || (
+              d.pollingExternalDeviceIds[0] is string && d.pollingExternalDeviceIds[0].size() <= 80 &&
+              d.pollingExternalDeviceIds[d.pollingExternalDeviceIds.size() - 1] is string && d.pollingExternalDeviceIds[d.pollingExternalDeviceIds.size() - 1].size() <= 80
+            ))
+          )) &&
+          (d.mappings is list && d.mappings.size() <= 60 && (
+            d.mappings.size() == 0 || (
+              validMsIntegrationMappingRow(d.mappings[0]) &&
+              validMsIntegrationMappingRow(d.mappings[d.mappings.size() - 1])
+            )
+          ))
+        );
+    }
+
+    function validAdoptionDoc(d) {
+      return d.keys().hasOnly([
+          'createdAt','createdBy','status','species','description',
+          'name','ageLabel','sex','size','temperamentTags',
+          'locationLabel','shelterLabel','photoUrls',
+          'reportCount','updatedAt'
+        ]) &&
+        (d.createdAt is int) &&
+        (d.createdBy is string) &&
+        (d.status in ['active','adopted','hidden']) &&
+        isStr(d.species, 1, 16) &&
+        isStr(d.description, 10, 2000) &&
+        isOptStr(d, 'name', 1, 40) &&
+        isOptStr(d, 'ageLabel', 1, 32) &&
+        isOptStr(d, 'locationLabel', 1, 60) &&
+        isOptStr(d, 'shelterLabel', 1, 80) &&
+        (!('sex' in d) || d.sex == null || d.sex in ['male','female','unknown']) &&
+        (!('size' in d) || d.size == null || d.size in ['small','medium','large']) &&
+        (!('temperamentTags' in d) || d.temperamentTags == null || (
+          d.temperamentTags is list &&
+          d.temperamentTags.size() <= 12 &&
+          (d.temperamentTags.size() == 0 || d.temperamentTags[0] is string)
+        )) &&
+        (!('photoUrls' in d) || d.photoUrls == null || (
+          d.photoUrls is list &&
+          d.photoUrls.size() <= 6 &&
+          (d.photoUrls.size() == 0 || d.photoUrls[0] is string)
+        )) &&
+        (!('reportCount' in d) || d.reportCount == null || (d.reportCount is int && d.reportCount >= 0)) &&
+        (!('updatedAt' in d) || d.updatedAt == null || (d.updatedAt is int && d.updatedAt >= 0));
+    }
+
+    function validAdoptionCreate() {
+      let d = request.resource.data;
+      return validAdoptionDoc(d) &&
+        d.createdBy == request.auth.uid &&
+        d.status == 'active' &&
+        d.createdAt <= request.time.toMillis() + 5 * 60 * 1000 &&
+        (!('reportCount' in d) || d.reportCount == 0);
+    }
+
+    function validAdoptionOwnerUpdate() {
+      let cur = resource.data;
+      let next = request.resource.data;
+      return validAdoptionDoc(next) &&
+        cur.createdBy == request.auth.uid &&
+        next.createdBy == cur.createdBy &&
+        next.createdAt == cur.createdAt &&
+        intOrZero(next.reportCount) == intOrZero(cur.reportCount) &&
+        (cur.status != 'adopted' || next.status == 'adopted');
+    }
+
+    function validPostDoc(d) {
+      return d.keys().hasOnly(['authorId','createdAt','text','petTag','likeCount','status','reportCount']) &&
+        (d.authorId is string) &&
+        (d.createdAt is int) &&
+        isStr(d.text, 1, 1000) &&
+        (!('petTag' in d) || d.petTag == null || (
+          d.petTag is map && d.petTag.keys().hasOnly(['species']) && (d.petTag.species is string) && d.petTag.species.size() <= 16
+        )) &&
+        (d.likeCount is int && d.likeCount >= 0) &&
+        (d.status in ['active','hidden','removed']) &&
+        (d.reportCount is int && d.reportCount >= 0);
+    }
+
+    function validCommentDoc(d, postId) {
+      return d.keys().hasOnly(['postId','authorId','createdAt','text','status','reportCount']) &&
+        d.postId == postId &&
+        (d.authorId is string) &&
+        (d.createdAt is int) &&
+        isStr(d.text, 1, 800) &&
+        (d.status in ['active','hidden','removed']) &&
+        (d.reportCount is int && d.reportCount >= 0);
+    }
+
+    function validGroupMessageDoc(d, groupId) {
+      return d.keys().hasOnly(['groupId','authorId','createdAt','text','status','reportCount']) &&
+        d.groupId == groupId &&
+        (d.authorId is string) &&
+        (d.createdAt is int) &&
+        isStr(d.text, 1, 1000) &&
+        (d.status in ['active','hidden','removed']) &&
+        (d.reportCount is int && d.reportCount >= 0);
+    }
+
+    function validListingDoc(d) {
+      return d.keys().hasOnly(['sellerId','createdAt','title','description','category','price','currency','status','contact','photoPaths']) &&
+        (d.sellerId is string) &&
+        (d.createdAt is int) &&
+        isStr(d.title, 1, 80) &&
+        isStr(d.description, 1, 2000) &&
+        (d.category in ['food','accessories','medicine','services','other']) &&
+        isNum(d.price) && d.price >= 0 && d.price <= 100000 &&
+        (d.currency is string && d.currency.size() == 3) &&
+        (d.status in ['active','sold','hidden']) &&
+        (!('contact' in d) || d.contact == null || isStr(d.contact, 1, 120)) &&
+        (!('photoPaths' in d) || d.photoPaths == null || (
+          d.photoPaths is list && d.photoPaths.size() <= 6 && (d.photoPaths.size() == 0 || d.photoPaths[0] is string)
+        ));
     }
 
     function isModerator() {
@@ -41,9 +414,16 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
-      allow create: if isSignedIn() && request.auth.uid == userId && request.resource.data.plan == 'free';
-      allow update: if isSignedIn() && request.auth.uid == userId && request.resource.data.plan == resource.data.plan;
+      allow create: if isSignedIn() && request.auth.uid == userId && request.resource.data.plan == 'free' && validUserDoc(request.resource.data);
+      allow update: if isSignedIn() && request.auth.uid == userId && validUserUpdate();
       allow delete: if false;
+
+      match /telemetry/{eventId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow create: if isSignedIn() && request.auth.uid == userId && validUserTelemetryDoc(request.resource.data);
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+        allow update: if false;
+      }
 
       match /pushTokens/{tokenId} {
         allow read, write: if isSignedIn() && request.auth.uid == userId;
@@ -53,60 +433,237 @@ service cloud.firestore {
         allow read: if isSignedIn() && request.auth.uid == userId;
         allow write: if false;
       }
+
+      match /msSubjects/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /msDevices/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /msBindings/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow create, update: if isSignedIn() && request.auth.uid == userId &&
+          request.resource.data.keys().hasOnly(['id','deviceId','subjectId','boundAt','unboundAt']) &&
+          request.resource.data.id is string &&
+          request.resource.data.deviceId is string &&
+          request.resource.data.subjectId is string &&
+          request.resource.data.boundAt is int &&
+          (!('unboundAt' in request.resource.data) || request.resource.data.unboundAt == null || request.resource.data.unboundAt is int);
+        allow delete: if false;
+      }
+
+      match /msRules/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow create: if isSignedIn() && request.auth.uid == userId && validMsRuleCreate(id);
+        allow update: if isSignedIn() && request.auth.uid == userId && validMsRuleUpdate(id);
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /msAlerts/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow update: if isSignedIn() && request.auth.uid == userId &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','resolvedAt','updatedAt']) &&
+          request.resource.data.status in ['open','closed'] &&
+          (!('resolvedAt' in request.resource.data) || request.resource.data.resolvedAt == null || request.resource.data.resolvedAt is int) &&
+          (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is int);
+        allow create, delete: if false;
+      }
+
+      match /msNotifications/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow update: if isSignedIn() && request.auth.uid == userId &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['readAt']) &&
+          request.resource.data.readAt is int;
+        allow create, delete: if false;
+      }
+
+      match /msTelemetry/{subjectId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+
+        match /samples/{sampleId} {
+          allow read: if isSignedIn() && request.auth.uid == userId;
+          allow write: if false;
+        }
+      }
+
+      match /msFarms/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /msHerds/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /msIntegrations/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow create, update: if isSignedIn() && request.auth.uid == userId && validMsIntegrationDoc(id);
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /msGeofences/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /msIngestQueue/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /msDeadLetters/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /msAuditLogs/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /msSyncLogs/{id} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
     }
 
     match /publicProfiles/{userId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && request.auth.uid == userId && request.resource.data.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly(['uid','displayName','handle','photoURL','photoPath','createdAt','updatedAt']) &&
+        request.resource.data.uid == userId &&
+        isStr(request.resource.data.displayName, 1, 40) &&
+        (!('handle' in request.resource.data) || request.resource.data.handle == null || isStr(request.resource.data.handle, 2, 24)) &&
+        (!('photoURL' in request.resource.data) || request.resource.data.photoURL == null || isStr(request.resource.data.photoURL, 1, 800)) &&
+        (!('photoPath' in request.resource.data) || request.resource.data.photoPath == null || isStr(request.resource.data.photoPath, 1, 200)) &&
+        request.resource.data.createdAt is int &&
+        request.resource.data.updatedAt is int &&
+        request.resource.data.updatedAt >= request.resource.data.createdAt;
+      allow update: if isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly(['uid','displayName','handle','photoURL','photoPath','createdAt','updatedAt']) &&
+        request.resource.data.uid == userId &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedAt is int &&
+        request.resource.data.updatedAt >= resource.data.updatedAt &&
+        isStr(request.resource.data.displayName, 1, 40) &&
+        (!('handle' in request.resource.data) || request.resource.data.handle == null || isStr(request.resource.data.handle, 2, 24)) &&
+        (!('photoURL' in request.resource.data) || request.resource.data.photoURL == null || isStr(request.resource.data.photoURL, 1, 800)) &&
+        (!('photoPath' in request.resource.data) || request.resource.data.photoPath == null || isStr(request.resource.data.photoPath, 1, 200));
       allow delete: if false;
+    }
+
+    match /petCards/{publicId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isSignedIn() && request.resource.data.ownerId == request.auth.uid &&
+        isPetOwnerId(request.resource.data.petId, request.auth.uid) &&
+        request.resource.data.keys().hasOnly(['ownerId','petId','petName','species','photoPath','publicNote','isLost','activatedAt','updatedAt']) &&
+        isStr(request.resource.data.petId, 6, 80) &&
+        isStr(request.resource.data.petName, 1, 60) &&
+        isStr(request.resource.data.species, 1, 16) &&
+        isOptStr(request.resource.data, 'photoPath', 1, 200) &&
+        isOptStr(request.resource.data, 'publicNote', 0, 240) &&
+        (!('isLost' in request.resource.data) || request.resource.data.isLost is bool) &&
+        request.resource.data.activatedAt is int &&
+        request.resource.data.updatedAt is int &&
+        request.resource.data.updatedAt >= request.resource.data.activatedAt;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
     }
 
     match /pets/{petId} {
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow read, update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
 
+      match /finderReports/{reportId} {
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create, update, delete: if false;
+      }
+
+      match /safetyEvents/{eventId} {
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create, update, delete: if false;
+      }
+
       match /logs/{logId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId;
       }
 
       match /tasks/{taskId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId;
       }
 
       match /routines/{routineId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId;
       }
 
       match /documents/{docId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && validPetDocumentDoc(request.resource.data, petId, docId);
+        allow update: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.storagePath == resource.data.storagePath &&
+          request.resource.data.name == resource.data.name &&
+          request.resource.data.size == resource.data.size &&
+          request.resource.data.contentType == resource.data.contentType &&
+          request.resource.data.ownerId == resource.data.ownerId &&
+          validPetDocumentDoc(request.resource.data, petId, docId);
+        allow delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid;
       }
 
       match /healthEvents/{eventId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId;
       }
 
       match /agendaEvents/{eventId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId;
       }
 
       match /agendaSeries/{seriesId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId;
       }
 
       match /gpsPoints/{pointId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isSignedIn() && isOwner(petId);
+      }
+
+      match /gpsDevices/{deviceId} {
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId && request.resource.data.createdAt == resource.data.createdAt;
       }
 
       match /expenses/{expenseId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.seriesId == resource.data.seriesId;
+        allow delete: if isSignedIn() && isOwner(petId);
       }
 
       match /expenseSeries/{seriesId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
-      }
-
-      match /notifications/{notificationId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId;
       }
 
       match /healthScores/{scoreId} {
@@ -115,15 +672,20 @@ service cloud.firestore {
 
       match /bookings/{bookingId} {
         allow read: if isSignedIn() && isOwner(petId);
-        allow create, update, delete: if false;
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.userId == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.userId == request.auth.uid && resource.data.petId == petId && request.resource.data.userId == resource.data.userId && request.resource.data.petId == resource.data.petId;
       }
 
       match /medications/{medId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId;
       }
 
       match /vaccines/{vaxId} {
-        allow read, write: if isSignedIn() && isOwner(petId);
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.petId == petId;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource != null && resource.data.createdBy == request.auth.uid && resource.data.petId == petId && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.petId == resource.data.petId;
       }
 
       match /conversations/{conversationId} {
@@ -137,52 +699,88 @@ service cloud.firestore {
       match /ai_jobs/{jobId} {
         allow read, write: if isSignedIn() && isOwner(petId);
       }
+
+      match /aiSaves/{saveId} {
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.petId == petId && request.resource.data.createdBy == request.auth.uid;
+        allow update, delete: if isSignedIn() && isOwner(petId) && resource.data.createdBy == request.auth.uid && request.resource.data.createdBy == resource.data.createdBy;
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if isSignedIn() && isOwner(petId);
+        allow create: if isSignedIn() && isOwner(petId) && request.resource.data.createdBy == request.auth.uid && request.resource.data.keys().hasAny(["petId"]) && request.resource.data.petId == petId && request.resource.data.read == false;
+        allow update: if isSignedIn() && isOwner(petId) && resource.data.read == false && request.resource.data.read == true && request.resource.data.keys().hasAny(["petId"]) && request.resource.data.petId == resource.data.petId;
+        allow delete: if false;
+      }
     }
 
     match /posts/{postId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid && !isBanned(request.auth.uid);
-      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+      allow create: if isSignedIn() && !isBanned(request.auth.uid) && validPostDoc(request.resource.data) &&
+        request.resource.data.authorId == request.auth.uid &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.likeCount == 0 &&
+        request.resource.data.reportCount == 0 &&
+        request.resource.data.createdAt <= request.time.toMillis() + 5 * 60 * 1000;
+      allow delete: if isSignedIn() && (resource.data.authorId == request.auth.uid || isModerator());
       allow update: if isSignedIn() && (
-        resource.data.authorId == request.auth.uid ||
-        isModerator() ||
         (
+          isModerator() &&
+          validPostDoc(request.resource.data) &&
           request.resource.data.authorId == resource.data.authorId &&
           request.resource.data.createdAt == resource.data.createdAt &&
-          request.resource.data.text == resource.data.text &&
-          request.resource.data.petTag == resource.data.petTag &&
           request.resource.data.likeCount == resource.data.likeCount &&
-          request.resource.data.status == resource.data.status &&
-          request.resource.data.reportCount == intOrZero(resource.data.reportCount) + 1 &&
-          exists(/databases/$(database)/documents/posts/$(postId)/reports/$(request.auth.uid))
+          request.resource.data.reportCount == resource.data.reportCount &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status'])
         )
       );
 
       match /comments/{commentId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid && !isBanned(request.auth.uid);
-        allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+        allow create: if isSignedIn() && !isBanned(request.auth.uid) && validCommentDoc(request.resource.data, postId) &&
+          request.resource.data.authorId == request.auth.uid &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.reportCount == 0 &&
+          request.resource.data.createdAt <= request.time.toMillis() + 5 * 60 * 1000;
+        allow delete: if isSignedIn() && (resource.data.authorId == request.auth.uid || isModerator());
         allow update: if isSignedIn() && (
-          (isModerator() && request.resource.data.authorId == resource.data.authorId) ||
           (
+            isModerator() &&
+            validCommentDoc(request.resource.data, postId) &&
             request.resource.data.authorId == resource.data.authorId &&
             request.resource.data.createdAt == resource.data.createdAt &&
-            request.resource.data.text == resource.data.text &&
-            request.resource.data.status == resource.data.status &&
-            request.resource.data.reportCount == intOrZero(resource.data.reportCount) + 1 &&
-            exists(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId)/reports/$(request.auth.uid))
+            request.resource.data.reportCount == resource.data.reportCount &&
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['status'])
           )
         );
 
         match /reports/{reportId} {
-          allow create: if isSignedIn() && reportId == request.auth.uid;
+          allow create: if isSignedIn() && reportId == request.auth.uid &&
+            request.resource.data.keys().hasOnly(['reporterId','reason','createdAt']) &&
+            request.resource.data.reporterId == request.auth.uid &&
+            request.resource.data.createdAt is int &&
+            (!('reason' in request.resource.data) || request.resource.data.reason == null || (request.resource.data.reason is string && request.resource.data.reason.size() <= 500));
           allow read: if isSignedIn() && isModerator();
           allow update, delete: if false;
         }
       }
 
+      match /likes/{likeId} {
+        allow read: if false;
+        allow create: if isSignedIn() && likeId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['uid','createdAt']) &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.createdAt is int;
+        allow delete: if isSignedIn() && likeId == request.auth.uid;
+        allow update: if false;
+      }
+
       match /reports/{reportId} {
-        allow create: if isSignedIn() && reportId == request.auth.uid;
+        allow create: if isSignedIn() && reportId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['reporterId','reason','createdAt']) &&
+          request.resource.data.reporterId == request.auth.uid &&
+          request.resource.data.createdAt is int &&
+          (!('reason' in request.resource.data) || request.resource.data.reason == null || (request.resource.data.reason is string && request.resource.data.reason.size() <= 500));
         allow read: if isSignedIn() && isModerator();
         allow update, delete: if false;
       }
@@ -190,22 +788,47 @@ service cloud.firestore {
 
     match /listings/{listingId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
-      allow update: if isSignedIn() && resource.data.sellerId == request.auth.uid && request.resource.data.sellerId == resource.data.sellerId;
-      allow delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow create: if isSignedIn() && validListingDoc(request.resource.data) &&
+        request.resource.data.sellerId == request.auth.uid &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.createdAt <= request.time.toMillis() + 5 * 60 * 1000;
+      allow update: if isSignedIn() && (
+        (isModerator() && validListingDoc(request.resource.data) && request.resource.data.sellerId == resource.data.sellerId && request.resource.data.createdAt == resource.data.createdAt) ||
+        (resource.data.sellerId == request.auth.uid && validListingDoc(request.resource.data) && request.resource.data.sellerId == resource.data.sellerId && request.resource.data.createdAt == resource.data.createdAt)
+      );
+      allow delete: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isModerator());
     }
 
     match /providers/{providerId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
+      allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isModerator());
+    }
+
+    match /adoptions/{adoptionId} {
+      allow read: if isSignedIn() && (resource.data.status != 'hidden' || isModerator() || resource.data.createdBy == request.auth.uid);
+      allow create: if isSignedIn() && !isBanned(request.auth.uid) && validAdoptionCreate();
+      allow delete: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isModerator());
+      allow update: if isSignedIn() && (isModerator() || validAdoptionOwnerUpdate());
+
+      match /reports/{reportId} {
+        allow create: if isSignedIn() &&
+          reportId == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['reporterId','reason','createdAt']) &&
+          request.resource.data.reporterId == request.auth.uid &&
+          request.resource.data.createdAt is int &&
+          (!('reason' in request.resource.data) || request.resource.data.reason == null || (request.resource.data.reason is string && request.resource.data.reason.size() <= 500));
+        allow read: if isSignedIn() && isModerator();
+        allow update, delete: if false;
+      }
     }
 
     match /recordShares/{shareId} {
       allow get: if resource.data.expiresAt > request.time.toMillis();
       allow list: if false;
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if validRecordShareCreate();
+      allow update: if validRecordShareUpdate();
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
     }
 
     match /groups/{groupId} {
@@ -220,26 +843,44 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && isGroupMember(groupId) && request.resource.data.authorId == request.auth.uid && !isBanned(request.auth.uid);
+        allow create: if isSignedIn() && isGroupMember(groupId) && !isBanned(request.auth.uid) && validGroupMessageDoc(request.resource.data, groupId) &&
+          request.resource.data.authorId == request.auth.uid &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.reportCount == 0 &&
+          request.resource.data.createdAt <= request.time.toMillis() + 5 * 60 * 1000;
         allow update: if isSignedIn() && (
-          (isModerator() && request.resource.data.authorId == resource.data.authorId) ||
           (
+            isModerator() &&
+            validGroupMessageDoc(request.resource.data, groupId) &&
             request.resource.data.authorId == resource.data.authorId &&
             request.resource.data.createdAt == resource.data.createdAt &&
+            request.resource.data.reportCount == resource.data.reportCount &&
             request.resource.data.text == resource.data.text &&
-            request.resource.data.status == resource.data.status &&
-            request.resource.data.reportCount == intOrZero(resource.data.reportCount) + 1 &&
-            exists(/databases/$(database)/documents/groups/$(groupId)/messages/$(messageId)/reports/$(request.auth.uid))
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['status'])
           )
         );
         allow delete: if false;
 
         match /reports/{reportId} {
-          allow create: if isSignedIn() && reportId == request.auth.uid;
+          allow create: if isSignedIn() && reportId == request.auth.uid &&
+            request.resource.data.keys().hasOnly(['reporterId','reason','createdAt']) &&
+            request.resource.data.reporterId == request.auth.uid &&
+            request.resource.data.createdAt is int &&
+            (!('reason' in request.resource.data) || request.resource.data.reason == null || (request.resource.data.reason is string && request.resource.data.reason.size() <= 500));
           allow read: if isSignedIn() && isModerator();
           allow update, delete: if false;
         }
       }
+    }
+
+    match /walkPresence/{petId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isOwner(petId) && request.resource.data.petId == petId && request.resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isOwner(petId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

@@ -3,7 +3,15 @@ import { getFirebase } from "@/lib/firebase";
 import type { PetVaccine } from "@/types";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import { createAgendaEvent } from "@/data/agenda";
+import { markOnboardingStep } from "@/lib/onboardingV2";
+
+function requireUid() {
+  const uid = getFirebase().auth.currentUser?.uid;
+  if (!uid) throw new Error("Devi effettuare l'accesso");
+  return uid;
+}
 
 function vaxCol(petId: string) {
   const { db } = getFirebase();
@@ -23,7 +31,7 @@ async function createOrUpdateAgenda(petId: string, createdBy: string, name: stri
   const reminderMinutesBefore = Math.max(0, reminderDaysBefore) * 24 * 60;
   await createAgendaEvent(petId, {
     petId,
-    title: `Vaccine: ${name}`,
+    title: `Vaccino: ${name}`,
     dueAt: nextDueAt,
     kind: "vet",
     reminderMinutesBefore,
@@ -40,15 +48,24 @@ export function subscribeVaccines(petId: string, onData: (items: PetVaccine[]) =
     });
   }
   const q = query(vaxCol(petId), orderBy("nextDueAt", "asc"));
-  return onSnapshot(q, (snap) => {
-    const items: PetVaccine[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetVaccine, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: PetVaccine[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetVaccine, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "vaccini");
+      onData([]);
+    }
+  );
 }
 
 export async function createVaccine(petId: string, input: Omit<PetVaccine, "id" | "nextDueAt" | "updatedAt"> & { lastAt?: number | null }) {
+  const uid = shouldUseDemoData() ? null : requireUid();
   const now = Date.now();
   const nextDueAt = computeNextDue(input.lastAt ?? null, input.intervalDays);
+  if (uid && input.createdBy !== uid) throw new Error("createdBy non valido");
   const payload: Omit<PetVaccine, "id"> = {
     petId,
     name: input.name,
@@ -58,7 +75,7 @@ export async function createVaccine(petId: string, input: Omit<PetVaccine, "id" 
     reminderDaysBefore: input.reminderDaysBefore,
     notes: input.notes,
     createdAt: now,
-    createdBy: input.createdBy,
+    createdBy: input.createdBy || uid || "",
     updatedAt: now,
   };
 
@@ -67,11 +84,13 @@ export async function createVaccine(petId: string, input: Omit<PetVaccine, "id" 
     const next: PetVaccine = { id, ...payload };
     demoUpdate<PetVaccine[]>(demoKey(petId), [], (prev) => [next, ...prev]);
     await createOrUpdateAgenda(petId, payload.createdBy, payload.name, payload.nextDueAt, payload.reminderDaysBefore);
+    markOnboardingStep("docOrVaccineAdded");
     return id;
   }
 
   const ref = await addDoc(vaxCol(petId), payload);
   await createOrUpdateAgenda(petId, payload.createdBy, payload.name, payload.nextDueAt, payload.reminderDaysBefore);
+  markOnboardingStep("docOrVaccineAdded");
   return ref.id;
 }
 

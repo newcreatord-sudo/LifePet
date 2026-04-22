@@ -56,6 +56,7 @@ export default function Training() {
   const [aiText, setAiText] = useState<string | null>(null);
   const [citations, setCitations] = useState<AiCitation[]>([]);
   const [creatingTask, setCreatingTask] = useState(false);
+  const [creatingFirstSession, setCreatingFirstSession] = useState(false);
   const [creatingPlan, setCreatingPlan] = useState(false);
   const [planTime, setPlanTime] = useState("18:00");
   const [aiAllowed, setAiAllowed] = useState(true);
@@ -86,10 +87,10 @@ export default function Training() {
   }, [user]);
 
   useEffect(() => {
-    if (!activePetId) return;
-    const unsub = subscribeTasks(activePetId, setTasks);
+    if (!activePetId || !user) return;
+    const unsub = subscribeTasks(activePetId, user.uid, setTasks);
     return () => unsub();
-  }, [activePetId]);
+  }, [activePetId, user]);
 
   useEffect(() => {
     if (!activePetId) return;
@@ -147,7 +148,7 @@ export default function Training() {
     setCitations([]);
     try {
       const prompt = [
-        "Sei un coach comportamentale per LifePet.",
+        "Sei un coach comportamentale per PetLyon.",
         "Restituisci testo semplice con: 1) Possibili cause, 2) Piano step-by-step, 3) Routine giornaliera, 4) Note di sicurezza.",
         "Evita affermazioni mediche e consiglia il veterinario quando la salute potrebbe essere coinvolta.",
         `Specie: ${pet?.species ?? "sconosciuta"}`,
@@ -190,6 +191,28 @@ export default function Training() {
     }
   }
 
+  async function createFirstSession() {
+    if (!user || !activePetId) return;
+    if (creatingFirstSession) return;
+    setCreatingFirstSession(true);
+    try {
+      await createTask(activePetId, {
+        petId: activePetId,
+        title: "Training: Sessione 1",
+        dueAt: Date.now() + 2 * 60 * 60 * 1000,
+        status: "due",
+        createdAt: Date.now(),
+        createdBy: user.uid,
+        source: { kind: "manual" },
+      });
+      pushToast({ type: "success", title: "Training", message: "Sessione creata nel planner." });
+    } catch (err) {
+      pushToast({ type: "error", title: "Training", message: err instanceof Error ? err.message : "Creazione fallita" });
+    } finally {
+      setCreatingFirstSession(false);
+    }
+  }
+
   async function addTrainingPlan() {
     if (!user || !activePetId) return;
     const t = issue.trim() || "sessione";
@@ -227,10 +250,19 @@ export default function Training() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Training" description="Guide, strumenti e suggerimenti AI per comportamento e apprendimento." />
+      <PageHeader
+        title="Training"
+        description="Guide, strumenti e suggerimenti AI per comportamento e apprendimento."
+        imagePrompt="minimal clean illustration, dog training whistle and checklist card, airy background, accent color, premium, no text, no watermark"
+        imageAlt="Training"
+      />
 
       {!activePetId ? (
-        <EmptyState title="Seleziona un pet" description="Scegli un profilo per iniziare un percorso di training." />
+        <EmptyState
+          title="Seleziona un pet"
+          description="Scegli un profilo per iniziare un percorso di training."
+          action={<Link to="/app/pets" className="lp-btn-primary">Apri profilo pet</Link>}
+        />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <Card className="lg:col-span-5">
@@ -243,11 +275,11 @@ export default function Training() {
               {guides[bucket].map((g) => (
                 <div key={g.title} className="lp-panel px-3 py-2">
                   <div className="text-sm font-medium">{g.title}</div>
-                  <div className="text-xs text-slate-600 mt-1">{g.bullets.join(" · ")}</div>
+                  <div className="text-xs lp-muted mt-1">{g.bullets.join(" · ")}</div>
                 </div>
               ))}
             </div>
-            <div className="text-xs text-slate-600">Per aggressività o casi complessi, consulta un educatore o un veterinario comportamentalista.</div>
+            <div className="text-xs lp-muted">Per aggressività o casi complessi, consulta un educatore o un veterinario comportamentalista.</div>
             </CardContent>
           </Card>
 
@@ -264,10 +296,16 @@ export default function Training() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-            {!aiAllowed ? <EmptyState title="AI disattivata" description="Riattivala in Impostazioni → Preferenze per usare Training AI." /> : null}
+            {!aiAllowed ? (
+              <EmptyState
+                title="AI disattivata"
+                description="Riattivala in Impostazioni → Preferenze per usare Training AI."
+                action={<Link to="/app/settings" className="lp-btn-secondary">Apri Impostazioni</Link>}
+              />
+            ) : null}
 
             <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Problema</div>
+              <div className="text-xs lp-muted mb-1">Problema</div>
               <input
                 value={issue}
                 onChange={(e) => setIssue(e.target.value)}
@@ -282,7 +320,7 @@ export default function Training() {
                   key={x}
                   type="button"
                   onClick={() => setIssue(x)}
-                  className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs text-slate-700 hover:bg-white"
+                  className="lp-chip"
                 >
                   {x}
                 </button>
@@ -290,7 +328,7 @@ export default function Training() {
             </div>
 
             <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Contesto (opzionale)</div>
+              <div className="text-xs lp-muted mb-1">Contesto (opzionale)</div>
               <textarea
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
@@ -320,7 +358,7 @@ export default function Training() {
 
             <div className="flex flex-col sm:flex-row gap-2 items-end">
               <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Orario piano 7 giorni</div>
+                <div className="text-xs lp-muted mb-1">Orario piano 7 giorni</div>
                 <input value={planTime} onChange={(e) => setPlanTime(e.target.value)} type="time" className="lp-input" />
               </label>
               <button onClick={addTrainingPlan} disabled={creatingPlan || !user} className="lp-btn-secondary disabled:opacity-60" type="button">
@@ -332,39 +370,52 @@ export default function Training() {
               {aiText ?? "Descrivi un problema e chiedi un piano step-by-step."}
             </div>
 
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
+            <div className="lp-panel p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-semibold">Progress</div>
-                  <div className="text-xs text-slate-600">Basato sui task Training nel planner.</div>
+                  <div className="text-xs lp-muted">Basato sui task Training nel planner.</div>
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="lp-panel p-3">
-                  <div className="text-xs text-slate-600">Completati (7g)</div>
+                  <div className="text-xs lp-muted">Completati (7g)</div>
                   <div className="text-sm font-semibold">{trainingProgress.done7d}</div>
                 </div>
                 <div className="lp-panel p-3">
-                  <div className="text-xs text-slate-600">Streak (giorni)</div>
+                  <div className="text-xs lp-muted">Streak (giorni)</div>
                   <div className="text-sm font-semibold">{trainingProgress.streak}</div>
                 </div>
                 <div className="lp-panel p-3">
-                  <div className="text-xs text-slate-600">In arrivo (7g)</div>
+                  <div className="text-xs lp-muted">In programma (7g)</div>
                   <div className="text-sm font-semibold">{trainingProgress.due7d}</div>
                 </div>
               </div>
 
               <div className="mt-3">
-                <div className="text-xs text-slate-600 mb-2">Prossime sessioni</div>
+                <div className="text-xs lp-muted mb-2">Prossime sessioni</div>
                 {trainingProgress.upcoming.length === 0 ? (
-                  <div className="text-sm text-slate-600">Nessuna sessione in lista.</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm lp-muted">Nessuna sessione in lista.</div>
+                    {user ? (
+                      <button
+                        type="button"
+                        className="lp-btn-secondary"
+                        onClick={() => void createFirstSession()}
+                        disabled={creatingFirstSession}
+                      >
+                        {creatingFirstSession ? "Creo…" : "Crea prima sessione"}
+                      </button>
+                    ) : null}
+                    <Link to="/app/planner" className="lp-btn-secondary">Apri Planner</Link>
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     {trainingProgress.upcoming.map((t) => (
-                      <div key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white px-3 py-2">
+                      <div key={t.id} className="flex items-center justify-between gap-3 lp-panel px-3 py-2">
                         <div>
                           <div className="text-sm font-medium">{t.title.replace(/^Training:\s*/, "")}</div>
-                          <div className="text-xs text-slate-600">{t.dueAt ? new Date(t.dueAt).toLocaleString() : "Senza scadenza"}</div>
+                          <div className="text-xs lp-muted">{t.dueAt ? new Date(t.dueAt).toLocaleString() : "Senza scadenza"}</div>
                         </div>
                         <button
                           type="button"
@@ -385,10 +436,10 @@ export default function Training() {
             </div>
 
             {citations.length ? (
-              <div className="text-xs text-slate-600">Citazioni: {citations.map((c) => `${c.kind}:${c.type ?? c.id}`).join(" · ")}</div>
+              <div className="text-xs lp-muted">Citazioni: {citations.map((c) => `${c.kind}:${c.type ?? c.id}`).join(" · ")}</div>
             ) : null}
 
-            <div className="text-xs text-slate-600">Suggerimenti informativi: non sostituiscono un professionista.</div>
+            <div className="text-xs lp-muted">Suggerimenti informativi: non sostituiscono un professionista.</div>
             </CardContent>
           </Card>
         </div>

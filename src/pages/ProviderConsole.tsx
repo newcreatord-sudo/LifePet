@@ -4,10 +4,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useAuthStore } from "@/stores/authStore";
+import { Alert } from "@/components/ui/Alert";
 import { subscribeUserProfile, updateUserPreferences } from "@/data/users";
 import { seedDefaultProviders, subscribeProviders } from "@/data/providers";
 import { getProviderBookings, providerSetBookingStatus } from "@/data/providerConsole";
 import type { Booking, BookingStatus, Provider } from "@/types";
+import { useToastStore } from "@/stores/toastStore";
 
 function statusLabel(s: BookingStatus) {
   if (s === "requested") return "Richiesta";
@@ -19,6 +21,7 @@ function statusLabel(s: BookingStatus) {
 
 export default function ProviderConsole() {
   const user = useAuthStore((s) => s.user);
+  const pushToast = useToastStore((s) => s.push);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [providerId, setProviderId] = useState<string>("");
 
@@ -26,6 +29,8 @@ export default function ProviderConsole() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"todo" | "all">("todo");
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
 
   useEffect(() => {
     seedDefaultProviders();
@@ -52,11 +57,35 @@ export default function ProviderConsole() {
       const list = await getProviderBookings(providerId);
       setItems(list);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore caricamento");
+      const msg = e instanceof Error ? e.message : "Errore caricamento";
+      setError(msg);
+      pushToast({ type: "error", title: "Console", message: msg });
     } finally {
       setLoading(false);
     }
-  }, [providerId]);
+  }, [providerId, pushToast]);
+
+  const setStatus = useCallback(
+    async (b: Booking, status: BookingStatus) => {
+      if (!providerId) return;
+      if (busyBookingId) return;
+      setBusyBookingId(b.id);
+      try {
+        await providerSetBookingStatus(providerId, b.petId, b.id, status);
+        pushToast({
+          type: "success",
+          title: "Prenotazione",
+          message: status === "confirmed" ? "Confermata." : status === "completed" ? "Completata." : status === "cancelled" ? "Annullata." : "Aggiornata.",
+        });
+        await reload();
+      } catch (e) {
+        pushToast({ type: "error", title: "Prenotazione", message: e instanceof Error ? e.message : "Aggiornamento fallito" });
+      } finally {
+        setBusyBookingId(null);
+      }
+    },
+    [busyBookingId, providerId, pushToast, reload]
+  );
 
   useEffect(() => {
     if (!providerId) return;
@@ -80,6 +109,8 @@ export default function ProviderConsole() {
       <PageHeader
         title="Console professionista"
         description="Gestisci richieste, conferme e completamenti (anti no‑show)."
+        imagePrompt="minimal clean illustration, provider console dashboard cards and calendar, airy background, accent color, premium, no text, no watermark"
+        imageAlt="Console professionista"
         actions={
           <button onClick={() => void reload()} className="lp-btn-secondary inline-flex items-center gap-2" disabled={!providerId || loading}>
             <RefreshCw className="w-4 h-4" />
@@ -105,8 +136,18 @@ export default function ProviderConsole() {
                   onChange={async (e) => {
                     const next = e.target.value;
                     setProviderId(next);
-                    if (!user.isDemo) await updateUserPreferences(user.uid, { providerConsoleProviderId: next });
+                    if (user.isDemo) return;
+                    setSavingPrefs(true);
+                    try {
+                      await updateUserPreferences(user.uid, { providerConsoleProviderId: next });
+                      pushToast({ type: "success", title: "Console", message: "Preferenza salvata." });
+                    } catch (err) {
+                      pushToast({ type: "error", title: "Console", message: err instanceof Error ? err.message : "Salvataggio fallito" });
+                    } finally {
+                      setSavingPrefs(false);
+                    }
                   }}
+                  disabled={savingPrefs}
                   className="lp-select"
                 >
                   <option value="">Seleziona…</option>
@@ -131,7 +172,7 @@ export default function ProviderConsole() {
                 {selectedProvider?.phone ? <div className="text-xs text-slate-600">{selectedProvider.phone}</div> : null}
               </div>
             </div>
-            {error ? <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-900">{error}</div> : null}
+            {error ? <div className="mt-3"><Alert variant="danger" title="Errore">{error}</Alert></div> : null}
             <div className="mt-2 text-xs text-slate-600">Nota: questa console è legata al provider selezionato (Impostazioni utente).</div>
           </CardContent>
         </Card>
@@ -156,7 +197,7 @@ export default function ProviderConsole() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium flex items-center gap-2">
-                        <CalendarCheck className="w-4 h-4 text-sky-700" />
+                        <CalendarCheck className="w-4 h-4 lp-icon-primary" />
                         {new Date(b.scheduledAt).toLocaleString()}
                       </div>
                       <div className="text-xs text-slate-600 mt-0.5">Pet: {b.petId}</div>
@@ -168,10 +209,9 @@ export default function ProviderConsole() {
                       {b.status === "requested" ? (
                         <button
                           className="lp-btn-primary"
-                          onClick={async () => {
-                            await providerSetBookingStatus(providerId, b.petId, b.id, "confirmed");
-                            await reload();
-                          }}
+                          type="button"
+                          onClick={() => void setStatus(b, "confirmed")}
+                          disabled={busyBookingId === b.id}
                         >
                           Conferma
                         </button>
@@ -179,10 +219,9 @@ export default function ProviderConsole() {
                       {b.status === "confirmed" ? (
                         <button
                           className="lp-btn-secondary"
-                          onClick={async () => {
-                            await providerSetBookingStatus(providerId, b.petId, b.id, "completed");
-                            await reload();
-                          }}
+                          type="button"
+                          onClick={() => void setStatus(b, "completed")}
+                          disabled={busyBookingId === b.id}
                         >
                           Completata
                         </button>
@@ -190,10 +229,9 @@ export default function ProviderConsole() {
                       {(b.status === "requested" || b.status === "confirmed") && (
                         <button
                           className="lp-btn-secondary"
-                          onClick={async () => {
-                            await providerSetBookingStatus(providerId, b.petId, b.id, "cancelled");
-                            await reload();
-                          }}
+                          type="button"
+                          onClick={() => void setStatus(b, "cancelled")}
+                          disabled={busyBookingId === b.id}
                         >
                           Annulla
                         </button>

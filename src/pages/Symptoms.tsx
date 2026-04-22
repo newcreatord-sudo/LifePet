@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { useToastStore } from "@/stores/toastStore";
@@ -8,6 +8,7 @@ import { aiChat } from "@/data/ai";
 import { createHealthEvent } from "@/data/health";
 import { aiUserMessage } from "@/lib/aiErrors";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Alert } from "@/components/ui/Alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { subscribeUserProfile } from "@/data/users";
@@ -82,7 +83,7 @@ export default function Symptoms() {
       };
 
       const prompt = [
-        "Sei LifePet AI. Risposta informativa, non sostituisce il veterinario.",
+        "Sei PetLyon AI. Risposta informativa, non sostituisce il veterinario.",
         "Dato il report dei sintomi, fornisci una risposta prudente in stile triage.",
         "Restituisci testo semplice con:",
         "1) Segnali di allarme (quando andare in pronto soccorso veterinario)",
@@ -179,31 +180,31 @@ export default function Symptoms() {
             </CardHeader>
             <CardContent className="space-y-3">
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Sintomi</div>
+              <div className="text-xs text-slate-600 mb-1">Sintomi</div>
               <textarea
                 value={symptoms}
                 onChange={(e) => setSymptoms(e.target.value)}
                 rows={4}
                 placeholder="Descrivi sintomi (cosa, da quando, frequenza)."
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-textarea"
               />
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Durata (ore)</div>
+                <div className="text-xs text-slate-600 mb-1">Durata (ore)</div>
                 <input
                   value={durationHours}
                   onChange={(e) => setDurationHours(e.target.value)}
                   inputMode="numeric"
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-input"
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Gravità</div>
+                <div className="text-xs text-slate-600 mb-1">Gravità</div>
                 <select
                   value={severity}
                   onChange={(e) => setSeverity(e.target.value as Severity)}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-select"
                 >
                   <option value="low">Bassa</option>
                   <option value="medium">Media</option>
@@ -211,11 +212,11 @@ export default function Symptoms() {
                 </select>
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Appetito</div>
+                <div className="text-xs text-slate-600 mb-1">Appetito</div>
                 <select
                   value={appetite}
                   onChange={(e) => setAppetite(e.target.value as Intake)}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-select"
                 >
                   <option value="normal">Normale</option>
                   <option value="reduced">Ridotto</option>
@@ -223,11 +224,11 @@ export default function Symptoms() {
                 </select>
               </label>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Assunzione acqua</div>
+                <div className="text-xs text-slate-600 mb-1">Assunzione acqua</div>
                 <select
                   value={waterIntake}
                   onChange={(e) => setWaterIntake(e.target.value as Intake)}
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-select"
                 >
                   <option value="normal">Normale</option>
                   <option value="reduced">Ridotta</option>
@@ -236,48 +237,42 @@ export default function Symptoms() {
               </label>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-center gap-2 text-sm text-slate-200">
+              <label className="flex items-center gap-2 text-sm text-slate-800">
                 <input type="checkbox" checked={vomiting} onChange={(e) => setVomiting(e.target.checked)} />
                 Vomito
               </label>
-              <label className="flex items-center gap-2 text-sm text-slate-200">
+              <label className="flex items-center gap-2 text-sm text-slate-800">
                 <input type="checkbox" checked={diarrhea} onChange={(e) => setDiarrhea(e.target.checked)} />
                 Diarrea
               </label>
-              <label className="flex items-center gap-2 text-sm text-slate-200">
+              <label className="flex items-center gap-2 text-sm text-slate-800">
                 <input type="checkbox" checked={breathing} onChange={(e) => setBreathing(e.target.checked)} />
                 Problemi respiratori
               </label>
-              <label className="flex items-center gap-2 text-sm text-slate-200">
+              <label className="flex items-center gap-2 text-sm text-slate-800">
                 <input type="checkbox" checked={bleeding} onChange={(e) => setBleeding(e.target.checked)} />
                 Sanguinamento
               </label>
             </div>
             {redFlag ? (
-              <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 mt-0.5" />
-                <div>
-                  <div className="font-medium">Possibile urgenza</div>
-                  <div className="text-xs text-rose-100/80 mt-1">
-                    Se ci sono difficoltà respiratoria, collasso, convulsioni, sanguinamento importante o disidratazione severa: pronto soccorso veterinario.
-                  </div>
-                </div>
-              </div>
+              <Alert variant="danger" title="Possibile urgenza">
+                Se ci sono difficoltà respiratoria, collasso, convulsioni, sanguinamento importante o disidratazione severa: pronto soccorso veterinario.
+              </Alert>
             ) : null}
             <label className="block">
-              <div className="text-xs text-slate-400 mb-1">Note (opzionale)</div>
+              <div className="text-xs text-slate-600 mb-1">Note (opzionale)</div>
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Temperatura, farmaci, trigger, cambi recenti…"
-                className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                className="lp-input"
               />
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 onClick={onAskAi}
                 disabled={loading || !symptoms.trim()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-300/90 text-slate-950 px-4 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+                className="lp-btn-primary inline-flex items-center justify-center gap-2"
               >
                 <Sparkles className="w-4 h-4" />
                 {loading ? "…" : "Chiedi all’AI"}
@@ -285,12 +280,12 @@ export default function Symptoms() {
               <button
                 onClick={onSaveHealthEvent}
                 disabled={!user || saved || !symptoms.trim()}
-                className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
+                className="lp-btn-secondary"
               >
                 Salva in Salute
               </button>
             </div>
-            {saved ? <div className="text-xs text-emerald-200">Salvato in Salute → Sintomi.</div> : null}
+            {saved ? <div className="text-xs" style={{ color: "rgb(var(--lp-accent-2))" }}>Salvato in Salute → Sintomi.</div> : null}
             </CardContent>
           </Card>
 
@@ -300,7 +295,7 @@ export default function Symptoms() {
               <CardDescription>Interpretazione prudente e step pratici.</CardDescription>
             </CardHeader>
             <CardContent>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm whitespace-pre-wrap min-h-72">
+            <div className="lp-panel p-3 text-sm whitespace-pre-wrap min-h-72 text-slate-800">
               {answer ?? "Inserisci i sintomi e premi “Chiedi all’AI”."}
             </div>
             <div className="mt-3 text-xs text-slate-500">

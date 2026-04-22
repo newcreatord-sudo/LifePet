@@ -5,7 +5,6 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
   query,
   type UpdateData,
   updateDoc,
@@ -15,9 +14,14 @@ import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoRead, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import type { Pet } from "@/types";
 
 export function subscribeMyPets(userId: string, onData: (pets: Pet[]) => void) {
+  if (!userId) {
+    onData([]);
+    return () => {};
+  }
   if (shouldUseDemoData()) {
     return demoSubscribe<Pet[]>("lifepet:demo:pets", [], (all) => {
       const pets = all
@@ -29,11 +33,20 @@ export function subscribeMyPets(userId: string, onData: (pets: Pet[]) => void) {
   }
   const { db } = getFirebase();
   const petsCol = collection(db, "pets");
-  const q = query(petsCol, where("ownerId", "==", userId), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    const pets: Pet[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Pet, "id">) }));
-    onData(pets);
-  });
+  const q = query(petsCol, where("ownerId", "==", userId));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const pets: Pet[] = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<Pet, "id">) }))
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+      onData(pets);
+    },
+    (err) => {
+      reportFirestoreError(err, "pets");
+      onData([]);
+    }
+  );
 }
 
 export async function createPet(input: Omit<Pet, "id">) {

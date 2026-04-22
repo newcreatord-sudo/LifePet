@@ -32,27 +32,33 @@ export function TutorialOverlay() {
       <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-sm" onClick={close} />
 
       <div className="absolute inset-x-0 bottom-0 sm:inset-0 sm:flex sm:items-center sm:justify-center p-4">
-        <div className="w-full max-w-xl rounded-2xl border border-slate-200/70 bg-white/90 shadow-xl">
+        <div className="w-full max-w-xl rounded-2xl shadow-xl" style={{ backgroundColor: "rgba(var(--lp-surface),0.90)", border: "1px solid rgba(var(--lp-ink),0.10)" }}>
           <div className="p-4 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-sky-600/10 border border-sky-600/20 flex items-center justify-center">
-                  <CircleHelp className="w-4 h-4 text-sky-700" />
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center lp-primary-soft">
+                  <CircleHelp className="w-4 h-4 lp-icon-primary" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-900 truncate">{section?.title ?? "Tutorial"}</div>
-                  <div className="text-xs text-slate-600">
+                  <div className="text-sm font-semibold truncate" style={{ color: "rgb(var(--lp-ink))" }}>
+                    {section?.title ?? "Tutorial"}
+                  </div>
+                  <div className="text-xs" style={{ color: "rgb(var(--lp-muted))" }}>
                     Passo {stepIndex + 1} di {steps.length}
                   </div>
                 </div>
               </div>
-              <div className="mt-3 text-sm font-medium text-slate-900">{step.title}</div>
-              <div className="mt-1 text-sm text-slate-700 leading-relaxed">{step.body}</div>
+              <div className="mt-3 text-sm font-medium" style={{ color: "rgb(var(--lp-ink))" }}>
+                {step.title}
+              </div>
+              <div className="mt-1 text-sm leading-relaxed" style={{ color: "rgb(var(--lp-muted))" }}>
+                {step.body}
+              </div>
             </div>
 
             <button
               onClick={close}
-              className="shrink-0 rounded-xl border border-slate-200/70 bg-white/60 p-2 hover:bg-white"
+              className="shrink-0 lp-btn-icon p-2"
               aria-label="Chiudi tutorial"
             >
               <X className="w-4 h-4" />
@@ -68,12 +74,7 @@ export function TutorialOverlay() {
                     if (location.pathname !== s.key) navigate(s.key);
                     useTutorialStore.getState().openForRoute(s.key);
                   }}
-                  className={cn(
-                    "rounded-xl border px-3 py-2 text-xs transition-colors",
-                    s.key === routeKey
-                      ? "border-sky-600/30 bg-sky-600/10 text-sky-800"
-                      : "border-slate-200/70 bg-white/60 text-slate-700 hover:bg-white"
-                  )}
+                  className={cn(s.key === routeKey ? "lp-chip lp-chip-active" : "lp-chip")}
                 >
                   {s.title}
                 </button>
@@ -85,7 +86,7 @@ export function TutorialOverlay() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => resetProgress()}
-                className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white inline-flex items-center gap-2"
+                className="lp-btn-secondary px-3 py-2 text-xs inline-flex items-center gap-2"
               >
                 <RotateCcw className="w-4 h-4" />
                 Reset
@@ -95,7 +96,7 @@ export function TutorialOverlay() {
                   useTutorialStore.getState().setEnabled(false);
                   close();
                 }}
-                className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs hover:bg-white"
+                className="lp-btn-secondary px-3 py-2 text-xs"
               >
                 Disattiva tutorial
               </button>
@@ -105,7 +106,7 @@ export function TutorialOverlay() {
               <button
                 onClick={() => prev()}
                 disabled={!canPrev}
-                className="rounded-xl border border-slate-200/70 bg-white/60 px-3 py-2 text-sm hover:bg-white disabled:opacity-50 inline-flex items-center gap-2"
+                className="lp-btn-secondary px-3 py-2 text-sm disabled:opacity-50 inline-flex items-center gap-2"
               >
                 <ChevronLeft className="w-4 h-4" />
                 Indietro
@@ -113,7 +114,7 @@ export function TutorialOverlay() {
               {canNext ? (
                 <button
                   onClick={() => next(steps.length)}
-                  className="rounded-xl bg-sky-600 text-white px-4 py-2 text-sm font-medium hover:bg-sky-500 inline-flex items-center gap-2"
+                  className="lp-btn-primary inline-flex items-center gap-2"
                 >
                   Avanti
                   <ChevronRight className="w-4 h-4" />
@@ -124,7 +125,7 @@ export function TutorialOverlay() {
                     markRouteDone(routeKey);
                     close();
                   }}
-                  className="rounded-xl bg-sky-600 text-white px-4 py-2 text-sm font-medium hover:bg-sky-500"
+                  className="lp-btn-primary"
                 >
                   Fine
                 </button>
@@ -136,4 +137,3 @@ export function TutorialOverlay() {
     </div>
   );
 }
-

@@ -2,6 +2,7 @@ import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/f
 import { getFirebase } from "@/lib/firebase";
 import { demoSubscribe } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import type { HealthScore } from "@/types";
 
 function demoKey(petId: string) {
@@ -38,9 +39,15 @@ export function subscribeHealthScoresRange(
     orderBy("computedAt", "asc"),
     limit(limitCount)
   );
-  return onSnapshot(q, (snap) => {
-    const items: HealthScore[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<HealthScore, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: HealthScore[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<HealthScore, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "salute:punteggi");
+      onData([]);
+    }
+  );
 }
-

@@ -4,6 +4,7 @@ import { getFirebase, getFirebaseConfigError } from "@/lib/firebase";
 import { ensureDemoSeed } from "@/lib/demoSeed";
 import { isDemoModeEnabled, setDemoModeEnabled } from "@/lib/runtimeMode";
 import { ensureUserProfile } from "@/data/users";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 
 export type AuthUser = {
   uid: string;
@@ -30,7 +31,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (get().ready) return () => {};
 
     if (isDemoModeEnabled()) {
-      const demoUser: AuthUser = { uid: "demo", email: "demo@lifepet.local", isDemo: true };
+      const demoUser: AuthUser = { uid: "demo", email: "demo@petlyon.local", isDemo: true };
       ensureDemoSeed(demoUser.uid);
       set({ ready: true, user: demoUser, configError: null, demo: true });
       return () => {};
@@ -38,14 +39,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const configError = getFirebaseConfigError();
     if (configError) {
-      set({ ready: true, user: null, configError, demo: false });
+      const demoUser: AuthUser = { uid: "demo", email: "demo@petlyon.local", isDemo: true };
+      ensureDemoSeed(demoUser.uid);
+      set({ ready: true, user: demoUser, configError, demo: true });
       return () => {};
     }
     const { auth } = getFirebase();
     const unsub = onAuthStateChanged(auth, (user) =>
       {
         if (user) {
-          void ensureUserProfile(user.uid, user.email);
+          void ensureUserProfile(user.uid, user.email).catch((e) => reportFirestoreError(e, "user:profile"));
         }
         set({
           user: user ? { uid: user.uid, email: user.email } : null,
@@ -59,7 +62,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   enterDemo: () => {
     setDemoModeEnabled(true);
-    const demoUser: AuthUser = { uid: "demo", email: "demo@lifepet.local", isDemo: true };
+    const demoUser: AuthUser = { uid: "demo", email: "demo@petlyon.local", isDemo: true };
     ensureDemoSeed(demoUser.uid);
     set({ ready: true, user: demoUser, configError: null, demo: true });
   },

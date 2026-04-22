@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
@@ -15,7 +16,37 @@ import {
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import type { AgendaEvent, AgendaSeries } from "@/types";
+import { markOnboardingStep } from "@/lib/onboardingV2";
+
+function requireUid() {
+  const uid = getFirebase().auth.currentUser?.uid;
+  if (!uid) throw new Error("Devi effettuare l'accesso");
+  return uid;
+}
+
+function normalizeAgendaEventInput(petId: string, input: Omit<AgendaEvent, "id">) {
+  const uid = requireUid();
+  const next: Omit<AgendaEvent, "id"> = {
+    ...input,
+    petId,
+    createdBy: input.createdBy || uid,
+  };
+  if (next.createdBy !== uid) throw new Error("createdBy non valido");
+  return next;
+}
+
+function normalizeAgendaSeriesInput(petId: string, input: Omit<AgendaSeries, "id">) {
+  const uid = requireUid();
+  const next: Omit<AgendaSeries, "id"> = {
+    ...input,
+    petId,
+    createdBy: input.createdBy || uid,
+  };
+  if (next.createdBy !== uid) throw new Error("createdBy non valido");
+  return next;
+}
 
 function demoKey(petId: string) {
   return `lifepet:demo:pet:${petId}:agendaEvents`;
@@ -35,17 +66,25 @@ export function agendaSeriesCol(petId: string) {
   return collection(db, "pets", petId, "agendaSeries");
 }
 
-export function subscribeAgendaSeries(petId: string, onData: (items: AgendaSeries[]) => void) {
+export function subscribeAgendaSeries(petId: string, onData: (items: AgendaSeries[]) => void, onError?: (err: unknown) => void) {
   if (shouldUseDemoData()) {
     return demoSubscribe<AgendaSeries[]>(demoSeriesKey(petId), [], (all) => {
       onData(all.slice().sort((a, b) => b.createdAt - a.createdAt));
     });
   }
   const q = query(agendaSeriesCol(petId), orderBy("createdAt", "desc"), limit(200));
-  return onSnapshot(q, (snap) => {
-    const items: AgendaSeries[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AgendaSeries, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: AgendaSeries[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AgendaSeries, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "agenda:serie");
+      if (onError) onError(err);
+      else onData([]);
+    }
+  );
 }
 
 export function subscribeUpcomingAgenda(petId: string, fromMs: number, limitCount: number, onData: (events: AgendaEvent[]) => void) {
@@ -65,13 +104,26 @@ export function subscribeUpcomingAgenda(petId: string, fromMs: number, limitCoun
     orderBy("dueAt", "asc"),
     limit(limitCount)
   );
-  return onSnapshot(q, (snap) => {
-    const events: AgendaEvent[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AgendaEvent, "id">) }));
-    onData(events);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const events: AgendaEvent[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AgendaEvent, "id">) }));
+      onData(events);
+    },
+    (err) => {
+      reportFirestoreError(err, "agenda:upcoming");
+      onData([]);
+    }
+  );
 }
 
-export function subscribeAgendaRange(petId: string, fromMs: number, toMs: number, onData: (events: AgendaEvent[]) => void) {
+export function subscribeAgendaRange(
+  petId: string,
+  fromMs: number,
+  toMs: number,
+  onData: (events: AgendaEvent[]) => void,
+  onError?: (err: unknown) => void
+) {
   if (shouldUseDemoData()) {
     return demoSubscribe<AgendaEvent[]>(demoKey(petId), [], (all) => {
       const events = all
@@ -87,10 +139,18 @@ export function subscribeAgendaRange(petId: string, fromMs: number, toMs: number
     where("dueAt", "<=", toMs),
     orderBy("dueAt", "asc")
   );
-  return onSnapshot(q, (snap) => {
-    const events: AgendaEvent[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AgendaEvent, "id">) }));
-    onData(events);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const events: AgendaEvent[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AgendaEvent, "id">) }));
+      onData(events);
+    },
+    (err) => {
+      reportFirestoreError(err, "agenda:range");
+      if (onError) onError(err);
+      else onData([]);
+    }
+  );
 }
 
 export async function createAgendaEvent(petId: string, input: Omit<AgendaEvent, "id">) {
@@ -98,9 +158,11 @@ export async function createAgendaEvent(petId: string, input: Omit<AgendaEvent, 
     const id = demoId();
     const next = { id, ...(input as Omit<AgendaEvent, "id">) } as AgendaEvent;
     demoUpdate<AgendaEvent[]>(demoKey(petId), [], (prev) => [next, ...prev]);
+    markOnboardingStep("reminderCreated");
     return id;
   }
-  const ref = await addDoc(agendaEventsCol(petId), input);
+  const ref = await addDoc(agendaEventsCol(petId), normalizeAgendaEventInput(petId, input));
+  markOnboardingStep("reminderCreated");
   return ref.id;
 }
 
@@ -146,9 +208,11 @@ export async function createAgendaSeries(petId: string, input: Omit<AgendaSeries
     const id = demoId();
     const next = { id, ...(input as Omit<AgendaSeries, "id">) } as AgendaSeries;
     demoUpdate<AgendaSeries[]>(demoSeriesKey(petId), [], (prev) => [next, ...prev]);
+    markOnboardingStep("reminderCreated");
     return id;
   }
-  const ref = await addDoc(agendaSeriesCol(petId), input);
+  const ref = await addDoc(agendaSeriesCol(petId), normalizeAgendaSeriesInput(petId, input));
+  markOnboardingStep("reminderCreated");
   return ref.id;
 }
 
@@ -173,10 +237,60 @@ export async function deleteAgendaSeries(petId: string, seriesId: string) {
   await deleteDoc(doc(db, "pets", petId, "agendaSeries", seriesId));
 }
 
+export async function deleteFutureAgendaEventsForSeries(petId: string, seriesId: string, fromMs: number) {
+  if (shouldUseDemoData()) {
+    demoUpdate<AgendaEvent[]>(demoKey(petId), [], (prev) => prev.filter((e) => e.seriesId !== seriesId || e.dueAt < fromMs));
+    return;
+  }
+
+  const { db } = getFirebase();
+  let cursor: Parameters<typeof startAfter>[0] | null = null;
+
+  while (true) {
+    const q =
+      cursor
+        ? query(
+            agendaEventsCol(petId),
+            where("seriesId", "==", seriesId),
+            where("dueAt", ">=", fromMs),
+            orderBy("dueAt", "asc"),
+            startAfter(cursor),
+            limit(450)
+          )
+        : query(
+            agendaEventsCol(petId),
+            where("seriesId", "==", seriesId),
+            where("dueAt", ">=", fromMs),
+            orderBy("dueAt", "asc"),
+            limit(450)
+          );
+    const snap = await getDocs(q);
+    if (snap.empty) return;
+    const batch = writeBatch(db);
+    for (const d of snap.docs) batch.delete(d.ref);
+    await batch.commit();
+    cursor = snap.docs[snap.docs.length - 1] || null;
+    if (snap.size < 450) return;
+  }
+}
+
+export async function deleteAgendaSeriesAndFutureEvents(petId: string, seriesId: string, fromMs: number) {
+  await deleteFutureAgendaEventsForSeries(petId, seriesId, fromMs);
+  if (shouldUseDemoData()) {
+    demoUpdate<AgendaSeries[]>(demoSeriesKey(petId), [], (prev) => prev.filter((s) => s.id !== seriesId));
+    return;
+  }
+  const { db } = getFirebase();
+  await deleteDoc(doc(db, "pets", petId, "agendaSeries", seriesId));
+}
+
 export async function seedUpcomingAgendaFromSeries(petId: string, series: AgendaSeries, horizonDays: number) {
   const now = Date.now();
   const toMs = now + horizonDays * 24 * 60 * 60 * 1000;
   const dueAts = computeSeriesOccurrences(series, now, toMs);
+
+  const uid = shouldUseDemoData() ? null : requireUid();
+  if (uid && series.createdBy !== uid) throw new Error("createdBy non valido");
 
   if (shouldUseDemoData()) {
     demoUpdate<AgendaEvent[]>(demoKey(petId), [], (prev) => {

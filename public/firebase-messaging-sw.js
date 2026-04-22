@@ -11,7 +11,7 @@ if (cfg) {
 
   messaging.onBackgroundMessage((payload) => {
     const n = payload.notification || {};
-    const title = n.title || "LifePet";
+    const title = n.title || "PetLyon";
     const data = payload.data || {};
     const actions = data.doneUrl
       ? [

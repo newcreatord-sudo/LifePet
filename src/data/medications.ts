@@ -3,7 +3,25 @@ import { getFirebase } from "@/lib/firebase";
 import type { PetMedication } from "@/types";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import { ensureTaskExists } from "@/data/tasks";
+
+function requireUid() {
+  const uid = getFirebase().auth.currentUser?.uid;
+  if (!uid) throw new Error("Devi effettuare l'accesso");
+  return uid;
+}
+
+function normalizeMedicationInput(petId: string, input: Omit<PetMedication, "id">) {
+  const uid = requireUid();
+  const next: Omit<PetMedication, "id"> = {
+    ...input,
+    petId,
+    createdBy: input.createdBy || uid,
+  };
+  if (next.createdBy !== uid) throw new Error("createdBy non valido");
+  return next;
+}
 
 function medsCol(petId: string) {
   const { db } = getFirebase();
@@ -52,10 +70,17 @@ export function subscribeMedications(petId: string, onData: (items: PetMedicatio
     });
   }
   const q = query(medsCol(petId), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    const items: PetMedication[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetMedication, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: PetMedication[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetMedication, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "terapie");
+      onData([]);
+    }
+  );
 }
 
 export async function createMedication(petId: string, input: Omit<PetMedication, "id">) {
@@ -66,8 +91,9 @@ export async function createMedication(petId: string, input: Omit<PetMedication,
     await seedMedicationTasks(petId, next);
     return id;
   }
-  const ref = await addDoc(medsCol(petId), input);
-  await seedMedicationTasks(petId, { id: ref.id, ...input });
+  const normalized = normalizeMedicationInput(petId, input);
+  const ref = await addDoc(medsCol(petId), normalized);
+  await seedMedicationTasks(petId, { id: ref.id, ...normalized });
   return ref.id;
 }
 

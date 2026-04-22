@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
 import { useToastStore } from "@/stores/toastStore";
+import { seedStarterKit } from "@/lib/starterKit";
 import { deleteField } from "firebase/firestore";
 import {
   createExpense,
@@ -20,6 +22,8 @@ import type { Expense, ExpenseCategory, ExpenseSeries } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useConfirmDialog } from "@/components/confirm";
+import { shouldUseDemoData } from "@/lib/runtimeMode";
 
 function categoryLabel(cat: ExpenseCategory) {
   if (cat === "food") return "Cibo";
@@ -32,9 +36,12 @@ function categoryLabel(cat: ExpenseCategory) {
 }
 
 export default function Expenses() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
   const pets = usePetStore((s) => s.pets);
+  const confirmDialog = useConfirmDialog();
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
   const pushToast = useToastStore((s) => s.push);
   const [items, setItems] = useState<Expense[]>([]);
@@ -61,15 +68,76 @@ export default function Expenses() {
   const [togglingSeriesId, setTogglingSeriesId] = useState<string | null>(null);
   const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
 
+  const [monthKey, setMonthKey] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  const amountRef = useRef<HTMLInputElement | null>(null);
+  const [seedingStarter, setSeedingStarter] = useState(false);
+
+  function focusAddExpense() {
+    amountRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    amountRef.current?.focus();
+  }
+
+  async function onSeedStarter() {
+    if (!user || !activePetId) return;
+    if (seedingStarter) return;
+    setSeedingStarter(true);
+    try {
+      const res = await seedStarterKit(activePetId, user.uid);
+      pushToast({
+        type: res === "already" ? "info" : "success",
+        title: "Setup rapido",
+        message: res === "already" ? "Già applicato per questo pet." : "Creati dati iniziali per popolare le sezioni.",
+      });
+    } catch (e) {
+      pushToast({ type: "error", title: "Setup rapido", message: e instanceof Error ? e.message : "Operazione fallita" });
+    } finally {
+      setSeedingStarter(false);
+    }
+  }
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const a = sp.get("amount");
+    const c = sp.get("category");
+    const n = sp.get("note");
+    if (!a && !c && !n) return;
+
+    if (a) setAmount(a);
+    if (n) setNote(n);
+    if (c === "food" || c === "vet" || c === "medicine" || c === "grooming" || c === "training" || c === "accessories" || c === "other") {
+      setCategory(c);
+    }
+
+    sp.delete("amount");
+    sp.delete("category");
+    sp.delete("note");
+    navigate({ pathname: location.pathname, search: sp.toString() ? `?${sp.toString()}` : "" }, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
   useEffect(() => {
     setBudget(activePet?.budgetMonthly?.toString() ?? "");
   }, [activePet?.budgetMonthly]);
 
   const monthRange = useMemo(() => {
-    const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), 1);
-    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const m = monthKey.match(/^(\d{4})-(\d{2})$/);
+    const y = m ? Number(m[1]) : new Date().getFullYear();
+    const mm = m ? Number(m[2]) - 1 : new Date().getMonth();
+    const from = new Date(y, mm, 1);
+    const to = new Date(y, mm + 1, 0, 23, 59, 59, 999);
     return { fromMs: from.getTime(), toMs: to.getTime() };
+  }, [monthKey]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const d = new Date();
+      const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      setMonthKey((cur) => (cur === next ? cur : next));
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(id);
   }, []);
 
   const range90d = useMemo(() => {
@@ -92,6 +160,7 @@ export default function Expenses() {
 
   useEffect(() => {
     if (!user || !activePetId) return;
+    if (!shouldUseDemoData()) return;
     void (async () => {
       try {
         await seedExpenseSeriesOncePerDay(activePetId, user.uid, series);
@@ -218,7 +287,12 @@ export default function Expenses() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Spese" description="Traccia costi per pet e monitora trend mensili." />
+      <PageHeader
+        title="Spese"
+        description="Traccia costi per pet e monitora trend mensili."
+        imagePrompt="minimal clean illustration, receipt and bar chart for pet expenses, soft white background, accent color, premium, no text, no watermark"
+        imageAlt="Spese"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <Card className="lg:col-span-5">
@@ -238,6 +312,7 @@ export default function Expenses() {
                   onChange={(e) => setAmount(e.target.value)}
                   inputMode="decimal"
                   className="lp-input"
+                  ref={amountRef}
                 />
               </label>
               <label className="block">
@@ -362,7 +437,13 @@ export default function Expenses() {
                               onClick={async () => {
                                 if (!activePetId) return;
                                 if (deletingSeriesId) return;
-                                if (!confirm("Eliminare questa ricorrenza?")) return;
+                                const ok = await confirmDialog({
+                                  title: "Elimina ricorrenza",
+                                  description: "Vuoi eliminare questa ricorrenza?",
+                                  confirmLabel: "Elimina",
+                                  variant: "danger",
+                                });
+                                if (!ok) return;
                                 setDeletingSeriesId(s.id);
                                 try {
                                   await deleteExpenseSeries(activePetId, s.id);
@@ -396,7 +477,15 @@ export default function Expenses() {
                 <CardTitle>Questo mese</CardTitle>
                 <CardDescription>Spesa totale del pet attivo</CardDescription>
               </div>
-              <div className="text-lg font-semibold">€ {totalMonth.toFixed(2)}</div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="month"
+                  className="lp-input"
+                  value={monthKey}
+                  onChange={(e) => setMonthKey(e.target.value)}
+                />
+                <div className="text-lg font-semibold">€ {totalMonth.toFixed(2)}</div>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -447,10 +536,14 @@ export default function Expenses() {
 
                 {activePet?.budgetMonthly ? (
                   <div className="mt-2">
-                    <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                    <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(var(--lp-ink),0.10)" }}>
                       <div
-                        className={totalMonth > activePet.budgetMonthly ? "h-2 bg-rose-500" : "h-2 bg-sky-600"}
-                        style={{ width: `${Math.min(100, Math.round((totalMonth / activePet.budgetMonthly) * 100))}%` }}
+                        className="h-2"
+                        style={{
+                          backgroundColor:
+                            totalMonth > activePet.budgetMonthly ? "rgb(var(--lp-danger))" : "rgb(var(--lp-primary))",
+                          width: `${Math.min(100, Math.round((totalMonth / activePet.budgetMonthly) * 100))}%`,
+                        }}
                       />
                     </div>
                     <div className="mt-1 text-xs text-slate-600">
@@ -500,7 +593,22 @@ export default function Expenses() {
           {!activePetId ? (
             <EmptyState title="Seleziona un pet" description="Scegli un profilo per vedere le spese." />
           ) : items.length === 0 ? (
-            <EmptyState title="Nessuna spesa" description="Aggiungi la prima spesa per costruire il trend." />
+            <EmptyState
+              title="Nessuna spesa"
+              description="Aggiungi la prima spesa per costruire il trend."
+              action={
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" className="lp-btn-primary" onClick={focusAddExpense}>
+                    Aggiungi spesa
+                  </button>
+                  {user ? (
+                    <button type="button" className="lp-btn-secondary" onClick={() => void onSeedStarter()} disabled={seedingStarter}>
+                      {seedingStarter ? "Creo…" : "Setup rapido"}
+                    </button>
+                  ) : null}
+                </div>
+              }
+            />
           ) : (
             <div className="mt-2 space-y-2">
               {items.map((it) => (
@@ -517,7 +625,13 @@ export default function Expenses() {
                           onClick={async () => {
                             if (!activePetId) return;
                             if (deletingExpenseId) return;
-                            if (!confirm("Eliminare questa spesa?")) return;
+                            const ok = await confirmDialog({
+                              title: "Elimina spesa",
+                              description: "Vuoi eliminare questa spesa?",
+                              confirmLabel: "Elimina",
+                              variant: "danger",
+                            });
+                            if (!ok) return;
                             setDeletingExpenseId(it.id);
                             try {
                               await deleteExpense(activePetId, it.id);

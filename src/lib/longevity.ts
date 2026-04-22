@@ -45,6 +45,8 @@ export type LongevitySnapshot = {
   ageYears: number | null;
   expectancyYears: number;
   remainingYears: number | null;
+  expectancyScore: number;
+  remainingScore: number | null;
   confidence: "low" | "medium";
   factors: {
     symptoms30d: number;
@@ -56,6 +58,11 @@ export type LongevitySnapshot = {
   };
   suggestions: string[];
 };
+
+function yearsToScore(years: number) {
+  const max = 30;
+  return clamp(Math.round((years / max) * 100), 1, 100);
+}
 
 export function computeLongevitySnapshot(input: {
   pet: Pick<Pet, "species" | "weightKg" | "dob" | "healthProfile">;
@@ -94,6 +101,8 @@ export function computeLongevitySnapshot(input: {
 
   const confidence: "low" | "medium" = ageYears === null ? "low" : "medium";
   const remainingYears = ageYears === null ? null : clamp(expectancyYears - ageYears, 0, 99);
+  const expectancyScore = yearsToScore(expectancyYears);
+  const remainingScore = remainingYears === null ? null : yearsToScore(Math.max(0, remainingYears));
 
   const suggestions: string[] = [];
   if (confidence === "low") suggestions.push("Aggiungi la data di nascita per stimare età e aspettativa in modo più accurato.");
@@ -111,9 +120,10 @@ export function computeLongevitySnapshot(input: {
     ageYears,
     expectancyYears,
     remainingYears,
+    expectancyScore,
+    remainingScore,
     confidence,
     factors: { symptoms30d, weightLogs30d, activity7d, water7d, adherence7d, overdueTasks7d },
     suggestions,
   } satisfies LongevitySnapshot;
 }
-

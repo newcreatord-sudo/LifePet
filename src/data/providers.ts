@@ -1,8 +1,9 @@
-import { addDoc, collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { addDoc, collection, onSnapshot, orderBy, query, type Unsubscribe } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import type { Provider, ProviderKind } from "@/types";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 
 const DEMO_KEY = "lifepet:demo:providers";
 
@@ -19,10 +20,36 @@ export function subscribeProviders(onData: (items: Provider[]) => void) {
     });
   }
   const q = query(providersCol(), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    const items: Provider[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Provider, "id">) }));
-    onData(items);
-  });
+  let stopped = false;
+  let unsub: Unsubscribe | null = null;
+  let attempt = 0;
+
+  const start = () => {
+    if (stopped) return;
+    if (unsub) unsub();
+    unsub = onSnapshot(
+      q,
+      (snap) => {
+        attempt = 0;
+        const items: Provider[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Provider, "id">) }));
+        onData(items);
+      },
+      (err) => {
+        reportFirestoreError(err, "professionisti");
+        onData([]);
+        if (stopped) return;
+        attempt += 1;
+        const delayMs = Math.min(2000, 250 * 2 ** attempt);
+        setTimeout(() => start(), delayMs);
+      }
+    );
+  };
+
+  start();
+  return () => {
+    stopped = true;
+    if (unsub) unsub();
+  };
 }
 
 export async function createProvider(input: Omit<Provider, "id">) {
@@ -32,6 +59,7 @@ export async function createProvider(input: Omit<Provider, "id">) {
     demoUpdate<Provider[]>(DEMO_KEY, [], (prev) => [next, ...prev]);
     return id;
   }
+  if (!input.createdBy) throw new Error("createdBy mancante");
   const ref = await addDoc(providersCol(), input);
   return ref.id;
 }

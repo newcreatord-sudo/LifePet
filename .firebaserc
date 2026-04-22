@@ -1,7 +1,6 @@
 {
   "projects": {
     "default": "lifepet-3c2195d42c1e",
-    "lifepet": "lifepet-3c2195d42c1e",
-    "trustbook": "trustbook-b7672"
+    "lifepet": "lifepet-3c2195d42c1e"
   }
 }

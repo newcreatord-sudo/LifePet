@@ -1,9 +1,27 @@
-import { collection, onSnapshot, orderBy, query, where, limit } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, where, limit } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "@/lib/firebase";
 import type { Booking, BookingStatus, Provider, PetNotification } from "@/types";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
+
+function callableMessage(e: unknown) {
+  const anyErr = e as { code?: unknown; message?: unknown; details?: unknown };
+  const code = typeof anyErr?.code === "string" ? anyErr.code : "";
+  const msg = typeof anyErr?.message === "string" ? anyErr.message : "";
+  const details = typeof anyErr?.details === "string" ? anyErr.details : "";
+  const parts = [code, msg, details].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "Operazione fallita";
+}
+
+function shouldFallbackToFirestore(e: unknown) {
+  const anyErr = e as { code?: unknown; message?: unknown };
+  const code = typeof anyErr?.code === "string" ? anyErr.code : "";
+  if (code === "functions/not-found" || code === "functions/unimplemented" || code === "functions/unavailable") return true;
+  const msg = typeof anyErr?.message === "string" ? anyErr.message : "";
+  return /function(s)?\s+not\s+found/i.test(msg) || /unimplemented/i.test(msg);
+}
 
 function bookingsCol(petId: string) {
   const { db } = getFirebase();
@@ -33,10 +51,16 @@ export function subscribeUpcomingBookings(petId: string, onData: (items: Booking
     orderBy("scheduledAt", "asc"),
     limit(50)
   );
-  return onSnapshot(q, (snap) => {
-    const items: Booking[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Booking, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: Booking[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Booking, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "prenotazioni:prossime");
+    }
+  );
 }
 
 export function subscribeBookingsHistoryRange(
@@ -63,10 +87,16 @@ export function subscribeBookingsHistoryRange(
     orderBy("scheduledAt", "desc"),
     limit(limitCount)
   );
-  return onSnapshot(q, (snap) => {
-    const items: Booking[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Booking, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: Booking[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Booking, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "prenotazioni:storico");
+    }
+  );
 }
 
 export async function createBooking(petId: string, userId: string, provider: Provider, scheduledAt: number, confirmBy: number | null, notes?: string) {
@@ -94,8 +124,10 @@ export async function createBooking(petId: string, userId: string, provider: Pro
         id: demoId(),
         petId,
         type: "booking_requested",
-        title: "Booking requested",
-        body: confirmBy ? `Confirm before ${new Date(confirmBy).toLocaleString()}` : `Scheduled at ${new Date(scheduledAt).toLocaleString()}`,
+        title: "Prenotazione richiesta",
+        body: confirmBy
+          ? `Conferma entro ${new Date(confirmBy).toLocaleString()}`
+          : `Pianificata per ${new Date(scheduledAt).toLocaleString()}`,
         severity: "info",
         createdAt: Date.now(),
         read: false,
@@ -107,10 +139,32 @@ export async function createBooking(petId: string, userId: string, provider: Pro
 
   const { functions } = getFirebase();
   const fn = httpsCallable(functions, "createBookingSecure");
-  const res = await fn({ petId, providerId: provider.id, scheduledAt, confirmBy: confirmBy ?? null, notes: notes?.trim() || "" });
-  const bookingId = String((res.data as { bookingId?: string } | null)?.bookingId ?? "");
-  if (!bookingId) throw new Error("Booking creation failed");
-  return bookingId;
+  try {
+    const isManualProvider = /^manual_/.test(provider.id);
+    const res = await fn({
+      petId,
+      providerId: provider.id,
+      scheduledAt,
+      confirmBy: confirmBy ?? null,
+      notes: notes?.trim() || "",
+      manualProvider: isManualProvider
+        ? {
+            kind: provider.kind,
+            name: provider.name,
+            city: provider.city ?? null,
+            phone: provider.phone ?? null,
+            meetingUrl: provider.meetingUrl ?? null,
+          }
+        : null,
+    });
+    const bookingId = String((res.data as { bookingId?: string } | null)?.bookingId ?? "");
+    if (!bookingId) throw new Error("Booking creation failed");
+    return bookingId;
+  } catch (e) {
+    if (!shouldFallbackToFirestore(e)) throw new Error(callableMessage(e));
+    const ref = await addDoc(bookingsCol(petId), base);
+    return ref.id;
+  }
 }
 
 export async function setBookingStatus(petId: string, bookingId: string, status: BookingStatus, cancelReason?: Booking["cancelReason"]) {
@@ -120,9 +174,20 @@ export async function setBookingStatus(petId: string, bookingId: string, status:
     );
     return;
   }
+
   const { functions } = getFirebase();
   const fn = httpsCallable(functions, "setBookingStatusSecure");
-  await fn({ petId, bookingId, status, cancelReason: cancelReason ?? null });
+  try {
+    await fn({ petId, bookingId, status, cancelReason: cancelReason ?? null });
+  } catch (e) {
+    if (!shouldFallbackToFirestore(e)) throw new Error(callableMessage(e));
+    const { db } = getFirebase();
+    await updateDoc(doc(db, "pets", petId, "bookings", bookingId), {
+      status,
+      cancelReason: cancelReason ?? null,
+      updatedAt: Date.now(),
+    });
+  }
 }
 
 export async function deleteBooking(petId: string, bookingId: string) {
@@ -130,7 +195,14 @@ export async function deleteBooking(petId: string, bookingId: string) {
     demoUpdate<Booking[]>(demoKey(petId), [], (prev) => prev.filter((b) => b.id !== bookingId));
     return;
   }
+
   const { functions } = getFirebase();
   const fn = httpsCallable(functions, "deleteBookingSecure");
-  await fn({ petId, bookingId });
+  try {
+    await fn({ petId, bookingId });
+  } catch (e) {
+    if (!shouldFallbackToFirestore(e)) throw new Error(callableMessage(e));
+    const { db } = getFirebase();
+    await deleteDoc(doc(db, "pets", petId, "bookings", bookingId));
+  }
 }

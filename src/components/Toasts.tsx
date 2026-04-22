@@ -11,7 +11,7 @@ function iconFor(type: "success" | "error" | "info") {
 function clsFor(type: "success" | "error" | "info") {
   if (type === "success") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-900";
   if (type === "error") return "border-rose-500/25 bg-rose-500/10 text-rose-950";
-  return "border-sky-500/25 bg-sky-500/10 text-slate-900";
+  return "lp-primary-soft";
 }
 
 export function Toasts() {
@@ -37,10 +37,10 @@ export function Toasts() {
             key={t.id}
             type="button"
             onClick={() => remove(t.id)}
-            className={`w-full text-left rounded-2xl border px-3 py-2 shadow-sm backdrop-blur-md bg-white/80 hover:bg-white ${clsFor(t.type)}`}
+            className={`w-full text-left rounded-2xl px-3 py-2 shadow-sm backdrop-blur-md lp-anim-in ${clsFor(t.type)}`}
           >
             <div className="flex items-start gap-2">
-              <Icon className="w-5 h-5 mt-0.5" />
+              <Icon className={t.type === "info" ? "w-5 h-5 mt-0.5 lp-icon-primary" : "w-5 h-5 mt-0.5"} />
               <div className="min-w-0">
                 {t.title ? <div className="text-sm font-semibold truncate">{t.title}</div> : null}
                 <div className="text-sm leading-snug">{t.message}</div>
@@ -52,4 +52,3 @@ export function Toasts() {
     </div>
   );
 }
-

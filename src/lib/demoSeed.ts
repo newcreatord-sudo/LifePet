@@ -214,7 +214,7 @@ export function ensureDemoSeed(userId: string) {
       price: 9.99,
       currency: "EUR",
       status: "active",
-      contact: "demo@lifepet.app",
+      contact: "demo@petlyon.app",
     },
   ];
   demoWrite<MarketplaceListing[]>("lifepet:demo:listings", listings);

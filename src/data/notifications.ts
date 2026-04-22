@@ -1,7 +1,8 @@
-import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, doc, limit, onSnapshot, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import type { NotificationSeverity, PetNotification } from "@/types";
 
 function demoKey(petId: string) {
@@ -18,10 +19,11 @@ export async function createNotification(petId: string, input: Omit<PetNotificat
     demoUpdate<PetNotification[]>(demoKey(petId), [], (prev) => [{ id: `n_${Date.now()}`, ...(input as Omit<PetNotification, "id">) }, ...prev]);
     return;
   }
+  if (!input.createdBy) throw new Error("createdBy mancante");
   await addDoc(notificationsCol(petId), input);
 }
 
-export function subscribeUnreadNotifications(petId: string, limitCount: number, onData: (items: PetNotification[]) => void) {
+export function subscribeUnreadNotifications(petId: string, userId: string, limitCount: number, onData: (items: PetNotification[]) => void) {
   if (shouldUseDemoData()) {
     return demoSubscribe<PetNotification[]>(demoKey(petId), [], (all) => {
       const items = all
@@ -32,11 +34,25 @@ export function subscribeUnreadNotifications(petId: string, limitCount: number, 
       onData(items);
     });
   }
-  const q = query(notificationsCol(petId), where("read", "==", false), orderBy("createdAt", "desc"), limit(limitCount));
-  return onSnapshot(q, (snap) => {
-    const items: PetNotification[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetNotification, "id">) }));
-    onData(items);
-  });
+  const q = query(
+    notificationsCol(petId),
+    where("createdBy", "==", userId),
+    where("read", "==", false),
+    limit(limitCount)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: PetNotification[] = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<PetNotification, "id">) }))
+        .sort((a, b) => b.createdAt - a.createdAt);
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "notifiche:non-let" );
+      onData([]);
+    }
+  );
 }
 
 export async function markNotificationRead(petId: string, notificationId: string) {
@@ -50,6 +66,7 @@ export async function markNotificationRead(petId: string, notificationId: string
 
 export function subscribeNotifications(
   petId: string,
+  userId: string,
   opts: { limitCount: number; onlyUnread?: boolean; severities?: NotificationSeverity[] },
   onData: (items: PetNotification[]) => void
 ) {
@@ -66,14 +83,24 @@ export function subscribeNotifications(
     });
   }
 
+  const base = query(notificationsCol(petId), where("createdBy", "==", userId));
   const q = onlyUnread
-    ? query(notificationsCol(petId), where("read", "==", false), orderBy("createdAt", "desc"), limit(limitCount))
-    : query(notificationsCol(petId), orderBy("createdAt", "desc"), limit(limitCount));
-  return onSnapshot(q, (snap) => {
-    const raw: PetNotification[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetNotification, "id">) }));
-    const items = severities && severities.length ? raw.filter((n) => severities.includes(n.severity)) : raw;
-    onData(items);
-  });
+    ? query(base, where("read", "==", false), limit(limitCount))
+    : query(base, limit(limitCount));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const raw: PetNotification[] = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<PetNotification, "id">) }))
+        .sort((a, b) => b.createdAt - a.createdAt);
+      const items = severities && severities.length ? raw.filter((n) => severities.includes(n.severity)) : raw;
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "notifiche");
+      onData([]);
+    }
+  );
 }
 
 export async function markAllNotificationsRead(petId: string, notificationIds: string[]) {

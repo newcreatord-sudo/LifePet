@@ -73,6 +73,19 @@ describe("demo mode CRUD", () => {
     unsub();
   });
 
+  it("providers CRUD", async () => {
+    const { subscribeProviders, createProvider } = await import("@/data/providers");
+    let latest: Array<{ id: string; name: string; kind: string; createdBy?: string }> = [];
+    const unsub = subscribeProviders((items) => {
+      latest = items.map((p) => ({ id: p.id, name: p.name, kind: p.kind, createdBy: p.createdBy }));
+    });
+
+    const id = await createProvider({ kind: "vet", name: "Vet Demo", createdAt: Date.now() });
+    expect(latest.find((p) => p.id === id)?.name).toBe("Vet Demo");
+    expect(latest.find((p) => p.id === id)?.kind).toBe("vet");
+    unsub();
+  });
+
   it("agenda CRUD", async () => {
     const { subscribeAgendaRange, createAgendaEvent, updateAgendaEvent, deleteAgendaEvent } = await import("@/data/agenda");
     const petId = "pet_demo_agenda";
@@ -105,7 +118,7 @@ describe("demo mode CRUD", () => {
     const { subscribeTasks, createTask, updateTask, setTaskDone, deleteTask } = await import("@/data/tasks");
     const petId = "pet_demo_tasks";
     let latest: Array<{ id: string; title: string; status: string }> = [];
-    const unsub = subscribeTasks(petId, (items) => {
+    const unsub = subscribeTasks(petId, "demo", (items) => {
       latest = items.map((t) => ({ id: t.id, title: t.title, status: t.status }));
     });
 
@@ -184,7 +197,7 @@ describe("demo mode CRUD", () => {
     const { subscribeHealthEventsRange, createHealthEvent, updateHealthEvent, deleteHealthEvent } = await import("@/data/health");
     const petId = "pet_demo_health";
     let latest: Array<{ id: string; title: string; note?: string }> = [];
-    const unsub = subscribeHealthEventsRange(petId, 0, Date.now() + 365 * 24 * 60 * 60 * 1000, 50, (items) => {
+    const unsub = subscribeHealthEventsRange(petId, "demo", 0, Date.now() + 365 * 24 * 60 * 60 * 1000, 50, (items) => {
       latest = items.map((e) => ({ id: e.id, title: e.title, note: e.note }));
     });
 

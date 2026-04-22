@@ -6,15 +6,19 @@ service firebase.storage {
     }
 
     function isOwner(petId) {
-      return firestore.get(/databases/(default)/documents/pets/$(petId)).data.ownerId == request.auth.uid;
+      return firestore.exists(/databases/(default)/documents/pets/$(petId)) &&
+        firestore.get(/databases/(default)/documents/pets/$(petId)).data.ownerId == request.auth.uid;
     }
 
     function isAllowedContentType() {
-      return request.resource.contentType.matches('application/pdf') || request.resource.contentType.matches('image/.*');
+      return request.resource.contentType.matches('application/pdf') ||
+        request.resource.contentType.matches('image/.*') ||
+        request.resource.contentType.matches('text/plain');
     }
 
     function isListingSeller(listingId) {
-      return firestore.get(/databases/(default)/documents/listings/$(listingId)).data.sellerId == request.auth.uid;
+      return firestore.exists(/databases/(default)/documents/listings/$(listingId)) &&
+        firestore.get(/databases/(default)/documents/listings/$(listingId)).data.sellerId == request.auth.uid;
     }
 
     match /pets/{petId}/{allPaths=**} {
@@ -31,6 +35,16 @@ service firebase.storage {
       allow read: if isSignedIn() && isOwner(petId);
       allow create, update: if isSignedIn() && isOwner(petId) && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
       allow delete: if isSignedIn() && isOwner(petId);
+    }
+
+    match /users/{userId}/pets/{petId}/documents/{docId}/{fileName} {
+      allow read: if isSignedIn() && request.auth.uid == userId && isOwner(petId);
+      allow create, update: if isSignedIn() && request.auth.uid == userId && isOwner(petId) && request.resource.size < 10 * 1024 * 1024 && isAllowedContentType();
+      allow delete: if isSignedIn() && request.auth.uid == userId && isOwner(petId);
+    }
+
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if false;
     }
 
     match /marketplace/listings/{listingId}/{fileName} {

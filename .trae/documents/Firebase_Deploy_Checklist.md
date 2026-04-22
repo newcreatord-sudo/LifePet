@@ -34,13 +34,28 @@ Su Vercel imposta le stesse variabili in Project Settings → Environment Variab
 - Imposta il secret:
   - `firebase functions:secrets:set OPENAI_API_KEY`
 
+## 3b) Secrets (Multi‑Specie) per Cloud Functions
+
+- (Opzionale ma consigliato) Webhook ingest:
+  - `firebase functions:secrets:set MS_WEBHOOK_SECRET`
+
+Nota: il webhook `msIngestWebhook` rifiuta le richieste se `X-MS-Secret` non corrisponde.
+
 ## 4) Deploy (Rules + Functions)
 
-- Deploy rules:
-  - `firebase deploy --only firestore:rules,storage`
+- Deploy rules + indexes:
+  - `firebase deploy --only firestore:rules,firestore:indexes,storage`
 
 - Deploy functions:
   - `firebase deploy --only functions`
+
+## 4b) Abilitare polling mock (facoltativo)
+
+- Per attivare il polling mock server-side:
+  - Crea/aggiorna il doc `users/{uid}/msIntegrations/mock` con `{ enabled: true }`
+- La schedule `msMockPollingSweep` esegue un tick ogni 5 minuti per gli utenti abilitati.
+
+Nota (Documenti): è presente una function di cleanup `onPetDocumentDeleted` che elimina il file in Storage quando cancelli un documento da Firestore. Assicurati che il deploy functions sia aggiornato.
 
 Se `firebase deploy --only functions` fallisce con richiesta Blaze, abilita Blaze in:
 `https://console.firebase.google.com/project/lifepet-3c2195d42c1e/usage/details`
@@ -53,3 +68,4 @@ Se `firebase deploy --only functions` fallisce con richiesta Blaze, abilita Blaz
 - Crea evento salute “symptom” con severity “high” (genera alert)
 - GPS: registra un punto fuori geofence (genera alert)
 - Settings → Notifications → Enable push (se VAPID configurato)
+- Piattaforma → Pet + Farm: avvia demo (usa `msSimTick` se non in demo mode)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, Pill, Sparkles, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { usePetStore } from "@/stores/petStore";
@@ -11,7 +11,11 @@ import type { PetMedication } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Alert } from "@/components/ui/Alert";
+import { SkeletonCard } from "@/components/ui/Skeleton";
+import { useConfirmDialog } from "@/components/confirm";
 import { deleteField } from "firebase/firestore";
+import { seedStarterKit } from "@/lib/starterKit";
 
 type ParsedMedication = {
   name: string;
@@ -56,7 +60,11 @@ export default function Medications() {
   const user = useAuthStore((s) => s.user);
   const activePetId = usePetStore((s) => s.activePetId);
   const pushToast = useToastStore((s) => s.push);
+  const confirmDialog = useConfirmDialog();
   const [items, setItems] = useState<PetMedication[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   const [aiAllowed, setAiAllowed] = useState(true);
   const [rxText, setRxText] = useState("");
@@ -90,9 +98,46 @@ export default function Medications() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  const nameRef = useRef<HTMLInputElement | null>(null);
+  const [seedingStarter, setSeedingStarter] = useState(false);
+
+  function focusCreateMedication() {
+    nameRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    nameRef.current?.focus();
+  }
+
+  async function onSeedStarter() {
+    if (!user || !activePetId) return;
+    if (seedingStarter) return;
+    setSeedingStarter(true);
+    try {
+      const res = await seedStarterKit(activePetId, user.uid);
+      pushToast({
+        type: res === "already" ? "info" : "success",
+        title: "Setup rapido",
+        message: res === "already" ? "Già applicato per questo pet." : "Creati dati iniziali per popolare le sezioni.",
+      });
+    } catch (e) {
+      pushToast({ type: "error", title: "Setup rapido", message: e instanceof Error ? e.message : "Operazione fallita" });
+    } finally {
+      setSeedingStarter(false);
+    }
+  }
+
   useEffect(() => {
-    if (!activePetId) return;
-    const unsub = subscribeMedications(activePetId, setItems);
+    if (!activePetId) {
+      setItems([]);
+      setLoaded(false);
+      setSelected({});
+      setInlineError(null);
+      return;
+    }
+    setLoaded(false);
+    setInlineError(null);
+    const unsub = subscribeMedications(activePetId, (next) => {
+      setItems(next);
+      setLoaded(true);
+    });
     return () => unsub();
   }, [activePetId]);
 
@@ -108,6 +153,7 @@ export default function Medications() {
   }, [user]);
 
   const active = useMemo(() => items.filter((m) => m.enabled), [items]);
+  const selectedIds = useMemo(() => items.filter((m) => selected[m.id]).map((m) => m.id), [items, selected]);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -130,6 +176,7 @@ export default function Medications() {
     const endAt = Number.isFinite(d) && d > 0 ? startAt + d * 24 * 60 * 60 * 1000 : undefined;
 
     setCreating(true);
+    setInlineError(null);
     try {
       await createMedication(activePetId, {
         petId: activePetId,
@@ -150,15 +197,64 @@ export default function Medications() {
       setNotes("");
       pushToast({ type: "success", title: "Terapia creata", message: "Promemoria generati nel planner." });
     } catch (err) {
+      setInlineError(err instanceof Error ? err.message : "Creazione terapia fallita");
       pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Creazione terapia fallita" });
     } finally {
       setCreating(false);
     }
   }
 
+  async function batchSetEnabled(enabled: boolean) {
+    if (!activePetId || !selectedIds.length) return;
+    setBusyId("__batch__");
+    setInlineError(null);
+    try {
+      for (const id of selectedIds) {
+        await setMedicationEnabled(activePetId, id, enabled);
+      }
+      pushToast({ type: "success", title: "Terapie", message: enabled ? "Terapie attivate." : "Terapie disattivate." });
+      setSelected({});
+    } catch (e) {
+      setInlineError(e instanceof Error ? e.message : "Operazione batch fallita");
+      pushToast({ type: "error", title: "Errore", message: e instanceof Error ? e.message : "Operazione batch fallita" });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function batchDelete() {
+    if (!activePetId || !selectedIds.length) return;
+    const ok = await confirmDialog({
+      title: "Elimina terapie",
+      description: `Vuoi eliminare ${selectedIds.length} terapie selezionate?`,
+      confirmLabel: "Elimina",
+      variant: "danger",
+    });
+    if (!ok) return;
+    setBusyId("__batch__");
+    setInlineError(null);
+    try {
+      for (const id of selectedIds) {
+        await deleteMedication(activePetId, id);
+      }
+      pushToast({ type: "success", title: "Terapie", message: "Terapie eliminate." });
+      setSelected({});
+    } catch (e) {
+      setInlineError(e instanceof Error ? e.message : "Eliminazione fallita");
+      pushToast({ type: "error", title: "Errore", message: e instanceof Error ? e.message : "Eliminazione fallita" });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Terapie" description="Farmaci strutturati con promemoria automatici (task)." />
+      <PageHeader
+        title="Terapie"
+        description="Farmaci strutturati con promemoria automatici (task)."
+        imagePrompt="minimal clean illustration, pill bottle and schedule card for pet medication, soft white background, accent color, premium, no text, no watermark"
+        imageAlt="Terapie"
+      />
 
       <Card>
         <CardHeader>
@@ -173,18 +269,35 @@ export default function Medications() {
           ) : (
             <>
               <label className="block">
-                <div className="text-xs text-slate-400 mb-1">Testo ricetta</div>
+                <div className="text-xs lp-muted mb-1">Testo ricetta</div>
                 <textarea
                   value={rxText}
                   onChange={(e) => setRxText(e.target.value)}
                   rows={5}
                   placeholder="Es. Amoxicillina 50 mg, 1 compressa alle 08:00 e 20:00 per 7 giorni…"
-                  className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm"
+                  className="lp-textarea"
                 />
               </label>
 
               <div className="flex flex-wrap items-center gap-3">
-                <label className="rounded-xl border border-slate-800 px-3 py-2 text-sm hover:bg-slate-900 cursor-pointer">
+                <label
+                  className="lp-btn-secondary inline-flex items-center cursor-pointer"
+                  onClick={(e) => {
+                    if (aiLoading) {
+                      e.preventDefault();
+                      return;
+                    }
+                    if (!user) {
+                      e.preventDefault();
+                      pushToast({ type: "info", title: "Upload", message: "Accedi per caricare una foto." });
+                      return;
+                    }
+                    if (user.isDemo) {
+                      e.preventDefault();
+                      pushToast({ type: "info", title: "Demo", message: "Upload non disponibile in modalità demo." });
+                    }
+                  }}
+                >
                   <input
                     type="file"
                     accept="image/*"
@@ -222,17 +335,25 @@ export default function Medications() {
               </div>
 
               {rxImageDataUrl ? (
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                  <img src={rxImageDataUrl} alt="Ricetta" className="max-h-56 rounded-lg" />
+                <div className="lp-panel p-3">
+                  <img src={rxImageDataUrl} alt="Ricetta" className="max-h-56 rounded-lg" decoding="async" loading="eager" />
                 </div>
               ) : null}
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  disabled={!user || user.isDemo || aiLoading}
-                  className="rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60 inline-flex items-center gap-2"
+                  disabled={aiLoading}
+                  className="lp-btn-primary inline-flex items-center gap-2 disabled:opacity-60"
                   onClick={async () => {
+                    if (!user) {
+                      pushToast({ type: "info", title: "AI", message: "Accedi per usare questa funzione." });
+                      return;
+                    }
+                    if (user.isDemo) {
+                      pushToast({ type: "info", title: "Demo", message: "AI non disponibile in modalità demo." });
+                      return;
+                    }
                     if (!activePetId) return;
                     const text = rxText.trim();
                     if (!text && !rxImageDataUrl) {
@@ -244,7 +365,7 @@ export default function Medications() {
                     setParsed(null);
                     try {
                       const prompt = [
-                        "Sei un assistente LifePet che estrae terapie da una prescrizione.",
+                        "Sei un assistente PetLyon che estrae terapie da una prescrizione.",
                         "Restituisci SOLO JSON (nessun testo extra).",
                         "Schema: array di oggetti {name, dose?, unit?, route?, times:[HH:MM], days?, notes?}.",
                         "Regole: times deve essere HH:MM (24h). Se il testo è ambiguo, inserisci notes con dubbi ma prova a compilare.",
@@ -307,7 +428,7 @@ export default function Medications() {
                   <button
                     type="button"
                     disabled={!user || !activePetId || creatingFromAi}
-                    className="rounded-xl border border-slate-800 px-3 py-2 text-sm hover:bg-slate-900 disabled:opacity-60"
+                    className="lp-btn-secondary"
                     onClick={async () => {
                       if (!user || !activePetId) return;
                       setCreatingFromAi(true);
@@ -346,19 +467,19 @@ export default function Medications() {
               </div>
 
               {parsed && parsed.length ? (
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-                  <div className="text-xs text-slate-400">Anteprima</div>
+                <div className="lp-panel p-3">
+                  <div className="text-xs lp-muted">Anteprima</div>
                   <div className="mt-2 space-y-2">
                     {parsed.map((m, idx) => (
-                      <div key={`${m.name}-${idx}`} className="text-sm text-slate-200">
+                      <div key={`${m.name}-${idx}`} className="text-sm">
                         <div className="font-medium">{m.name}</div>
-                        <div className="text-xs text-slate-500">
+                        <div className="text-xs lp-muted">
                           {(m.dose || m.unit) ? `${m.dose ?? ""} ${m.unit ?? ""}`.trim() : "—"}
                           {m.route ? ` · ${m.route}` : ""}
                           {m.times.length ? ` · ${m.times.join(", ")}` : ""}
                           {typeof m.days === "number" ? ` · ${m.days} giorni` : ""}
                         </div>
-                        {m.notes ? <div className="text-xs text-slate-400 mt-0.5">{m.notes}</div> : null}
+                        {m.notes ? <div className="text-xs lp-muted mt-0.5">{m.notes}</div> : null}
                       </div>
                     ))}
                   </div>
@@ -366,10 +487,10 @@ export default function Medications() {
               ) : null}
 
               {aiRaw && !parsed ? (
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300 whitespace-pre-wrap">{aiRaw}</div>
+                <div className="lp-panel p-3 text-sm whitespace-pre-wrap">{aiRaw}</div>
               ) : null}
 
-              <div className="text-xs text-slate-500">AI informativa: verifica sempre prescrizione e orari con il veterinario.</div>
+              <div className="text-xs lp-muted">AI informativa: verifica sempre prescrizione e orari con il veterinario.</div>
             </>
           )}
         </CardContent>
@@ -386,42 +507,42 @@ export default function Medications() {
         ) : (
           <form onSubmit={onCreate} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
             <label className="lg:col-span-4 block">
-              <div className="text-xs text-slate-400 mb-1">Nome</div>
-              <input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+            <div className="text-xs lp-muted mb-1">Nome</div>
+              <input value={name} onChange={(e) => setName(e.target.value)} className="lp-input" ref={nameRef} />
             </label>
             <label className="lg:col-span-2 block">
-              <div className="text-xs text-slate-400 mb-1">Dose</div>
-              <input value={dose} onChange={(e) => setDose(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+            <div className="text-xs lp-muted mb-1">Dose</div>
+              <input value={dose} onChange={(e) => setDose(e.target.value)} className="lp-input" />
             </label>
             <label className="lg:col-span-2 block">
-              <div className="text-xs text-slate-400 mb-1">Unità</div>
-              <input value={unit} onChange={(e) => setUnit(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+            <div className="text-xs lp-muted mb-1">Unità</div>
+              <input value={unit} onChange={(e) => setUnit(e.target.value)} className="lp-input" />
             </label>
             <label className="lg:col-span-2 block">
-              <div className="text-xs text-slate-400 mb-1">Via</div>
-              <input value={route} onChange={(e) => setRoute(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+            <div className="text-xs lp-muted mb-1">Via</div>
+              <input value={route} onChange={(e) => setRoute(e.target.value)} className="lp-input" />
             </label>
             <label className="lg:col-span-2 block">
-              <div className="text-xs text-slate-400 mb-1">Giorni</div>
-              <input value={days} onChange={(e) => setDays(e.target.value)} inputMode="numeric" className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+            <div className="text-xs lp-muted mb-1">Giorni</div>
+              <input value={days} onChange={(e) => setDays(e.target.value)} inputMode="numeric" className="lp-input" />
             </label>
 
             <label className="lg:col-span-6 block">
-              <div className="text-xs text-slate-400 mb-1">Orari (separati da virgola)</div>
-              <input value={times} onChange={(e) => setTimes(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+            <div className="text-xs lp-muted mb-1">Orari (separati da virgola)</div>
+              <input value={times} onChange={(e) => setTimes(e.target.value)} className="lp-input" />
             </label>
             <label className="lg:col-span-5 block">
-              <div className="text-xs text-slate-400 mb-1">Note</div>
-              <input value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+            <div className="text-xs lp-muted mb-1">Note</div>
+              <input value={notes} onChange={(e) => setNotes(e.target.value)} className="lp-input" />
             </label>
             <button
               disabled={creating}
               type="submit"
-              className="lg:col-span-1 rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-sm font-medium hover:bg-emerald-300 disabled:opacity-60"
+              className="lg:col-span-1 lp-btn-primary inline-flex items-center justify-center disabled:opacity-60"
             >
               {creating ? "…" : <Pill className="w-4 h-4" />}
             </button>
-            <div className="lg:col-span-12 text-xs text-slate-500">Le terapie generano task per i prossimi 7 giorni (senza duplicati).</div>
+          <div className="lg:col-span-12 text-xs lp-muted">Le terapie generano task per i prossimi 7 giorni (senza duplicati).</div>
           </form>
         )}
         </CardContent>
@@ -429,18 +550,78 @@ export default function Medications() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Terapie</CardTitle>
-          <CardDescription>{active.length} attive</CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>Terapie</CardTitle>
+              <CardDescription>{active.length} attive</CardDescription>
+            </div>
+            {selectedIds.length ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className="lp-btn-secondary px-3 py-2 text-xs" onClick={() => setSelected({})} disabled={busyId === "__batch__"}>
+                  Deseleziona
+                </button>
+                <button type="button" className="lp-btn-secondary px-3 py-2 text-xs" onClick={() => void batchSetEnabled(false)} disabled={busyId === "__batch__"}>
+                  Disattiva ({selectedIds.length})
+                </button>
+                <button type="button" className="lp-btn-primary px-3 py-2 text-xs" onClick={() => void batchSetEnabled(true)} disabled={busyId === "__batch__"}>
+                  Attiva ({selectedIds.length})
+                </button>
+                <button type="button" className="lp-btn-secondary px-3 py-2 text-xs" onClick={() => void batchDelete()} disabled={busyId === "__batch__"}>
+                  Elimina ({selectedIds.length})
+                </button>
+              </div>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent>
+        {inlineError ? (
+          <div className="mb-3">
+            <Alert variant="danger" title="Errore">{inlineError}</Alert>
+          </div>
+        ) : null}
         {!activePetId ? (
           <EmptyState title="Seleziona un pet" description="Scegli un profilo per vedere le terapie." />
+        ) : !loaded ? (
+          <div className="grid gap-2">
+            <SkeletonCard rows={2} />
+            <SkeletonCard rows={2} />
+            <SkeletonCard rows={2} />
+          </div>
         ) : items.length === 0 ? (
-          <EmptyState title="Nessuna terapia" description="Crea la prima terapia per attivare promemoria automatici." />
+          <EmptyState
+            title="Nessuna terapia"
+            description="Crea la prima terapia per attivare promemoria automatici."
+            action={
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className="lp-btn-primary" onClick={focusCreateMedication}>
+                  Crea terapia
+                </button>
+                {user ? (
+                  <button type="button" className="lp-btn-secondary" onClick={() => void onSeedStarter()} disabled={seedingStarter}>
+                    {seedingStarter ? "Creo…" : "Setup rapido"}
+                  </button>
+                ) : null}
+              </div>
+            }
+          />
         ) : (
           <div className="mt-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <label className="inline-flex items-center gap-2 text-xs lp-muted">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.length > 0 && selectedIds.length === items.length}
+                  onChange={(e) => {
+                    const next = e.target.checked ? Object.fromEntries(items.map((m) => [m.id, true])) : {};
+                    setSelected(next);
+                  }}
+                />
+                Seleziona tutto
+              </label>
+              <div className="text-xs lp-muted">{items.length} terapie</div>
+            </div>
             {items.map((m) => (
-              <div key={m.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+              <div key={m.id} className="lp-panel px-3 py-2">
                 {editingId === m.id ? (
                   <form
                     onSubmit={async (e) => {
@@ -476,6 +657,7 @@ export default function Medications() {
                         setEditingId(null);
                         pushToast({ type: "success", title: "Terapia aggiornata", message: "Salvataggio completato." });
                       } catch (err) {
+                      setInlineError(err instanceof Error ? err.message : "Salvataggio fallito");
                         pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
                       } finally {
                         setSavingEdit(false);
@@ -484,52 +666,61 @@ export default function Medications() {
                     className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end"
                   >
                     <label className="lg:col-span-4 block">
-                      <div className="text-xs text-slate-400 mb-1">Nome</div>
-                      <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                      <div className="text-xs lp-muted mb-1">Nome</div>
+                      <input value={editName} onChange={(e) => setEditName(e.target.value)} className="lp-input" />
                     </label>
                     <label className="lg:col-span-2 block">
-                      <div className="text-xs text-slate-400 mb-1">Dose</div>
-                      <input value={editDose} onChange={(e) => setEditDose(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                      <div className="text-xs lp-muted mb-1">Dose</div>
+                      <input value={editDose} onChange={(e) => setEditDose(e.target.value)} className="lp-input" />
                     </label>
                     <label className="lg:col-span-2 block">
-                      <div className="text-xs text-slate-400 mb-1">Unità</div>
-                      <input value={editUnit} onChange={(e) => setEditUnit(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                      <div className="text-xs lp-muted mb-1">Unità</div>
+                      <input value={editUnit} onChange={(e) => setEditUnit(e.target.value)} className="lp-input" />
                     </label>
                     <label className="lg:col-span-2 block">
-                      <div className="text-xs text-slate-400 mb-1">Via</div>
-                      <input value={editRoute} onChange={(e) => setEditRoute(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                      <div className="text-xs lp-muted mb-1">Via</div>
+                      <input value={editRoute} onChange={(e) => setEditRoute(e.target.value)} className="lp-input" />
                     </label>
                     <label className="lg:col-span-2 block">
-                      <div className="text-xs text-slate-400 mb-1">Giorni</div>
-                      <input value={editDays} onChange={(e) => setEditDays(e.target.value)} inputMode="numeric" className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                      <div className="text-xs lp-muted mb-1">Giorni</div>
+                      <input value={editDays} onChange={(e) => setEditDays(e.target.value)} inputMode="numeric" className="lp-input" />
                     </label>
                     <label className="lg:col-span-7 block">
-                      <div className="text-xs text-slate-400 mb-1">Orari</div>
-                      <input value={editTimes} onChange={(e) => setEditTimes(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                      <div className="text-xs lp-muted mb-1">Orari</div>
+                      <input value={editTimes} onChange={(e) => setEditTimes(e.target.value)} className="lp-input" />
                     </label>
                     <label className="lg:col-span-5 block">
-                      <div className="text-xs text-slate-400 mb-1">Note</div>
-                      <input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-sm" />
+                      <div className="text-xs lp-muted mb-1">Note</div>
+                      <input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="lp-input" />
                     </label>
                     <div className="lg:col-span-12 flex items-center justify-end gap-2">
-                      <button type="button" onClick={() => setEditingId(null)} className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900">
+                      <button type="button" onClick={() => setEditingId(null)} className="lp-btn-secondary px-3 py-2 text-xs">
                         Annulla
                       </button>
-                      <button disabled={savingEdit} type="submit" className="rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-emerald-300 disabled:opacity-60">
+                      <button disabled={savingEdit} type="submit" className="lp-btn-primary px-3 py-2 text-xs disabled:opacity-60">
                         {savingEdit ? "…" : "Salva"}
                       </button>
                     </div>
                   </form>
                 ) : (
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="flex items-start gap-3 min-w-0">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={Boolean(selected[m.id])}
+                        onChange={(e) => setSelected((s) => ({ ...s, [m.id]: e.target.checked }))}
+                        aria-label="Seleziona terapia"
+                      />
+                      <div className="min-w-0">
                       <div className="text-sm font-medium">{m.name}</div>
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs lp-muted">
                         {(m.dose || m.unit) ? `${m.dose ?? ""} ${m.unit ?? ""}`.trim() : "—"}
                         {m.route ? ` · ${m.route}` : ""}
                         {m.times?.length ? ` · ${m.times.join(", ")}` : ""}
                       </div>
-                      {m.notes ? <div className="text-sm text-slate-300 mt-1">{m.notes}</div> : null}
+                      {m.notes ? <div className="text-sm mt-1">{m.notes}</div> : null}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -543,42 +734,52 @@ export default function Medications() {
                           setEditDays("7");
                           setEditNotes(m.notes ?? "");
                         }}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                        className="lp-btn-icon"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
                         onClick={async () => {
                           if (!activePetId) return;
-                          if (!confirm("Eliminare questa terapia?")) return;
+                          const ok = await confirmDialog({
+                            title: "Elimina terapia",
+                            description: "Vuoi eliminare questa terapia?",
+                            confirmLabel: "Elimina",
+                            variant: "danger",
+                          });
+                          if (!ok) return;
                           setBusyId(m.id);
+                          setInlineError(null);
                           try {
                             await deleteMedication(activePetId, m.id);
                             pushToast({ type: "success", title: "Terapia eliminata", message: "Rimossa." });
                           } catch (err) {
+                            setInlineError(err instanceof Error ? err.message : "Eliminazione fallita");
                             pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione fallita" });
                           } finally {
                             setBusyId(null);
                           }
                         }}
                         disabled={busyId === m.id}
-                        className="rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900 disabled:opacity-60"
+                        className="lp-btn-icon disabled:opacity-60"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={async () => {
                           if (!activePetId) return;
+                          setInlineError(null);
                           try {
                             await setMedicationEnabled(activePetId, m.id, !m.enabled);
                           } catch (err) {
+                            setInlineError(err instanceof Error ? err.message : "Aggiornamento fallito");
                             pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Aggiornamento fallito" });
                           }
                         }}
                         className={
                           m.enabled
-                            ? "rounded-xl bg-emerald-300/90 text-slate-950 px-3 py-2 text-xs font-medium hover:bg-emerald-300"
-                            : "rounded-xl border border-slate-800 px-3 py-2 text-xs hover:bg-slate-900"
+                            ? "lp-btn-primary px-3 py-2 text-xs"
+                            : "lp-btn-secondary px-3 py-2 text-xs"
                         }
                       >
                         {m.enabled ? "Attiva" : "Disattiva"}

@@ -14,7 +14,26 @@ import {
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import type { PetTask } from "@/types";
+import { markOnboardingStep } from "@/lib/onboardingV2";
+
+function requireUid() {
+  const uid = getFirebase().auth.currentUser?.uid;
+  if (!uid) throw new Error("Devi effettuare l'accesso");
+  return uid;
+}
+
+function normalizeTaskInput(petId: string, input: Omit<PetTask, "id">) {
+  const uid = requireUid();
+  const next: Omit<PetTask, "id"> = {
+    ...input,
+    petId,
+    createdBy: input.createdBy || uid,
+  };
+  if (next.createdBy !== uid) throw new Error("createdBy non valido");
+  return next;
+}
 import { createHealthEvent } from "@/data/health";
 import { createLog } from "@/data/logs";
 
@@ -27,21 +46,29 @@ export function tasksCol(petId: string) {
   return collection(db, "pets", petId, "tasks");
 }
 
-export function subscribeTasks(petId: string, onData: (tasks: PetTask[]) => void) {
+export function subscribeTasks(petId: string, userId: string, onData: (tasks: PetTask[]) => void, onError?: (err: unknown) => void) {
   if (shouldUseDemoData()) {
     return demoSubscribe<PetTask[]>(demoKey(petId), [], (all) => {
       const tasks = all.slice().sort((a, b) => b.createdAt - a.createdAt);
       onData(tasks);
     });
   }
-  const q = query(tasksCol(petId), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    const tasks: PetTask[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetTask, "id">) }));
-    onData(tasks);
-  });
+  const q = query(tasksCol(petId), where("petId", "==", petId), where("createdBy", "==", userId), orderBy("createdAt", "desc"));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const tasks: PetTask[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetTask, "id">) }));
+      onData(tasks);
+    },
+    (err) => {
+      reportFirestoreError(err, "task");
+      if (onError) onError(err);
+      else onData([]);
+    }
+  );
 }
 
-export function subscribeDueTasks(petId: string, nowMs: number, onData: (tasks: PetTask[]) => void) {
+export function subscribeDueTasks(petId: string, userId: string, nowMs: number, onData: (tasks: PetTask[]) => void) {
   if (shouldUseDemoData()) {
     return demoSubscribe<PetTask[]>(demoKey(petId), [], (all) => {
       const tasks = all
@@ -53,14 +80,23 @@ export function subscribeDueTasks(petId: string, nowMs: number, onData: (tasks: 
   }
   const q = query(
     tasksCol(petId),
+    where("petId", "==", petId),
+    where("createdBy", "==", userId),
     where("status", "==", "due"),
     where("dueAt", "<=", nowMs),
     orderBy("dueAt", "asc")
   );
-  return onSnapshot(q, (snap) => {
-    const tasks: PetTask[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetTask, "id">) }));
-    onData(tasks);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const tasks: PetTask[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PetTask, "id">) }));
+      onData(tasks);
+    },
+    (err) => {
+      reportFirestoreError(err, "task:scadenze");
+      onData([]);
+    }
+  );
 }
 
 export async function createTask(petId: string, input: Omit<PetTask, "id">) {
@@ -68,9 +104,11 @@ export async function createTask(petId: string, input: Omit<PetTask, "id">) {
     const id = demoId();
     const next = { id, ...(input as Omit<PetTask, "id">) } as PetTask;
     demoUpdate<PetTask[]>(demoKey(petId), [], (prev) => [next, ...prev]);
+    markOnboardingStep("reminderCreated");
     return id;
   }
-  const ref = await addDoc(tasksCol(petId), input);
+  const ref = await addDoc(tasksCol(petId), normalizeTaskInput(petId, input));
+  markOnboardingStep("reminderCreated");
   return ref.id;
 }
 
@@ -107,7 +145,7 @@ export async function upsertTask(petId: string, taskId: string, input: Omit<PetT
     return taskId;
   }
   const { db } = getFirebase();
-  await setDoc(doc(db, "pets", petId, "tasks", taskId), input, { merge: true });
+  await setDoc(doc(db, "pets", petId, "tasks", taskId), normalizeTaskInput(petId, input), { merge: true });
   return taskId;
 }
 
@@ -125,7 +163,7 @@ export async function ensureTaskExists(petId: string, taskId: string, input: Omi
   const ref = doc(db, "pets", petId, "tasks", taskId);
   const snap = await getDoc(ref);
   if (snap.exists()) return false;
-  await setDoc(ref, input);
+  await setDoc(ref, normalizeTaskInput(petId, input));
   return true;
 }
 

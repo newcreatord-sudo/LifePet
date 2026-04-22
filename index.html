@@ -1,27 +1,48 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#0B1220" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#009DFF" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>LifePet</title>
-    <script type="module">
-      if (import.meta.hot?.on) {
-        import.meta.hot.on('vite:error', (error) => {
-          if (error.err) {
-            console.error(
-              [error.err.message, error.err.frame].filter(Boolean).join('\n'),
-            )
-          }
-        })
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="description" content="PetLyon: gestione completa per animali domestici e allevamento. Mappa, recinti digitali, mandrie, telemetria, alert, documenti e salute." />
+    <link rel="canonical" href="https://petlion.app/" />
+
+    <meta property="og:site_name" content="PetLyon" />
+    <meta property="og:title" content="PetLyon — Pet & Farm" />
+    <meta property="og:description" content="Mappa, recinti digitali, mandrie, telemetria, alert, documenti e salute per pet e bestiame." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://petlion.app/" />
+    <meta property="og:image" content="https://petlion.app/og.svg" />
+    <meta property="og:image:type" content="image/svg+xml" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PetLyon — Pet & Farm" />
+    <meta name="twitter:description" content="Mappa, recinti digitali, mandrie, telemetria, alert, documenti e salute per pet e bestiame." />
+    <meta name="twitter:image" content="https://petlion.app/og.svg" />
+    <title>PetLyon</title>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "PetLyon",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "url": "https://petlion.app/",
+        "description": "Gestione completa per animali domestici e allevamento: mappa, recinti digitali, mandrie, telemetria, alert, documenti e salute.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "EUR"
+        }
       }
     </script>
   </head>
-  <body class="bg-slate-950 text-slate-100 antialiased selection:bg-emerald-300/30">
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

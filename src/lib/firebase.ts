@@ -1,8 +1,8 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
-import { initializeFirestore, type Firestore } from "firebase/firestore";
-import { getFunctions, type Functions } from "firebase/functions";
-import { getStorage, type FirebaseStorage } from "firebase/storage";
+import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
+import { connectFirestoreEmulator, enableIndexedDbPersistence, getFirestore, initializeFirestore, type Firestore } from "firebase/firestore";
+import { connectFunctionsEmulator, getFunctions, type Functions } from "firebase/functions";
+import { connectStorageEmulator, getStorage, type FirebaseStorage } from "firebase/storage";
 
 export type FirebaseServices = {
   app: FirebaseApp;
@@ -23,7 +23,25 @@ export type FirebaseWebConfig = {
 
 let cached: FirebaseServices | null = null;
 
+function emulatorsEnabled() {
+  return import.meta.env.DEV && (import.meta.env.VITE_FIREBASE_EMULATORS as string | undefined) === "1";
+}
+
+function emulatorHost() {
+  return (import.meta.env.VITE_FIREBASE_EMULATORS_HOST as string | undefined) || "127.0.0.1";
+}
+
+function forceLongPolling() {
+  if ((import.meta.env.VITE_FIREBASE_FORCE_LONG_POLLING as string | undefined) === "1") return true;
+  try {
+    return localStorage.getItem("lifepet:forceLongPolling") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function validateEnv() {
+  if (emulatorsEnabled()) return;
   const required = [
     "VITE_FIREBASE_API_KEY",
     "VITE_FIREBASE_AUTH_DOMAIN",
@@ -50,32 +68,57 @@ export function getFirebaseConfigError() {
 
 export function getFirebase(): FirebaseServices {
   if (cached) return cached;
-  validateEnv();
 
   const firebaseConfig = getFirebaseWebConfig();
 
   const app = initializeApp(firebaseConfig);
   const region = (import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION as string) || "us-central1";
 
+  const force = forceLongPolling();
+  const firestoreSettings: Parameters<typeof initializeFirestore>[1] = {
+    ignoreUndefinedProperties: true,
+    experimentalAutoDetectLongPolling: true,
+    ...(force ? { experimentalForceLongPolling: true } : {}),
+  };
+
+  let db: Firestore;
+  try {
+    db = initializeFirestore(app, firestoreSettings);
+  } catch {
+    db = getFirestore(app);
+  }
+
   cached = {
     app,
     auth: getAuth(app),
-    db: initializeFirestore(app, { ignoreUndefinedProperties: true }),
+    db,
     storage: getStorage(app),
     functions: getFunctions(app, region),
   };
+
+  if (emulatorsEnabled()) {
+    const host = emulatorHost();
+    connectAuthEmulator(cached.auth, `http://${host}:9099`, { disableWarnings: true });
+    connectFirestoreEmulator(cached.db, host, 8080);
+    connectFunctionsEmulator(cached.functions, host, 5001);
+    connectStorageEmulator(cached.storage, host, 9199);
+  }
+
+  void enableIndexedDbPersistence(cached.db).catch(() => Promise.resolve());
 
   return cached;
 }
 
 export function getFirebaseWebConfig(): FirebaseWebConfig {
-  validateEnv();
+  const emulator = emulatorsEnabled();
+  if (!emulator) validateEnv();
+  const projectId = emulator ? "demo-lifepet" : ((import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined) || "demo-lifepet");
   return {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID as string,
+    apiKey: (import.meta.env.VITE_FIREBASE_API_KEY as string | undefined) || "demo",
+    authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined) || `${projectId}.firebaseapp.com`,
+    projectId,
+    storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined) || `${projectId}.appspot.com`,
+    messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined) || "demo",
+    appId: (import.meta.env.VITE_FIREBASE_APP_ID as string | undefined) || "demo",
   };
 }

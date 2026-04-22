@@ -11,6 +11,11 @@ node_modules
 dist
 dist-ssr
 dev-dist
+.firebase
+.vercel
+test-results
+playwright-report
+coverage
 *.local
 
 # Editor directories and files

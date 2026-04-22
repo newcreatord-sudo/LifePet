@@ -204,7 +204,12 @@ export default function Nutrition() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Alimentazione" description="Stime, promemoria pasti e supporto AI per una dieta più consapevole." />
+      <PageHeader
+        title="Alimentazione"
+        description="Stime, promemoria pasti e supporto AI per una dieta più consapevole."
+        imagePrompt="minimal clean illustration, pet food bowl with portion chart card, airy background, accent color, premium, no text, no watermark"
+        imageAlt="Alimentazione"
+      />
 
       {!activePetId ? (
         <EmptyState title="Seleziona un pet" description="Scegli un profilo per gestire alimentazione e promemoria." />
@@ -218,7 +223,7 @@ export default function Nutrition() {
             <CardContent className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Peso (kg)</div>
+                <div className="text-xs lp-muted mb-1">Peso (kg)</div>
                 <input
                   value={weightKg}
                   onChange={(e) => setWeightKg(e.target.value)}
@@ -227,7 +232,7 @@ export default function Nutrition() {
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Attività</div>
+                <div className="text-xs lp-muted mb-1">Attività</div>
                 <select
                   value={activity}
                   onChange={(e) => setActivity(e.target.value as "low" | "normal" | "high")}
@@ -239,7 +244,7 @@ export default function Nutrition() {
                 </select>
               </label>
               <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Cibo (marca/ricetta)</div>
+                <div className="text-xs lp-muted mb-1">Cibo (marca/ricetta)</div>
                 <input
                   value={foodLabel}
                   onChange={(e) => setFoodLabel(e.target.value)}
@@ -248,7 +253,7 @@ export default function Nutrition() {
                 />
               </label>
               <label className="block">
-                <div className="text-xs text-slate-600 mb-1">kcal per grammo (circa)</div>
+                <div className="text-xs lp-muted mb-1">kcal per grammo (circa)</div>
                 <input
                   value={kcalPerG}
                   onChange={(e) => setKcalPerG(e.target.value)}
@@ -258,7 +263,7 @@ export default function Nutrition() {
               </label>
             </div>
             <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Note</div>
+              <div className="text-xs lp-muted mb-1">Note</div>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -269,7 +274,7 @@ export default function Nutrition() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Pasti al giorno</div>
+                <div className="text-xs lp-muted mb-1">Pasti al giorno</div>
                 <select value={mealsPerDay} onChange={(e) => setMealsPerDay(e.target.value)} className="lp-select">
                   <option value="1">1</option>
                   <option value="2">2</option>
@@ -278,7 +283,7 @@ export default function Nutrition() {
                 </select>
               </label>
               <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Orari (HH:MM, separati da virgola)</div>
+                <div className="text-xs lp-muted mb-1">Orari (HH:MM, separati da virgola)</div>
                 <input value={mealTimes} onChange={(e) => setMealTimes(e.target.value)} className="lp-input" />
               </label>
             </div>
@@ -302,7 +307,7 @@ export default function Nutrition() {
                 Planner
               </Link>
             </div>
-            <div className="text-xs text-slate-600">
+            <div className="text-xs lp-muted">
               Stime generiche. Conferma cambi alimentari con il veterinario, soprattutto in presenza di allergie/condizioni.
             </div>
             </CardContent>
@@ -317,19 +322,19 @@ export default function Nutrition() {
             {derived ? (
               <div className="grid grid-cols-2 gap-3">
                 <div className="lp-panel p-3">
-                  <div className="text-xs text-slate-600">Calorie giornaliere</div>
+                  <div className="text-xs lp-muted">Calorie giornaliere</div>
                   <div className="text-sm font-medium">{derived.dailyKcal} kcal</div>
                 </div>
                 <div className="lp-panel p-3">
-                  <div className="text-xs text-slate-600">Pasti al giorno</div>
+                  <div className="text-xs lp-muted">Pasti al giorno</div>
                   <div className="text-sm font-medium">{derived.meals}</div>
                 </div>
                 <div className="lp-panel p-3">
-                  <div className="text-xs text-slate-600">Grammi al giorno</div>
+                  <div className="text-xs lp-muted">Grammi al giorno</div>
                   <div className="text-sm font-medium">{derived.gramsPerDay ? `${derived.gramsPerDay} g` : "Imposta kcal/g"}</div>
                 </div>
                 <div className="lp-panel p-3">
-                  <div className="text-xs text-slate-600">Grammi per pasto</div>
+                  <div className="text-xs lp-muted">Grammi per pasto</div>
                   <div className="text-sm font-medium">{derived.gramsPerMeal ? `${derived.gramsPerMeal} g` : "—"}</div>
                 </div>
               </div>
@@ -337,11 +342,11 @@ export default function Nutrition() {
               <EmptyState title="Inserisci un peso valido" description="Per vedere le stime serve almeno il peso." />
             )}
 
-            <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4">
+            <div className="lp-panel p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="font-semibold">Supporto AI</div>
-                  <div className="text-xs text-slate-600">Suggerimenti personalizzati da profilo e attività</div>
+                  <div className="text-xs lp-muted">Suggerimenti personalizzati da profilo e attività</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -362,8 +367,8 @@ export default function Nutrition() {
                   </button>
                 </div>
               </div>
-              {!aiAllowed ? <div className="mt-2 text-xs text-slate-600">AI disattivata: riattivala in Impostazioni → Preferenze.</div> : null}
-              <div className="mt-3 text-sm whitespace-pre-wrap text-slate-800 min-h-20">
+              {!aiAllowed ? <div className="mt-2 text-xs lp-muted">AI disattivata: riattivala in Impostazioni → Preferenze.</div> : null}
+              <div className="mt-3 text-sm whitespace-pre-wrap min-h-20" style={{ color: "rgb(var(--lp-ink))" }}>
                 {aiText ?? "Chiedi un piano, una lista da evitare e cosa monitorare."}
               </div>
             </div>

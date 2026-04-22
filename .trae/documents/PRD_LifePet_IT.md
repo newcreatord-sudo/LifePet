@@ -80,3 +80,26 @@ graph TD
   - Moderazione post/commenti/chat, ban/timeout, code di revisione.
 - **Fase 5 — Benessere avanzato**
   - Alert intelligenti (idratazione, attività, geofence) + indice salute.
+
+## 5. Requisiti UX/UI (vincolanti)
+### 5.1 Palette & stile (desktop-first)
+- Background: #F7FAFF
+- Surface/Card: #FFFFFF
+- Primary: #009DFF (hover #008AE0, pressed #0077C2)
+- Text Primary: #0B1220; Text Secondary: #4A5872
+- Border: #D7E2F2
+- Success: #19B36B; Warning: #F5A524; Error: #E5484D
+
+### 5.2 Stati UI e feedback
+- Mostrare sempre: loading (skeleton/spinner), empty state (testo + CTA), error state (messaggio chiaro + “Riprova”).
+- Bottoni: default/hover/pressed/disabled/loading obbligatori; prevenire doppi invii disabilitando durante submit.
+- Notifiche: toast/snackbar (desktop in alto a destra) per esiti rapidi; errori “bloccanti” anche inline vicino al campo/azione.
+
+### 5.3 Micro-animazioni (sobrie e utili)
+- Durate target: 120–180ms; easing standard (es. ease-out). Evitare animazioni lente.
+- Transizioni consentite: fade/slide leggero su cambio tab/modale, scale 0.99 su pressed, shadow/translate minimi su hover card.
+- Accessibilità: rispettare `prefers-reduced-motion` (ridurre o disattivare motion).
+
+### 5.4 Accessibilità (minimo accettabile)
+- Focus ring evidente su tutti gli elementi interattivi; target click minimo 40px.
+- Contrasto testo/sfondo adeguato; testi di errore comprensibili e orientati all’azione.

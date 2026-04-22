@@ -1,7 +1,8 @@
-import { addDoc, collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import type { MarketplaceListing } from "@/types";
 
 const DEMO_KEY = "lifepet:demo:listings";
@@ -11,7 +12,7 @@ export function listingsCol() {
   return collection(db, "listings");
 }
 
-export function subscribeListings(limitCount: number, onData: (items: MarketplaceListing[]) => void) {
+export function subscribeListings(limitCount: number, onData: (items: MarketplaceListing[]) => void, onError?: (err: unknown) => void) {
   if (shouldUseDemoData()) {
     return demoSubscribe<MarketplaceListing[]>(DEMO_KEY, [], (all) => {
       const items = all
@@ -22,11 +23,21 @@ export function subscribeListings(limitCount: number, onData: (items: Marketplac
       onData(items);
     });
   }
-  const q = query(listingsCol(), where("status", "==", "active"), orderBy("createdAt", "desc"), limit(limitCount));
-  return onSnapshot(q, (snap) => {
-    const items: MarketplaceListing[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<MarketplaceListing, "id">) }));
-    onData(items);
-  });
+  const q = query(listingsCol(), orderBy("createdAt", "desc"), limit(limitCount));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: MarketplaceListing[] = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<MarketplaceListing, "id">) }))
+        .filter((i) => i.status === "active");
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "marketplace");
+      onError?.(err);
+      onData([]);
+    }
+  );
 }
 
 export async function createListing(input: Omit<MarketplaceListing, "id">) {

@@ -52,6 +52,8 @@ graph TD
 
 ## 2.Technology Description
 - Frontend: React@18 + TypeScript + vite + tailwindcss@3
+- UI/Design System: design tokens in Tailwind (palette azzurro) + componenti accessibili (headless) + gestione stati (loading/empty/error)
+- Motion: CSS transitions sobrie (120–180ms) e/o framer-motion; rispettare `prefers-reduced-motion`
 - Backend/Services: Firebase (Auth, Firestore, Storage, Cloud Functions)
 - AI (Fase 2): Cloud Functions come proxy verso provider LLM (API key **solo server-side**)
 
@@ -101,7 +103,7 @@ Note funzionali:
 (Fase 2)
 ```mermaid
 graph TD
-  A["React Frontend"] --> B["Edge Function Endpoint"]
+  A["React Frontend"] --> B["Cloud Function Endpoint (HTTPS/Callable)"]
   B --> C["Service: Prompt Builder"]
   C --> D["LLM Client"]
   D --> E["LLM API"]

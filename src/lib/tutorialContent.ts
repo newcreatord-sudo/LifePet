@@ -72,26 +72,13 @@ export function getTutorialSections(): TutorialSection[] {
       ],
     },
     {
-      key: "/app/symptoms",
-      title: "Sintomi AI",
+      key: "/app/ai",
+      title: "AI (Sintomi, Foto, Video, Insights)",
       steps: [
-        { id: "sym-1", title: "Analisi informativa", body: "Descrivi sintomi e contesto: l’AI fornisce una sintesi informativa con disclaimer (non sostituisce un medico)." },
-        { id: "sym-2", title: "Azioni consigliate", body: "Il risultato suggerisce quando contattare il veterinario e quali informazioni preparare." },
-      ],
-    },
-    {
-      key: "/app/vision",
-      title: "Foto AI",
-      steps: [
-        { id: "vis-1", title: "Check visivi", body: "Carica una foto per una descrizione informativa (es. pelle, occhi, postura)." },
-        { id: "vis-2", title: "Privacy", body: "Evita di caricare dati sensibili. Puoi cancellare e gestire gli allegati." },
-      ],
-    },
-    {
-      key: "/app/video",
-      title: "Video AI",
-      steps: [
-        { id: "vid-1", title: "Movimento e comportamento", body: "Carica un video breve per un’analisi informativa di movimento o comportamento." },
+        { id: "ai-1", title: "Sintomi", body: "Descrivi sintomi e contesto: l’AI fornisce una sintesi informativa con disclaimer (non sostituisce un medico)." },
+        { id: "ai-2", title: "Foto", body: "Carica una foto per una descrizione informativa (es. pelle, occhi, postura) e cosa controllare." },
+        { id: "ai-3", title: "Video", body: "Carica un video breve: l’app estrae alcuni frame e l’AI analizza movimento o comportamento." },
+        { id: "ai-4", title: "Insights", body: "Genera un riassunto dei dati recenti del pet (es. 7/30 giorni) per trend e segnali utili." },
       ],
     },
     {
@@ -159,14 +146,6 @@ export function getTutorialSections(): TutorialSection[] {
       title: "Marketplace",
       steps: [
         { id: "mk-1", title: "Prodotti", body: "Sfoglia e salva articoli. In futuro: consigli AI personalizzati in base al profilo pet." },
-      ],
-    },
-    {
-      key: "/app/insights",
-      title: "Insights",
-      steps: [
-        { id: "ins-1", title: "Sintesi e trend", body: "Raccoglie segnali da log, task e salute per aiutarti a capire i trend." },
-        { id: "ins-2", title: "Azioni", body: "Usa gli insight per adattare routine, agenda e promemoria." },
       ],
     },
     {

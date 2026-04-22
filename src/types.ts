@@ -15,6 +15,8 @@ export type Pet = {
   bodyConditionScore?: number;
   heightCm?: number;
   temperamentTags?: string[];
+  walkBadge?: "green" | "yellow" | "red";
+  walkVisible?: boolean;
   currentFood?: {
     label?: string;
     kcalPerG?: number;
@@ -32,6 +34,11 @@ export type Pet = {
     emergencyPhone?: string;
   };
   microchipId?: string;
+  petProtection?: {
+    enabled: boolean;
+    publicId: string;
+    activatedAt: number;
+  };
   identification?: {
     passportId?: string;
     registry?: string;
@@ -48,6 +55,96 @@ export type Pet = {
   gpsIngestToken?: string;
   deviceIngestToken?: string;
   createdAt: number;
+};
+
+export type PetCard = {
+  publicId: string;
+  petId: PetId;
+  ownerId: string;
+  petName: string;
+  species: string;
+  photoPath?: string;
+  publicNote?: string;
+  isLost?: boolean;
+  activatedAt: number;
+  updatedAt?: number;
+};
+
+export type FinderReportType = "found" | "sighted";
+
+export type FinderReportStatus = "new" | "verified" | "spam" | "resolved";
+
+export type FinderReport = {
+  id: string;
+  petId: PetId;
+  publicId: string;
+  reportType: FinderReportType;
+  reporterContactOptional?: string;
+  locationTextOptional?: string;
+  noteOptional?: string;
+  status?: FinderReportStatus;
+  handledBy?: string;
+  handledAt?: number;
+  updatedAt?: number;
+  createdAt: number;
+};
+
+export type SafetyEventType =
+  | "lost_enabled"
+  | "lost_resolved"
+  | "protection_enabled"
+  | "finder_report_received"
+  | "finder_report_verified"
+  | "finder_report_spam"
+  | "finder_report_resolved";
+
+export type SafetyEvent = {
+  id: string;
+  petId: PetId;
+  type: SafetyEventType;
+  createdAt: number;
+  createdBy?: string;
+  related?: {
+    publicId?: string;
+    reportId?: string;
+    reportType?: FinderReportType;
+  };
+  summary?: string;
+};
+
+export type WalkBadge = "green" | "yellow" | "red";
+
+export type WalkPresence = {
+  petId: PetId;
+  ownerId: string;
+  petName: string;
+  species: string;
+  badge: WalkBadge;
+  lat: number;
+  lng: number;
+  accuracyM?: number;
+  updatedAt: number;
+};
+
+export type AdoptionStatus = "active" | "adopted" | "hidden";
+
+export type AdoptionPost = {
+  id: string;
+  createdAt: number;
+  createdBy: string;
+  status: AdoptionStatus;
+  species: string;
+  name?: string;
+  ageLabel?: string;
+  sex?: "male" | "female" | "unknown";
+  size?: "small" | "medium" | "large";
+  temperamentTags?: string[];
+  description: string;
+  locationLabel?: string;
+  shelterLabel?: string;
+  photoUrls?: string[];
+  reportCount?: number;
+  updatedAt?: number;
 };
 
 export type TaskStatus = "due" | "done";
@@ -90,11 +187,21 @@ export type PetDocument = {
   id: string;
   petId: PetId;
   name: string;
+  title?: string;
+  docType?: "referto" | "ricetta" | "vaccino" | "analisi" | "altro";
+  documentAt?: number;
+  tags?: string[];
+  isFavorite?: boolean;
   storagePath: string;
   contentType?: string;
   size?: number;
   createdAt: number;
   createdBy: string;
+  ownerId?: string;
+  uploadStatus?: "uploading" | "ready" | "failed";
+  uploadError?: string;
+  sha256?: string;
+  updatedAt?: number;
 };
 
 export type PetMedication = {
@@ -186,6 +293,21 @@ export type AgendaSeries = {
   createdBy: string;
 };
 
+export type AiSaveStatus = "succeeded" | "failed";
+
+export type AiSave = {
+  id: string;
+  petId: PetId;
+  conversationId: string;
+  section: string;
+  userText: string;
+  assistantText: string;
+  status: AiSaveStatus;
+  error?: string;
+  createdAt: number;
+  createdBy: string;
+};
+
 export type GpsPoint = {
   id: string;
   petId: PetId;
@@ -194,6 +316,22 @@ export type GpsPoint = {
   accuracyM?: number;
   recordedAt: number;
   createdAt: number;
+  createdBy: string;
+};
+
+export type GpsDeviceKind = "generic_http";
+
+export type GpsDevice = {
+  id: string;
+  petId: PetId;
+  name: string;
+  kind: GpsDeviceKind;
+  enabled: boolean;
+  tokenHash: string;
+  tokenPrefix: string;
+  lastSeenAt?: number;
+  createdAt: number;
+  updatedAt: number;
   createdBy: string;
 };
 
@@ -240,6 +378,7 @@ export type NotificationSeverity = "info" | "warning" | "danger";
 export type PetNotification = {
   id: string;
   petId: PetId;
+  createdBy?: string;
   type: string;
   title: string;
   body: string;
@@ -333,6 +472,7 @@ export type Provider = {
   id: string;
   kind: ProviderKind;
   name: string;
+  createdBy?: string;
   city?: string;
   phone?: string;
   description?: string;

@@ -10,8 +10,9 @@ import { onDocumentCreated, onDocumentDeleted } from "firebase-functions/v2/fire
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import OpenAI from "openai";
 import Stripe from "stripe";
+import { createHash } from "crypto";
 
-setGlobalOptions({ region: "us-central1" });
+setGlobalOptions({ region: "us-central1", maxInstances: 1, cpu: 0.25 });
 
 initializeApp();
 
@@ -25,16 +26,22 @@ async function recountReports(ref: FirebaseFirestore.CollectionReference, max: n
 }
 
 const SKIP_AI = process.env.SKIP_AI === "1";
+const MS_ENABLE_SIMULATION = process.env.MS_ENABLE_SIMULATION === "1";
 const OPENAI_API_KEY = SKIP_AI ? null : defineSecret("OPENAI_API_KEY");
 
 const BILLING_DISABLED = process.env.BILLING_DISABLED !== "0";
 const BETA_PRO_UNTIL_MS = Number(process.env.BETA_PRO_UNTIL_MS || "0") || 0;
-const APP_URL = process.env.APP_URL || "https://trae67p1lnc4.vercel.app";
+const APP_URL = process.env.APP_URL || "";
 const STRIPE_TRIAL_DAYS = Number(process.env.STRIPE_TRIAL_DAYS || "30") || 30;
 const STRIPE_PRICE_PRO = process.env.STRIPE_PRICE_PRO || "";
 
 const STRIPE_SECRET_KEY = BILLING_DISABLED ? null : defineSecret("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = BILLING_DISABLED ? null : defineSecret("STRIPE_WEBHOOK_SECRET");
+
+function requireAppUrl() {
+  if (!APP_URL) throw new Error("APP_URL env missing");
+  return APP_URL;
+}
 
 type UserDoc = {
   plan?: unknown;
@@ -165,6 +172,7 @@ async function createPetNotification(
 
   await db.collection("pets").doc(petId).collection("notifications").add({
     petId,
+    createdBy: ownerId ?? null,
     type: input.type,
     title: input.title,
     body: input.body,
@@ -366,8 +374,8 @@ export const billingCreateCheckoutSession = BILLING_DISABLED
     allow_promotion_codes: true,
     subscription_data: { trial_period_days: STRIPE_TRIAL_DAYS, metadata: { firebaseUID: uid } },
     metadata: { firebaseUID: uid },
-    success_url: `${APP_URL}/app/settings?checkout=success`,
-    cancel_url: `${APP_URL}/app/settings?checkout=cancel`,
+    success_url: `${requireAppUrl()}/app/settings?checkout=success`,
+    cancel_url: `${requireAppUrl()}/app/settings?checkout=cancel`,
   });
 
   return { url: session.url };
@@ -390,7 +398,7 @@ export const billingCreatePortalSession = BILLING_DISABLED
 
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
-    return_url: `${APP_URL}/app/settings`,
+    return_url: `${requireAppUrl()}/app/settings`,
   });
 
   return { url: session.url };
@@ -467,7 +475,7 @@ export const exportPetDataPro = onCall(async (req) => {
   const [url] = await bucket.file(path).getSignedUrl({
     action: "read",
     expires: Date.now() + 5 * 60 * 1000,
-    responseDisposition: `attachment; filename="lifepet-pet-${petId}.json"`,
+    responseDisposition: `attachment; filename="petlyon-pet-${petId}.json"`,
     responseType: "application/json",
   });
   return { url };
@@ -556,7 +564,7 @@ export const exportAccountDataPro = onCall(async (req) => {
   const [url] = await bucket.file(path).getSignedUrl({
     action: "read",
     expires: Date.now() + 5 * 60 * 1000,
-    responseDisposition: `attachment; filename="lifepet-account-${uid}.json"`,
+    responseDisposition: `attachment; filename="petlyon-account-${uid}.json"`,
     responseType: "application/json",
   });
   return { url };
@@ -747,9 +755,10 @@ async function sendPushToUser(userId: string, payload: { title: string; body: st
   }
 }
 
-function getOpenAi(apiKey: string) {
-  if (!apiKey) throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured");
-  return new OpenAI({ apiKey });
+function getOpenAi(apiKey: string | undefined) {
+  const key = String(apiKey || process.env.OPENAI_API_KEY || "");
+  if (!key) throw new HttpsError("failed-precondition", "OPENAI_API_KEY is not configured");
+  return new OpenAI({ apiKey: key });
 }
 
 async function assertPetAccess(petId: string, uid: string) {
@@ -801,10 +810,10 @@ export const aiGenerateSummary = SKIP_AI
   const citations = logs.slice(0, 30).map((l) => ({ kind: "log" as const, id: l.id }));
 
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-  const client = getOpenAi(OPENAI_API_KEY!.value());
+  const client = getOpenAi(OPENAI_API_KEY?.value());
 
   const prompt = [
-    "You are LifePet AI.",
+    "You are PetLyon AI.",
     "You summarize pet care logs for the owner.",
     "You must be practical and cautious.",
     "You must include a short non-medical disclaimer.",
@@ -854,10 +863,10 @@ export const aiChat = SKIP_AI
   const citations = logs.slice(0, 20).map((l) => ({ kind: "log" as const, id: l.id }));
 
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-  const client = getOpenAi(OPENAI_API_KEY!.value());
+  const client = getOpenAi(OPENAI_API_KEY?.value());
 
   const system = [
-    "You are LifePet AI.",
+    "You are PetLyon AI.",
     "Answer questions grounded in provided logs.",
     "If you are unsure, say what is missing.",
     "Do not diagnose; suggest contacting a veterinarian when appropriate.",
@@ -906,10 +915,10 @@ export const aiVisionAnalyze = SKIP_AI
       await assertPetAccess(petId, uid);
 
       const model = process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
-      const client = getOpenAi(OPENAI_API_KEY!.value());
+      const client = getOpenAi(OPENAI_API_KEY?.value());
 
       const system = [
-        "You are LifePet AI.",
+        "You are PetLyon AI.",
         "You may be given an image and a user instruction.",
         "Do not diagnose or prescribe.",
         "If the image is unclear, say what to improve (lighting, focus) and what data is missing.",
@@ -959,10 +968,10 @@ export const aiVisionAnalyzeMulti = SKIP_AI
       await assertPetAccess(petId, uid);
 
       const model = process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
-      const client = getOpenAi(OPENAI_API_KEY!.value());
+      const client = getOpenAi(OPENAI_API_KEY?.value());
 
       const system = [
-        "You are LifePet AI.",
+        "You are PetLyon AI.",
         "You may be given multiple images extracted from a short video.",
         "Do not diagnose or prescribe.",
         "If the images are unclear, say what to improve (lighting, focus) and what data is missing.",
@@ -993,10 +1002,14 @@ export const likePost = onCall(async (req) => {
   const postId = String(req.data?.postId ?? "");
   if (!postId) throw new HttpsError("invalid-argument", "postId is required");
   const ref = db.collection("posts").doc(postId);
+  const likeRef = ref.collection("likes").doc(uid);
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError("not-found", "Post not found");
+    const likeSnap = await tx.get(likeRef);
+    if (likeSnap.exists) return;
     const prev = Number((snap.data() as { likeCount?: number }).likeCount ?? 0);
+    tx.set(likeRef, { uid, createdAt: Date.now() }, { merge: true });
     tx.update(ref, { likeCount: prev + 1 });
   });
   return { ok: true };
@@ -1055,9 +1068,16 @@ export const gpsIngestPoint = onRequest(async (req, res) => {
     return;
   }
 
+  const contentType = String(req.headers["content-type"] ?? "");
+  if (contentType && !contentType.toLowerCase().includes("application/json")) {
+    res.status(415).json({ error: "unsupported_media_type" });
+    return;
+  }
+
   const body = (req.body ?? {}) as Record<string, unknown>;
   const petId = typeof body.petId === "string" ? body.petId : "";
   const token = typeof body.token === "string" ? body.token : "";
+  const deviceId = typeof body.deviceId === "string" ? body.deviceId : "";
   const lat = typeof body.lat === "number" ? body.lat : NaN;
   const lng = typeof body.lng === "number" ? body.lng : NaN;
   const accuracyM = typeof body.accuracyM === "number" ? body.accuracyM : undefined;
@@ -1076,18 +1096,70 @@ export const gpsIngestPoint = onRequest(async (req, res) => {
     return;
   }
 
+  if (accuracyM !== undefined && (!Number.isFinite(accuracyM) || accuracyM < 0 || accuracyM > 5000)) {
+    res.status(400).json({ error: "invalid_accuracy" });
+    return;
+  }
+
   const petSnap = await db.collection("pets").doc(petId).get();
   if (!petSnap.exists) {
     res.status(404).json({ error: "pet_not_found" });
     return;
   }
   const pet = petSnap.data() as { gpsIngestToken?: unknown };
-  if (typeof pet.gpsIngestToken !== "string" || pet.gpsIngestToken !== token) {
-    res.status(403).json({ error: "forbidden" });
+
+  const now = Date.now();
+  if (!Number.isFinite(recordedAt) || recordedAt < now - 366 * 24 * 60 * 60 * 1000 || recordedAt > now + 5 * 60 * 1000) {
+    res.status(400).json({ error: "invalid_recordedAt" });
     return;
   }
 
-  const now = Date.now();
+  const ip = String((req.headers["x-forwarded-for"] as string | undefined) || req.socket.remoteAddress || "unknown")
+    .split(",")[0]
+    .trim();
+  const key = `gps:${petId}:${ip}`;
+  const bucketAny = (globalThis as unknown as { __gpsBuckets?: Map<string, { count: number; resetAt: number }> }).__gpsBuckets;
+  const buckets = bucketAny ?? new Map<string, { count: number; resetAt: number }>();
+  (globalThis as unknown as { __gpsBuckets?: Map<string, { count: number; resetAt: number }> }).__gpsBuckets = buckets;
+  const b = buckets.get(key);
+  if (!b || b.resetAt <= now) {
+    buckets.set(key, { count: 1, resetAt: now + 60_000 });
+  } else {
+    b.count += 1;
+    if (b.count > 120) {
+      res.status(429).set("Retry-After", String(Math.max(1, Math.ceil((b.resetAt - now) / 1000)))).json({ error: "rate_limited" });
+      return;
+    }
+  }
+
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+
+  let source = "device";
+  if (deviceId) {
+    const devRef = db.collection("pets").doc(petId).collection("gpsDevices").doc(deviceId);
+    const devSnap = await devRef.get();
+    if (!devSnap.exists) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    const dev = devSnap.data() as { enabled?: unknown; tokenHash?: unknown };
+    if (dev.enabled === false) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    if (typeof dev.tokenHash !== "string" || dev.tokenHash !== tokenHash) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    source = `device:${deviceId}`;
+    await devRef.set({ lastSeenAt: now, updatedAt: now }, { merge: true });
+  } else {
+    if (typeof pet.gpsIngestToken !== "string" || pet.gpsIngestToken !== token) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+  }
+
   await db
     .collection("pets")
     .doc(petId)
@@ -1099,7 +1171,7 @@ export const gpsIngestPoint = onRequest(async (req, res) => {
       accuracyM,
       recordedAt,
       createdAt: now,
-      createdBy: "device",
+      createdBy: source,
     });
 
   res.status(200).json({ ok: true });
@@ -1181,6 +1253,141 @@ export const deviceIngestLog = onRequest(async (req, res) => {
   res.status(200).json({ ok: true });
 });
 
+export const submitFinderReportPublic = onCall({ maxInstances: 2 }, async (req) => {
+  try {
+    const body = (req.data ?? {}) as Record<string, unknown>;
+    const publicIdRaw = typeof body.publicId === "string" ? body.publicId.trim() : "";
+    const reportType = typeof body.reportType === "string" ? body.reportType : "";
+    const reporterContactOptional = typeof body.reporterContactOptional === "string" ? body.reporterContactOptional.trim() : "";
+    const locationTextOptional = typeof body.locationTextOptional === "string" ? body.locationTextOptional.trim() : "";
+    const noteOptional = typeof body.noteOptional === "string" ? body.noteOptional.trim() : "";
+    const hp = typeof body.hp === "string" ? body.hp.trim() : "";
+
+    if (hp) throw new HttpsError("invalid-argument", "Invalid request");
+    if (!/^[A-Z2-9]{6,24}$/.test(publicIdRaw)) throw new HttpsError("invalid-argument", "Invalid publicId");
+    if (reportType !== "found" && reportType !== "sighted") throw new HttpsError("invalid-argument", "Invalid reportType");
+
+    const contact = reporterContactOptional.slice(0, 80);
+    const loc = locationTextOptional.slice(0, 120);
+    const note = noteOptional.slice(0, 500);
+    if (!contact && !loc) throw new HttpsError("invalid-argument", "Missing contact or location");
+
+    const raw = (req as unknown as { rawRequest?: import("express").Request }).rawRequest;
+    const ip = String((raw?.headers["x-forwarded-for"] as string | undefined) || raw?.socket?.remoteAddress || "unknown")
+      .split(",")[0]
+      .trim();
+    const ua = String((raw?.headers["user-agent"] as string | undefined) || "unknown");
+    const now = Date.now();
+
+    const key = `finder:${publicIdRaw}:${ip}`;
+    const bucketAny = (globalThis as unknown as { __finderBuckets?: Map<string, { count: number; resetAt: number }> }).__finderBuckets;
+    const buckets = bucketAny ?? new Map<string, { count: number; resetAt: number }>();
+    (globalThis as unknown as { __finderBuckets?: Map<string, { count: number; resetAt: number }> }).__finderBuckets = buckets;
+    const b = buckets.get(key);
+    if (!b || b.resetAt <= now) {
+      buckets.set(key, { count: 1, resetAt: now + 60_000 });
+    } else {
+      b.count += 1;
+      if (b.count > 3) throw new HttpsError("resource-exhausted", "Too many requests");
+    }
+
+    const cardSnap = await db.collection("petCards").doc(publicIdRaw).get();
+    if (!cardSnap.exists) throw new HttpsError("not-found", "Pet card not found");
+    const card = cardSnap.data() as { petId?: unknown; ownerId?: unknown; isLost?: unknown };
+    const petId = typeof card.petId === "string" ? card.petId : "";
+    const ownerId = typeof card.ownerId === "string" ? card.ownerId : "";
+    if (!petId || !ownerId) throw new HttpsError("failed-precondition", "Invalid pet card");
+
+    const ipHash = createHash("sha256").update(ip).digest("hex");
+    const uaHash = createHash("sha256").update(ua).digest("hex");
+
+    const reportRef = await db
+      .collection("pets")
+      .doc(petId)
+      .collection("finderReports")
+      .add({
+        petId,
+        publicId: publicIdRaw,
+        reportType,
+        reporterContactOptional: contact || null,
+        locationTextOptional: loc || null,
+        noteOptional: note || null,
+        status: "new",
+        ipHash,
+        uaHash,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+    await db
+      .collection("pets")
+      .doc(petId)
+      .collection("safetyEvents")
+      .add({
+        petId,
+        type: "finder_report_received",
+        createdAt: now,
+        related: { publicId: publicIdRaw, reportId: reportRef.id, reportType },
+        summary: reportType === "found" ? "Segnalazione: trovato" : "Segnalazione: avvistato",
+      });
+
+    return { reportId: reportRef.id, ok: true, isLost: Boolean(card.isLost) };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError("internal", "Failed to submit report");
+  }
+});
+
+export const setFinderReportStatusSecure = onCall({ maxInstances: 2 }, async (req) => {
+  try {
+    const uid = req.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+    const body = (req.data ?? {}) as Record<string, unknown>;
+    const petId = typeof body.petId === "string" ? body.petId : "";
+    const reportId = typeof body.reportId === "string" ? body.reportId : "";
+    const status = typeof body.status === "string" ? body.status : "";
+    if (!petId || !reportId) throw new HttpsError("invalid-argument", "Missing params");
+    if (status !== "verified" && status !== "spam" && status !== "resolved") throw new HttpsError("invalid-argument", "Invalid status");
+
+    const petSnap = await db.collection("pets").doc(petId).get();
+    if (!petSnap.exists) throw new HttpsError("not-found", "Pet not found");
+    const pet = petSnap.data() as { ownerId?: unknown };
+    const ownerId = typeof pet.ownerId === "string" ? pet.ownerId : "";
+    if (!ownerId || ownerId !== uid) throw new HttpsError("permission-denied", "Forbidden");
+
+    const reportRef = db.collection("pets").doc(petId).collection("finderReports").doc(reportId);
+    const reportSnap = await reportRef.get();
+    if (!reportSnap.exists) throw new HttpsError("not-found", "Report not found");
+    const report = reportSnap.data() as { publicId?: unknown; reportType?: unknown };
+    const publicId = typeof report.publicId === "string" ? report.publicId : "";
+    const reportType = typeof report.reportType === "string" ? report.reportType : "";
+
+    const now = Date.now();
+    await reportRef.set({ status, handledBy: uid, handledAt: now, updatedAt: now }, { merge: true });
+
+    const eventType = status === "verified" ? "finder_report_verified" : status === "spam" ? "finder_report_spam" : "finder_report_resolved";
+    const summary =
+      status === "verified" ? "Segnalazione verificata" : status === "spam" ? "Segnalazione marcata come spam" : "Segnalazione risolta";
+    await db
+      .collection("pets")
+      .doc(petId)
+      .collection("safetyEvents")
+      .add({
+        petId,
+        type: eventType,
+        createdAt: now,
+        createdBy: uid,
+        related: { publicId, reportId, reportType: reportType === "found" || reportType === "sighted" ? reportType : undefined },
+        summary,
+      });
+
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError("internal", "Failed to update report");
+  }
+});
+
 export const onBookingCreated = onDocumentCreated("pets/{petId}/bookings/{bookingId}", async (event) => {
   const petId = event.params.petId as string;
   const data = event.data?.data() as { providerName?: string; providerKind?: string; scheduledAt?: number; confirmBy?: number; status?: string } | undefined;
@@ -1193,6 +1400,19 @@ export const onBookingCreated = onDocumentCreated("pets/{petId}/bookings/{bookin
     body: `${data.providerName ?? "Provider"} (${data.providerKind ?? "service"}) · ${when}${confirm ? ` · Confirm by ${confirm}` : ""}`,
     severity: "info",
   });
+});
+
+export const onPetDocumentDeleted = onDocumentDeleted("pets/{petId}/documents/{docId}", async (event) => {
+  const data = event.data?.data() as { storagePath?: unknown } | undefined;
+  const storagePath = typeof data?.storagePath === "string" ? data.storagePath : "";
+  if (!storagePath || storagePath.startsWith("demo://")) return;
+  try {
+    await bucket.file(storagePath).delete({ ignoreNotFound: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e || "");
+    if (/No such object|404/i.test(msg)) return;
+    throw e;
+  }
 });
 
 export const bookingNoShowSweep = onSchedule("every 10 minutes", async () => {
@@ -1307,48 +1527,87 @@ export const bookingReminderSweep = onSchedule("every 10 minutes", async () => {
 });
 
 export const createBookingSecure = onCall({ maxInstances: 1 }, async (req) => {
-  const uid = req.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
-  const petId = String(req.data?.petId ?? "");
-  const providerId = String(req.data?.providerId ?? "");
-  const scheduledAt = Number(req.data?.scheduledAt ?? NaN);
-  const confirmByRaw = req.data?.confirmBy;
-  const confirmBy = confirmByRaw === null || confirmByRaw === undefined ? null : Number(confirmByRaw);
-  const notes = typeof req.data?.notes === "string" ? req.data.notes.trim() : "";
+  try {
+    const uid = req.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+    const petId = String(req.data?.petId ?? "");
+    const providerId = String(req.data?.providerId ?? "");
+    const scheduledAt = Number(req.data?.scheduledAt ?? NaN);
+    const confirmByRaw = req.data?.confirmBy;
+    const confirmBy = confirmByRaw === null || confirmByRaw === undefined ? null : Number(confirmByRaw);
+    const notes = typeof req.data?.notes === "string" ? req.data.notes.trim() : "";
+    const manualProviderRaw = req.data?.manualProvider;
+    const manualProvider =
+      manualProviderRaw && typeof manualProviderRaw === "object"
+        ? (manualProviderRaw as { kind?: unknown; name?: unknown; city?: unknown; phone?: unknown; meetingUrl?: unknown })
+        : null;
 
-  if (!petId) throw new HttpsError("invalid-argument", "petId is required");
-  if (!providerId) throw new HttpsError("invalid-argument", "providerId is required");
-  if (!Number.isFinite(scheduledAt) || scheduledAt < Date.now() + 5 * 60 * 1000) {
-    throw new HttpsError("invalid-argument", "scheduledAt must be at least 5 minutes in the future");
+    if (!petId) throw new HttpsError("invalid-argument", "petId is required");
+    if (!providerId) throw new HttpsError("invalid-argument", "providerId is required");
+    if (!Number.isFinite(scheduledAt) || scheduledAt < Date.now() + 5 * 60 * 1000) {
+      throw new HttpsError("invalid-argument", "scheduledAt must be at least 5 minutes in the future");
+    }
+    if (confirmBy !== null && (!Number.isFinite(confirmBy) || confirmBy > scheduledAt)) {
+      throw new HttpsError("invalid-argument", "confirmBy must be <= scheduledAt");
+    }
+
+    await assertPetAccess(petId, uid);
+
+    let resolvedProviderId = providerId;
+    let providerKind = "vet";
+    let providerName = "Professionista";
+    const providerSnap = await db.collection("providers").doc(providerId).get();
+    if (providerSnap.exists) {
+      const provider = providerSnap.data() as { kind?: unknown; name?: unknown };
+      providerKind = typeof provider.kind === "string" ? provider.kind : "vet";
+      providerName = typeof provider.name === "string" ? provider.name : "Professionista";
+    } else {
+      const wantsManual = providerId.startsWith("manual_") || Boolean(manualProvider);
+      if (!wantsManual) throw new HttpsError("not-found", "Provider not found");
+      const name = typeof manualProvider?.name === "string" ? manualProvider.name.trim() : "";
+      const kind = typeof manualProvider?.kind === "string" ? manualProvider.kind : "vet";
+      if (!name) throw new HttpsError("invalid-argument", "manualProvider.name is required");
+      const city = typeof manualProvider?.city === "string" ? manualProvider.city.trim() : "";
+      const phone = typeof manualProvider?.phone === "string" ? manualProvider.phone.trim() : "";
+      const meetingUrl = typeof manualProvider?.meetingUrl === "string" ? manualProvider.meetingUrl.trim() : "";
+      const provRef = await db.collection("providers").add({
+        kind,
+        name,
+        createdBy: uid,
+        createdAt: Date.now(),
+        ...(city ? { city } : {}),
+        ...(phone ? { phone } : {}),
+        ...(meetingUrl ? { meetingUrl } : {}),
+      });
+      resolvedProviderId = provRef.id;
+      providerKind = kind;
+      providerName = name;
+    }
+
+    const base = {
+      petId,
+      userId: uid,
+      providerId: resolvedProviderId,
+      providerKind,
+      providerName,
+      scheduledAt,
+      confirmBy: confirmBy ?? null,
+      status: "requested",
+      cancelReason: null,
+      notes: notes || null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    const ref = await db.collection("pets").doc(petId).collection("bookings").add(base);
+    return { bookingId: ref.id };
+  } catch (e) {
+    console.error("createBookingSecure failed", e);
+    if (e instanceof HttpsError) throw e;
+    const isEmulator = String(process.env.FUNCTIONS_EMULATOR || "") === "true";
+    const msg = e instanceof Error ? e.message : "Internal";
+    throw new HttpsError("internal", isEmulator ? msg : "Internal");
   }
-  if (confirmBy !== null && (!Number.isFinite(confirmBy) || confirmBy > scheduledAt)) {
-    throw new HttpsError("invalid-argument", "confirmBy must be <= scheduledAt");
-  }
-
-  await assertPetAccess(petId, uid);
-  const providerSnap = await db.collection("providers").doc(providerId).get();
-  if (!providerSnap.exists) throw new HttpsError("not-found", "Provider not found");
-  const provider = providerSnap.data() as { kind?: unknown; name?: unknown };
-  const providerKind = typeof provider.kind === "string" ? provider.kind : "vet";
-  const providerName = typeof provider.name === "string" ? provider.name : "Professionista";
-
-  const base = {
-    petId,
-    userId: uid,
-    providerId,
-    providerKind,
-    providerName,
-    scheduledAt,
-    confirmBy: confirmBy ?? null,
-    status: "requested",
-    cancelReason: null,
-    notes: notes || null,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-
-  const ref = await db.collection("pets").doc(petId).collection("bookings").add(base);
-  return { bookingId: ref.id };
 });
 
 export const setBookingStatusSecure = onCall({ maxInstances: 1 }, async (req) => {
@@ -2046,6 +2305,30 @@ export const communityCommentReportTrigger = onDocumentCreated(
   }
 );
 
+export const adoptionReportTrigger = onDocumentCreated("adoptions/{adoptionId}/reports/{reportId}", async (event) => {
+  const adoptionId = event.params.adoptionId as string;
+  const ref = db.collection("adoptions").doc(adoptionId);
+  const reportsRef = ref.collection("reports");
+  const count = await recountReports(reportsRef, 50);
+  const patch: Record<string, unknown> = { reportCount: count, updatedAt: Date.now() };
+  if (count >= 3) patch.status = "hidden";
+  await ref.set(patch, { merge: true });
+});
+
+export const communityGroupMessageReportTrigger = onDocumentCreated(
+  "groups/{groupId}/messages/{messageId}/reports/{reportId}",
+  async (event) => {
+    const groupId = event.params.groupId as string;
+    const messageId = event.params.messageId as string;
+    const ref = db.collection("groups").doc(groupId).collection("messages").doc(messageId);
+    const reportsRef = ref.collection("reports");
+    const count = await recountReports(reportsRef, 50);
+    const patch: Record<string, unknown> = { reportCount: count };
+    if (count >= 3) patch.status = "hidden";
+    await ref.set(patch, { merge: true });
+  }
+);
+
 export const deletePetCascade = onCall(async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
@@ -2177,6 +2460,1804 @@ export const budgetSweep = onSchedule("every 6 hours", async () => {
         body: `Speso ${currency} ${sum.toFixed(2)} su ${currency} ${budgetMonthly.toFixed(2)} (mese ${monthKey}).`,
         severity: "warning",
       });
+    })
+  );
+});
+
+type MsSubjectDoc = {
+  type?: unknown;
+  species?: unknown;
+  displayName?: unknown;
+  ownerId?: unknown;
+  farmId?: unknown;
+  herdId?: unknown;
+  status?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
+type MsDeviceDoc = {
+  brand?: unknown;
+  model?: unknown;
+  adapterType?: unknown;
+  externalDeviceId?: unknown;
+  category?: unknown;
+  connectivityType?: unknown;
+  batteryLevel?: unknown;
+  signalStrength?: unknown;
+  isOnline?: unknown;
+  lastSeenAt?: unknown;
+  supportedMetrics?: unknown;
+  supportedAlerts?: unknown;
+  metadata?: unknown;
+  status?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
+type MsBindingDoc = {
+  deviceId?: unknown;
+  subjectId?: unknown;
+  boundAt?: unknown;
+  unboundAt?: unknown;
+};
+
+type MsRuleDoc = {
+  type?: unknown;
+  enabled?: unknown;
+  scope?: unknown;
+  subjectId?: unknown;
+  subjectType?: unknown;
+  metricType?: unknown;
+  operator?: unknown;
+  threshold?: unknown;
+  windowMinutes?: unknown;
+  severity?: unknown;
+  category?: unknown;
+  title?: unknown;
+  description?: unknown;
+  recommendedActions?: unknown;
+  createdAt?: unknown;
+};
+
+type MsSampleDoc = {
+  subjectId?: unknown;
+  deviceId?: unknown;
+  metricType?: unknown;
+  value?: unknown;
+  unit?: unknown;
+  qualityScore?: unknown;
+  sourceTimestamp?: unknown;
+  receivedAt?: unknown;
+  sourceType?: unknown;
+  rawPayload?: unknown;
+  normalizedPayload?: unknown;
+};
+
+type MsAlertDoc = {
+  ruleId?: unknown;
+  subjectId?: unknown;
+  deviceId?: unknown;
+  severity?: unknown;
+  category?: unknown;
+  title?: unknown;
+  description?: unknown;
+  recommendedActions?: unknown;
+  triggeredAt?: unknown;
+  resolvedAt?: unknown;
+  source?: unknown;
+  confidenceScore?: unknown;
+  linkedMetrics?: unknown;
+  status?: unknown;
+};
+
+function msUserRef(uid: string) {
+  return db.collection("users").doc(uid);
+}
+
+function msCol(uid: string, name: string) {
+  return msUserRef(uid).collection(name);
+}
+
+function msTelemetrySamplesCol(uid: string, subjectId: string) {
+  return msUserRef(uid).collection("msTelemetry").doc(subjectId).collection("samples");
+}
+
+function msStr(v: unknown) {
+  return typeof v === "string" ? v : "";
+}
+
+async function msAudit(uid: string, action: string, details: Record<string, unknown>) {
+  const now = Date.now();
+  try {
+    await msCol(uid, "msAuditLogs").add({ id: db.collection("_ids").doc().id, action, details, createdAt: now });
+  } catch {
+    return;
+  }
+}
+
+async function msWriteDeadLetter(uid: string, doc: Record<string, unknown>) {
+  const now = Date.now();
+  await msCol(uid, "msDeadLetters").add({ id: db.collection("_ids").doc().id, createdAt: now, ...doc });
+}
+
+async function msWriteSyncLog(uid: string, doc: Record<string, unknown>) {
+  const now = Date.now();
+  await msCol(uid, "msSyncLogs").add({ id: db.collection("_ids").doc().id, createdAt: now, ...doc });
+}
+
+function msGetPath(obj: Record<string, unknown>, path: string): unknown {
+  const p = String(path || "").trim();
+  if (!p) return undefined;
+  const parts = p.split(".").map((x) => x.trim()).filter(Boolean);
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (!cur || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+type MsIntegrationMappingRow = { path: unknown; metricType: unknown; unit?: unknown; transform?: unknown };
+
+function msReadIntegrationMappings(v: unknown): Array<{ path: string; metricType: string; unit?: string; transform?: string }> {
+  if (!v || typeof v !== "object") return [];
+  const raw = (v as { mappings?: unknown }).mappings;
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ path: string; metricType: string; unit?: string; transform?: string }> = [];
+  for (const row of raw as MsIntegrationMappingRow[]) {
+    const path = msStr(row.path);
+    const metricType = msStr(row.metricType);
+    const unit = msStr(row.unit);
+    const transform = msStr(row.transform);
+    if (!path || !metricType) continue;
+    out.push({ path, metricType, unit: unit || undefined, transform: transform || undefined });
+    if (out.length >= 200) break;
+  }
+  return out;
+}
+
+async function msResolveTarget(args: {
+  uid: string;
+  deviceIdInput: string;
+  subjectIdInput: string;
+  adapterTypeInput: string;
+  externalDeviceIdInput: string;
+}) {
+  const uid = args.uid;
+
+  let deviceId = args.deviceIdInput;
+  if (!deviceId && args.externalDeviceIdInput) {
+    const q = await msCol(uid, "msDevices").where("externalDeviceId", "==", args.externalDeviceIdInput).limit(2).get();
+    const found = q.docs[0]?.id ?? "";
+    if (!found) return { ok: false as const, error: "device_not_found" };
+    deviceId = found;
+  }
+  if (!deviceId) return { ok: false as const, error: "missing_device" };
+
+  let subjectId = args.subjectIdInput;
+  if (!subjectId) {
+    const bindSnap = await msCol(uid, "msBindings").where("deviceId", "==", deviceId).where("unboundAt", "==", null).limit(1).get();
+    const b = bindSnap.docs[0]?.data() as MsBindingDoc | undefined;
+    subjectId = b ? msStr(b.subjectId) : "";
+  }
+  if (!subjectId) return { ok: false as const, error: "missing_subject" };
+
+  const deviceSnap = await msCol(uid, "msDevices").doc(deviceId).get();
+  if (!deviceSnap.exists) return { ok: false as const, error: "device_not_found" };
+  const dev = deviceSnap.data() as MsDeviceDoc;
+  if (args.adapterTypeInput && args.adapterTypeInput !== msStr(dev.adapterType)) return { ok: false as const, error: "adapter_mismatch" };
+  if (args.externalDeviceIdInput && args.externalDeviceIdInput !== msStr(dev.externalDeviceId)) return { ok: false as const, error: "external_device_mismatch" };
+  return { ok: true as const, deviceId, subjectId, dev };
+}
+
+function msNum(v: unknown) {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+function msBool(v: unknown) {
+  if (typeof v === "boolean") return v;
+  if (v === 1 || v === "1") return true;
+  if (v === 0 || v === "0") return false;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true") return true;
+    if (s === "false") return false;
+  }
+  return null;
+}
+
+function msClamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function msChance(p: number) {
+  return Math.random() < p;
+}
+
+function msGaussian() {
+  let u = 0;
+  let v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+function msCompare(op: unknown, a: unknown, b: unknown) {
+  const o = msStr(op);
+  if (o === "==") return a === b;
+  const an = msNum(a);
+  const bn = msNum(b);
+  if (an === null || bn === null) return false;
+  if (o === ">") return an > bn;
+  if (o === ">=") return an >= bn;
+  if (o === "<") return an < bn;
+  if (o === "<=") return an <= bn;
+  return false;
+}
+
+function msNormalizeSamples(args: {
+  uid: string;
+  subjectId: string;
+  deviceId: string;
+  receivedAt: number;
+  payload: Record<string, unknown>;
+  supportedMetrics: string[];
+  adapterType: string;
+  integrationMappings: Array<{ path: string; metricType: string; unit?: string; transform?: string }>;
+  deviceMappings: Array<{ path: string; metricType: string; unit?: string; transform?: string }>;
+}) {
+  const ts = msNum(args.payload.ts) ?? args.receivedAt;
+  const out: Array<{ id: string; doc: Record<string, unknown> }> = [];
+
+  const push = (metricType: string, value: unknown, unit?: string) => {
+    if (!args.supportedMetrics.includes(metricType)) return;
+    const id = db.collection("_ids").doc().id;
+    out.push({
+      id,
+      doc: {
+        id,
+        subjectId: args.subjectId,
+        deviceId: args.deviceId,
+        metricType,
+        value,
+        unit: unit ?? null,
+        qualityScore: 0.92,
+        sourceTimestamp: ts,
+        receivedAt: args.receivedAt,
+        sourceType: "device",
+        rawPayload: args.payload,
+        normalizedPayload: null,
+      },
+    });
+  };
+
+  const battery = msNum(args.payload.battery);
+  const signal = msNum(args.payload.signal);
+  const online = msBool(args.payload.online);
+  if (battery !== null) push("device_battery_level", battery, "%");
+  if (signal !== null) push("device_signal_strength", signal, "%");
+  if (online !== null) push("device_online", online);
+
+  const builtinByAdapter: Record<string, Array<{ path: string; metricType: string; unit?: string }>> = {
+    TractiveAdapter: [
+      { path: "lat", metricType: "location_lat", unit: "deg" },
+      { path: "lng", metricType: "location_lng", unit: "deg" },
+      { path: "speed", metricType: "speed", unit: "m/s" },
+      { path: "activity", metricType: "activity_score" },
+      { path: "sleepMin", metricType: "sleep_duration", unit: "min" },
+      { path: "geofence", metricType: "geofence_status" },
+      { path: "battery", metricType: "device_battery_level", unit: "%" },
+      { path: "signal", metricType: "device_signal_strength", unit: "%" },
+      { path: "online", metricType: "device_online" },
+    ],
+    PetPaceAdapter: [
+      { path: "hr", metricType: "heart_rate", unit: "bpm" },
+      { path: "rr", metricType: "respiratory_rate", unit: "rpm" },
+      { path: "tempC", metricType: "body_temperature", unit: "°C" },
+      { path: "hrv", metricType: "hrv", unit: "ms" },
+      { path: "activity", metricType: "activity_score" },
+    ],
+    CowManagerAdapter: [
+      { path: "ear_temperature", metricType: "ear_temperature", unit: "°C" },
+      { path: "rumination_duration", metricType: "rumination_duration", unit: "min" },
+      { path: "movement_activity", metricType: "movement_activity" },
+      { path: "estrus_probability", metricType: "estrus_probability" },
+      { path: "insemination_window_score", metricType: "insemination_window_score" },
+    ],
+    SmaxtecAdapter: [
+      { path: "innerTemp", metricType: "inner_body_temperature", unit: "°C" },
+      { path: "rumScore", metricType: "rumination_score" },
+      { path: "illness", metricType: "illness_risk_score" },
+      { path: "ph", metricType: "ph_value" },
+    ],
+    SenseHubAdapter: [
+      { path: "activity", metricType: "activity_score" },
+      { path: "rumMin", metricType: "rumination_duration", unit: "min" },
+      { path: "estrusP", metricType: "estrus_probability" },
+      { path: "insemination", metricType: "insemination_window_score" },
+    ],
+  };
+
+  const genericFallback: Array<{ path: string; metricType: string; unit?: string }> = [
+    { path: "hr", metricType: "heart_rate", unit: "bpm" },
+    { path: "heart_rate", metricType: "heart_rate", unit: "bpm" },
+    { path: "rr", metricType: "respiratory_rate", unit: "rpm" },
+    { path: "respiratory_rate", metricType: "respiratory_rate", unit: "rpm" },
+    { path: "temp", metricType: "body_temperature", unit: "°C" },
+    { path: "tempC", metricType: "body_temperature", unit: "°C" },
+    { path: "body_temperature", metricType: "body_temperature", unit: "°C" },
+    { path: "earTemp", metricType: "ear_temperature", unit: "°C" },
+    { path: "innerTemp", metricType: "inner_body_temperature", unit: "°C" },
+    { path: "activity", metricType: "activity_score" },
+    { path: "sleepMin", metricType: "sleep_duration", unit: "min" },
+    { path: "steps", metricType: "step_count", unit: "count" },
+    { path: "rumMin", metricType: "rumination_duration", unit: "min" },
+    { path: "rumScore", metricType: "rumination_score" },
+    { path: "inactiveMin", metricType: "inactivity_duration", unit: "min" },
+    { path: "estrusP", metricType: "estrus_probability" },
+    { path: "insemination", metricType: "insemination_window_score" },
+    { path: "illness", metricType: "illness_risk_score" },
+    { path: "ph", metricType: "ph_value" },
+    { path: "lat", metricType: "location_lat", unit: "deg" },
+    { path: "lng", metricType: "location_lng", unit: "deg" },
+    { path: "speed", metricType: "speed", unit: "m/s" },
+    { path: "geofence", metricType: "geofence_status" },
+  ];
+
+  const merged: Array<{ path: string; metricType: string; unit?: string; transform?: string }> = [];
+  const seen = new Set<string>();
+
+  const add = (rows: Array<{ path: string; metricType: string; unit?: string; transform?: string }>) => {
+    for (const r of rows) {
+      const k = `${r.metricType}:${r.path}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      merged.push(r);
+    }
+  };
+
+  add(args.deviceMappings);
+  add(args.integrationMappings);
+  add((builtinByAdapter[args.adapterType] ?? []) as Array<{ path: string; metricType: string; unit?: string; transform?: string }>);
+  add(genericFallback);
+
+  for (const r of merged) {
+    if (!args.supportedMetrics.includes(r.metricType)) continue;
+    const raw = msGetPath(args.payload, r.path);
+    if (raw === undefined || raw === null) continue;
+
+    if (r.metricType === "geofence_status") {
+      const s = typeof raw === "string" ? raw : String(raw);
+      if (s) push(r.metricType, s);
+      continue;
+    }
+    if (r.metricType === "device_online") {
+      const b = msBool(raw);
+      if (b !== null) push(r.metricType, b);
+      continue;
+    }
+
+    const n = msNum(raw);
+    if (n === null) continue;
+
+    let unit = r.unit;
+    if (!unit && raw && typeof raw === "object") {
+      const u = msStr((raw as Record<string, unknown>).unit);
+      unit = u || undefined;
+    }
+
+    if (r.transform === "fahrenheit_to_celsius" && unit && unit.toLowerCase().includes("f")) {
+      const c = ((n - 32) * 5) / 9;
+      push(r.metricType, Number(c.toFixed(2)), "°C");
+      continue;
+    }
+
+    push(r.metricType, n, unit);
+  }
+
+  const geofence = args.payload.geofence;
+  const geofenceStr = typeof geofence === "string" ? geofence : geofence === null || geofence === undefined ? "" : String(geofence);
+  if (geofenceStr) push("geofence_status", geofenceStr);
+
+  return {
+    samples: out,
+    devicePatch: {
+      batteryLevel: battery,
+      signalStrength: signal,
+      isOnline: online,
+      lastSeenAt: args.receivedAt,
+      status: online === false ? "offline" : battery !== null && battery <= 15 ? "battery_low" : "connected",
+    },
+  };
+}
+
+async function msIngestResolved(args: {
+  uid: string;
+  deviceId: string;
+  subjectId: string;
+  dev: MsDeviceDoc;
+  payload: Record<string, unknown>;
+  receivedAt: number;
+  source: "webhook" | "queue" | "polling" | "csv";
+}) {
+  function haversineM(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+    const R = 6371000;
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const s = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+
+  const supportedMetrics = Array.isArray(args.dev.supportedMetrics) ? args.dev.supportedMetrics.map((x) => String(x)) : [];
+  const adapterType = msStr(args.dev.adapterType);
+  const deviceMappings = msReadIntegrationMappings((args.dev as { adapterConfig?: unknown }).adapterConfig);
+  const integrationSnap = adapterType ? await msCol(args.uid, "msIntegrations").doc(adapterType).get() : null;
+  const integrationMappings = integrationSnap && integrationSnap.exists ? msReadIntegrationMappings(integrationSnap.data()) : [];
+
+  const normalized = msNormalizeSamples({
+    uid: args.uid,
+    subjectId: args.subjectId,
+    deviceId: args.deviceId,
+    receivedAt: args.receivedAt,
+    payload: args.payload,
+    supportedMetrics,
+    adapterType,
+    integrationMappings,
+    deviceMappings,
+  });
+
+  const batch = db.batch();
+
+  const subjSnap = await msCol(args.uid, "msSubjects").doc(args.subjectId).get();
+  const subj = subjSnap.exists ? (subjSnap.data() as MsSubjectDoc) : null;
+
+  const latDoc = normalized.samples.slice().reverse().find((s) => msStr(s.doc.metricType) === "location_lat");
+  const lngDoc = normalized.samples.slice().reverse().find((s) => msStr(s.doc.metricType) === "location_lng");
+  const lat = latDoc ? msNum(latDoc.doc.value) : null;
+  const lng = lngDoc ? msNum(lngDoc.doc.value) : null;
+  if (subj && lat !== null && lng !== null) {
+    const farmId = msStr(subj.farmId);
+    const herdId = msStr(subj.herdId);
+    if (farmId) {
+      const fencesSnap = await msCol(args.uid, "msGeofences").where("farmId", "==", farmId).limit(400).get();
+      const fences = fencesSnap.docs.map((d) => d.data() as Record<string, unknown>);
+      const candidates = fences.filter((f) => {
+        const hid = msStr(f.herdId);
+        if (hid) return herdId && hid === herdId;
+        return true;
+      });
+      if (candidates.length) {
+        const point = { lat, lng };
+        let insideAny = false;
+        const distances: Array<{ id: string; distanceM: number; radiusM: number }> = [];
+        for (const f of candidates) {
+          const id = msStr(f.id);
+          const center = (f.center ?? null) as unknown;
+          const radiusM = msNum(f.radiusM) ?? 0;
+          const cLat = center && typeof center === "object" ? msNum((center as Record<string, unknown>).lat) : null;
+          const cLng = center && typeof center === "object" ? msNum((center as Record<string, unknown>).lng) : null;
+          if (!id || cLat === null || cLng === null || radiusM <= 0) continue;
+          const dM = haversineM({ lat: cLat, lng: cLng }, point);
+          distances.push({ id, distanceM: Math.round(dM), radiusM: Math.round(radiusM) });
+          if (dM <= radiusM) insideAny = true;
+        }
+        const value = insideAny ? "inside" : "outside";
+        const id = db.collection("_ids").doc().id;
+        const doc = {
+          id,
+          subjectId: args.subjectId,
+          deviceId: args.deviceId,
+          metricType: "geofence_status",
+          value,
+          unit: null,
+          qualityScore: 0.9,
+          sourceTimestamp: args.receivedAt,
+          receivedAt: Date.now(),
+          sourceType: "inferred",
+          normalizedPayload: { method: "circle", insideAny, distances },
+        };
+        batch.set(msTelemetrySamplesCol(args.uid, args.subjectId).doc(id), doc, { merge: true });
+      }
+    }
+  }
+
+  for (const s of normalized.samples) {
+    batch.set(msTelemetrySamplesCol(args.uid, args.subjectId).doc(s.id), s.doc, { merge: true });
+  }
+  batch.set(
+    msCol(args.uid, "msDevices").doc(args.deviceId),
+    {
+      batteryLevel: normalized.devicePatch.batteryLevel ?? null,
+      signalStrength: normalized.devicePatch.signalStrength ?? null,
+      isOnline: normalized.devicePatch.isOnline ?? null,
+      lastSeenAt: normalized.devicePatch.lastSeenAt ?? null,
+      status: normalized.devicePatch.status ?? null,
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
+  await batch.commit();
+
+  const [subjectsSnap, devicesSnap, bindingsSnap, rulesSnap] = await Promise.all([
+    msCol(args.uid, "msSubjects").limit(300).get(),
+    msCol(args.uid, "msDevices").limit(500).get(),
+    msCol(args.uid, "msBindings").limit(800).get(),
+    msCol(args.uid, "msRules").limit(500).get(),
+  ]);
+  await msEvaluateAndPersist({
+    uid: args.uid,
+    now: Date.now(),
+    subjects: subjectsSnap.docs.map((d) => ({ id: d.id, doc: d.data() as MsSubjectDoc })),
+    devices: devicesSnap.docs.map((d) => ({ id: d.id, doc: d.data() as MsDeviceDoc })),
+    bindings: bindingsSnap.docs.map((d) => ({ id: d.id, doc: d.data() as MsBindingDoc })),
+    rules: rulesSnap.docs.map((d) => ({ id: d.id, doc: d.data() as MsRuleDoc })),
+  });
+
+  await msWriteSyncLog(args.uid, {
+    kind: args.source,
+    ok: true,
+    inserted: normalized.samples.length,
+    deviceId: args.deviceId,
+    subjectId: args.subjectId,
+  });
+  return { inserted: normalized.samples.length };
+}
+
+async function msEvaluateAndPersist(args: {
+  uid: string;
+  now: number;
+  subjects: Array<{ id: string; doc: MsSubjectDoc }>;
+  devices: Array<{ id: string; doc: MsDeviceDoc }>;
+  bindings: Array<{ id: string; doc: MsBindingDoc }>;
+  rules: Array<{ id: string; doc: MsRuleDoc }>;
+}) {
+  const uid = args.uid;
+  const now = args.now;
+
+  const subjectsById = new Map(args.subjects.map((s) => [s.id, s.doc] as const));
+  const subjectIdByDeviceId = new Map<string, string>();
+  for (const b of args.bindings) {
+    const d = b.doc;
+    if (typeof d.unboundAt === "number") continue;
+    const deviceId = msStr(d.deviceId);
+    const subjectId = msStr(d.subjectId);
+    if (!deviceId || !subjectId) continue;
+    subjectIdByDeviceId.set(deviceId, subjectId);
+  }
+
+  const maxWindow = args.rules.reduce((m, r) => {
+    const w = msNum(r.doc.windowMinutes);
+    return Math.max(m, w ?? (msStr(r.doc.type) === "anomaly" ? 120 : 30));
+  }, 30);
+  const windowMs = Math.max(10, maxWindow) * 60 * 1000;
+
+  const recentBySubjectMetric = new Map<string, Array<{ id: string; doc: MsSampleDoc }>>();
+  for (const s of args.subjects) {
+    const snap = await msTelemetrySamplesCol(uid, s.id)
+      .where("sourceTimestamp", ">=", now - windowMs)
+      .orderBy("sourceTimestamp", "desc")
+      .limit(220)
+      .get();
+    for (const d of snap.docs) {
+      const data = d.data() as MsSampleDoc;
+      const key = `${s.id}:${msStr(data.metricType)}`;
+      const arr = recentBySubjectMetric.get(key) ?? [];
+      arr.push({ id: d.id, doc: data });
+      recentBySubjectMetric.set(key, arr);
+    }
+  }
+
+  const existingAlertsSnap = await msCol(uid, "msAlerts").limit(2000).get();
+  const openAlertsByKey = new Map<string, { id: string; doc: MsAlertDoc }>();
+  for (const d of existingAlertsSnap.docs) {
+    const a = d.data() as MsAlertDoc;
+    if (msStr(a.status) !== "open") continue;
+    const ruleId = msStr(a.ruleId);
+    const subjectId = msStr(a.subjectId);
+    if (!ruleId || !subjectId) continue;
+    openAlertsByKey.set(`${ruleId}:${subjectId}`, { id: d.id, doc: a });
+  }
+
+  const batch = db.batch();
+  const notificationsToCreate: Array<{ alertId: string; subjectId: string; title: string; body: string }> = [];
+
+  for (const r of args.rules) {
+    const ruleId = r.id;
+    const rule = r.doc;
+    if (rule.enabled !== true) continue;
+    const type = msStr(rule.type);
+    if (type !== "threshold" && type !== "anomaly" && type !== "trend") continue;
+
+    for (const s of args.subjects) {
+      const subjectId = s.id;
+      const subject = s.doc;
+
+      const scope = msStr(rule.scope);
+      if (scope === "subject") {
+        if (msStr(rule.subjectId) !== subjectId) continue;
+      } else if (scope === "type") {
+        if (msStr(rule.subjectType) !== msStr(subject.type)) continue;
+      } else {
+        continue;
+      }
+
+      const metricType = msStr(rule.metricType);
+      if (!metricType) continue;
+      const relevant = recentBySubjectMetric.get(`${subjectId}:${metricType}`) ?? [];
+      const existing = openAlertsByKey.get(`${ruleId}:${subjectId}`);
+
+      const alertDocId = `${ruleId}_${subjectId}`;
+      if (type === "threshold") {
+        const triggered = relevant.some((x) => msCompare(rule.operator, x.doc.value, rule.threshold));
+        if (triggered && !existing) {
+          const first = relevant.find((x) => msCompare(rule.operator, x.doc.value, rule.threshold));
+          const deviceId = first ? msStr(first.doc.deviceId) : "";
+          const title = msStr(rule.title) || metricType;
+          const description = msStr(rule.description) || `${metricType} oltre soglia`;
+          const severity = msStr(rule.severity) || "warning";
+          const category = msStr(rule.category) || "health";
+          const rec = Array.isArray(rule.recommendedActions) ? rule.recommendedActions.map((x) => String(x)).filter(Boolean).slice(0, 8) : [];
+          const linked = first ? [{ metricType, sampleId: first.id }] : [];
+          batch.set(
+            msCol(uid, "msAlerts").doc(alertDocId),
+            {
+              ruleId,
+              subjectId,
+              deviceId,
+              severity,
+              category,
+              title,
+              description,
+              recommendedActions: rec,
+              triggeredAt: now,
+              resolvedAt: null,
+              source: "engine:threshold",
+              confidenceScore: 0.72,
+              linkedMetrics: linked,
+              status: "open",
+              updatedAt: now,
+            },
+            { merge: true }
+          );
+          notificationsToCreate.push({ alertId: alertDocId, subjectId, title, body: description || title });
+        }
+        if (!triggered && existing) {
+          batch.set(
+            msCol(uid, "msAlerts").doc(existing.id),
+            { status: "closed", resolvedAt: now, updatedAt: now },
+            { merge: true }
+          );
+          openAlertsByKey.delete(`${ruleId}:${subjectId}`);
+        }
+      }
+
+      if (type === "trend") {
+        const numbers = relevant
+          .map((x) => ({ x, v: msNum(x.doc.value) }))
+          .filter((y) => y.v !== null) as Array<{ x: { id: string; doc: Record<string, unknown> }; v: number }>;
+        const triggered =
+          numbers.length >= 2
+            ? msCompare(rule.operator, numbers[0].v - numbers[numbers.length - 1].v, rule.threshold)
+            : false;
+
+        if (triggered && !existing) {
+          const first = numbers[0]?.x;
+          const deviceId = first ? msStr(first.doc.deviceId) : "";
+          const title = msStr(rule.title) || metricType;
+          const description = msStr(rule.description) || `${metricType} trend`;
+          const severity = msStr(rule.severity) || "warning";
+          const category = msStr(rule.category) || "health";
+          const rec = Array.isArray(rule.recommendedActions) ? rule.recommendedActions.map((x) => String(x)).filter(Boolean).slice(0, 8) : [];
+          const linked = first ? [{ metricType, sampleId: first.id }] : [];
+          batch.set(
+            msCol(uid, "msAlerts").doc(alertDocId),
+            {
+              ruleId,
+              subjectId,
+              deviceId,
+              severity,
+              category,
+              title,
+              description,
+              recommendedActions: rec,
+              triggeredAt: args.now,
+              status: "open",
+              source: "engine:trend",
+              confidenceScore: 0.7,
+              linkedMetrics: linked,
+            },
+            { merge: true }
+          );
+          notificationsToCreate.push({ alertId: alertDocId, subjectId, title, body: description });
+          openAlertsByKey.set(`${ruleId}:${subjectId}`, { id: alertDocId, doc: { status: "open" } });
+        }
+
+        if (!triggered && existing) {
+          batch.set(msCol(uid, "msAlerts").doc(existing.id), { status: "closed", resolvedAt: args.now }, { merge: true });
+          openAlertsByKey.delete(`${ruleId}:${subjectId}`);
+        }
+      }
+
+      if (type === "anomaly") {
+        const numbers = relevant
+          .map((x) => ({ x, v: msNum(x.doc.value) }))
+          .filter((y) => y.v !== null) as Array<{ x: { id: string; doc: MsSampleDoc }; v: number }>;
+
+        if (numbers.length < 8) {
+          if (existing) {
+            batch.set(msCol(uid, "msAlerts").doc(existing.id), { status: "closed", resolvedAt: now, updatedAt: now }, { merge: true });
+            openAlertsByKey.delete(`${ruleId}:${subjectId}`);
+          }
+          continue;
+        }
+
+        const vs = numbers.map((n) => n.v);
+        const mean = vs.reduce((a, b) => a + b, 0) / vs.length;
+        const variance = vs.reduce((acc, x) => acc + (x - mean) * (x - mean), 0) / Math.max(1, vs.length - 1);
+        const std = Math.sqrt(variance) || 1;
+        const latest = numbers[0];
+        const z = Math.abs((latest.v - mean) / std);
+        const triggered = z >= 2.8;
+
+        if (triggered && !existing) {
+          const deviceId = msStr(latest.x.doc.deviceId);
+          const title = msStr(rule.title) || "Anomalia";
+          const description = msStr(rule.description) || `Anomalia su ${metricType} (z=${z.toFixed(2)})`;
+          const severity = msStr(rule.severity) || "warning";
+          const category = msStr(rule.category) || "health";
+          const rec = Array.isArray(rule.recommendedActions) ? rule.recommendedActions.map((x) => String(x)).filter(Boolean).slice(0, 8) : [];
+          batch.set(
+            msCol(uid, "msAlerts").doc(alertDocId),
+            {
+              ruleId,
+              subjectId,
+              deviceId,
+              severity,
+              category,
+              title,
+              description,
+              recommendedActions: rec,
+              triggeredAt: now,
+              resolvedAt: null,
+              source: "engine:anomaly",
+              confidenceScore: Math.min(0.95, 0.6 + z / 10),
+              linkedMetrics: [{ metricType, sampleId: latest.x.id }],
+              status: "open",
+              updatedAt: now,
+            },
+            { merge: true }
+          );
+          notificationsToCreate.push({ alertId: alertDocId, subjectId, title, body: description || title });
+        }
+
+        if (!triggered && existing) {
+          batch.set(msCol(uid, "msAlerts").doc(existing.id), { status: "closed", resolvedAt: now, updatedAt: now }, { merge: true });
+          openAlertsByKey.delete(`${ruleId}:${subjectId}`);
+        }
+      }
+    }
+  }
+
+  for (const d of args.devices) {
+    const deviceId = d.id;
+    const device = d.doc;
+    const online = msBool(device.isOnline);
+    if (online !== false) {
+      const existing = openAlertsByKey.get(`offline:${deviceId}:_`);
+      void existing;
+      continue;
+    }
+    const sid = subjectIdByDeviceId.get(deviceId);
+    if (!sid) continue;
+    const subject = subjectsById.get(sid);
+    if (!subject) continue;
+    const ruleId = `offline:${deviceId}`;
+    const alertId = `offline_${deviceId}`;
+    const existing = openAlertsByKey.get(`${ruleId}:${sid}`);
+    if (existing) continue;
+    const title = "Dispositivo offline";
+    const description = `${msStr(device.brand)} ${msStr(device.model)} non risponde.`;
+    batch.set(
+      msCol(uid, "msAlerts").doc(alertId),
+      {
+        ruleId,
+        subjectId: sid,
+        deviceId,
+        severity: "warning",
+        category: "device",
+        title,
+        description,
+        recommendedActions: ["Verifica batteria", "Verifica copertura", "Riprova sincronizzazione"],
+        triggeredAt: now,
+        resolvedAt: null,
+        source: "engine:device",
+        confidenceScore: 0.8,
+        linkedMetrics: [],
+        status: "open",
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+    notificationsToCreate.push({ alertId, subjectId: sid, title, body: description });
+    openAlertsByKey.set(`${ruleId}:${sid}`, { id: alertId, doc: { status: "open" } });
+  }
+
+  for (const n of notificationsToCreate) {
+    const id = db.collection("_ids").doc().id;
+    batch.set(msCol(uid, "msNotifications").doc(id), {
+      id,
+      alertId: n.alertId,
+      subjectId: n.subjectId,
+      createdAt: now,
+      channel: "in_app",
+      title: n.title,
+      body: n.body,
+      readAt: null,
+    });
+  }
+
+  await batch.commit();
+}
+
+async function msEnsureSeedInternal(uid: string) {
+  const subjectsSnap = await msCol(uid, "msSubjects").limit(1).get();
+  if (!subjectsSnap.empty) return { seeded: false };
+
+  const now = Date.now();
+  const batch = db.batch();
+
+  const farmId = msCol(uid, "msFarms").doc().id;
+  batch.set(msCol(uid, "msFarms").doc(farmId), { id: farmId, name: "Cascina San Martino", createdAt: now - 60 * 24 * 60 * 60 * 1000, ownerId: uid });
+
+  const herdA = msCol(uid, "msHerds").doc().id;
+  const herdB = msCol(uid, "msHerds").doc().id;
+  batch.set(msCol(uid, "msHerds").doc(herdA), { id: herdA, farmId, name: "Mandria A", createdAt: now - 60 * 24 * 60 * 60 * 1000 });
+  batch.set(msCol(uid, "msHerds").doc(herdB), { id: herdB, farmId, name: "Mandria B", createdAt: now - 40 * 24 * 60 * 60 * 1000 });
+
+  const dogId = msCol(uid, "msSubjects").doc().id;
+  batch.set(msCol(uid, "msSubjects").doc(dogId), {
+    id: dogId,
+    type: "pet",
+    species: "dog",
+    displayName: "Luna",
+    breed: "Meticcio",
+    sex: "female",
+    microchipNumber: "IT-DEMO-0001",
+    ownerId: uid,
+    status: "normal",
+    createdAt: now - 20 * 24 * 60 * 60 * 1000,
+    updatedAt: now,
+  });
+
+  const catId = msCol(uid, "msSubjects").doc().id;
+  batch.set(msCol(uid, "msSubjects").doc(catId), {
+    id: catId,
+    type: "pet",
+    species: "cat",
+    displayName: "Milo",
+    breed: "European",
+    sex: "male",
+    microchipNumber: "IT-DEMO-0002",
+    ownerId: uid,
+    status: "normal",
+    createdAt: now - 40 * 24 * 60 * 60 * 1000,
+    updatedAt: now,
+  });
+
+  const cowIds: string[] = [];
+  for (let i = 0; i < 50; i++) {
+    const id = msCol(uid, "msSubjects").doc().id;
+    cowIds.push(id);
+    const heat = i % 17 === 0;
+    batch.set(msCol(uid, "msSubjects").doc(id), {
+      id,
+      type: "livestock",
+      species: "cow",
+      displayName: `Bov${String(i + 1).padStart(3, "0")}`,
+      sex: "female",
+      reproductiveStatus: heat ? "in_heat" : "cycling",
+      earTag: `IT-${String(1000 + i)}`,
+      farmTagNumber: String(2000 + i),
+      ownerId: uid,
+      farmId,
+      herdId: i % 2 === 0 ? herdA : herdB,
+      status: heat ? "attention" : "normal",
+      createdAt: now - (30 + i) * 24 * 60 * 60 * 1000,
+      updatedAt: now,
+    });
+  }
+
+  const sheepIds: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const id = msCol(uid, "msSubjects").doc().id;
+    sheepIds.push(id);
+    batch.set(msCol(uid, "msSubjects").doc(id), {
+      id,
+      type: "livestock",
+      species: "sheep",
+      displayName: `Ovi${String(i + 1).padStart(3, "0")}`,
+      sex: i % 2 === 0 ? "female" : "male",
+      earTag: `IT-OV-${String(3000 + i)}`,
+      ownerId: uid,
+      farmId,
+      herdId: herdA,
+      status: "normal",
+      createdAt: now - (25 + i) * 24 * 60 * 60 * 1000,
+      updatedAt: now,
+    });
+  }
+
+  const goatIds: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const id = msCol(uid, "msSubjects").doc().id;
+    goatIds.push(id);
+    batch.set(msCol(uid, "msSubjects").doc(id), {
+      id,
+      type: "livestock",
+      species: "goat",
+      displayName: `Cap${String(i + 1).padStart(3, "0")}`,
+      sex: i % 2 === 0 ? "female" : "male",
+      earTag: `IT-CA-${String(4000 + i)}`,
+      ownerId: uid,
+      farmId,
+      herdId: herdB,
+      status: "normal",
+      createdAt: now - (22 + i) * 24 * 60 * 60 * 1000,
+      updatedAt: now,
+    });
+  }
+
+  const pigIds: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const id = msCol(uid, "msSubjects").doc().id;
+    pigIds.push(id);
+    batch.set(msCol(uid, "msSubjects").doc(id), {
+      id,
+      type: "livestock",
+      species: "pig",
+      displayName: `Sui${String(i + 1).padStart(3, "0")}`,
+      sex: i % 2 === 0 ? "female" : "male",
+      farmTagNumber: `SU-${String(5000 + i)}`,
+      ownerId: uid,
+      farmId,
+      herdId: herdA,
+      status: "normal",
+      createdAt: now - (18 + i) * 24 * 60 * 60 * 1000,
+      updatedAt: now,
+    });
+  }
+
+  const horseIds: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    const id = msCol(uid, "msSubjects").doc().id;
+    horseIds.push(id);
+    batch.set(msCol(uid, "msSubjects").doc(id), {
+      id,
+      type: "livestock",
+      species: "horse",
+      displayName: `Cav${String(i + 1).padStart(3, "0")}`,
+      sex: i % 2 === 0 ? "female" : "male",
+      microchipNumber: `IT-HR-${String(6000 + i)}`,
+      ownerId: uid,
+      farmId,
+      herdId: herdB,
+      status: "normal",
+      createdAt: now - (40 + i) * 24 * 60 * 60 * 1000,
+      updatedAt: now,
+    });
+  }
+
+  const makeDevice = (input: {
+    adapterType: string;
+    brand: string;
+    model: string;
+    category: string;
+    connectivityType: string;
+    subjectId: string;
+    supportedMetrics: string[];
+    supportedAlerts: string[];
+  }) => {
+    const id = msCol(uid, "msDevices").doc().id;
+    batch.set(msCol(uid, "msDevices").doc(id), {
+      id,
+      brand: input.brand,
+      model: input.model,
+      adapterType: input.adapterType,
+      category: input.category,
+      connectivityType: input.connectivityType,
+      batteryLevel: 78,
+      signalStrength: 62,
+      isOnline: true,
+      lastSeenAt: now - 30 * 1000,
+      supportedMetrics: input.supportedMetrics,
+      supportedAlerts: input.supportedAlerts,
+      metadata: {},
+      status: "connected",
+      createdAt: now - 15 * 24 * 60 * 60 * 1000,
+      updatedAt: now,
+    });
+    const bId = msCol(uid, "msBindings").doc().id;
+    batch.set(msCol(uid, "msBindings").doc(bId), {
+      id: bId,
+      deviceId: id,
+      subjectId: input.subjectId,
+      boundAt: now - 10 * 24 * 60 * 60 * 1000,
+      unboundAt: null,
+    });
+    return id;
+  };
+
+  makeDevice({
+    adapterType: "TractiveAdapter",
+    brand: "Tractive",
+    model: "GPS Tracker",
+    category: "gps_tracker",
+    connectivityType: "lte",
+    subjectId: dogId,
+    supportedMetrics: ["location_lat", "location_lng", "speed", "activity_score", "sleep_duration", "geofence_status", "device_battery_level", "device_signal_strength", "device_online"],
+    supportedAlerts: ["geofence_breach", "battery_low", "device_offline"],
+  });
+
+  makeDevice({
+    adapterType: "GenericBluetoothHealthTagAdapter",
+    brand: "Generic",
+    model: "BLE Tag",
+    category: "biometric_sensor",
+    connectivityType: "bluetooth",
+    subjectId: catId,
+    supportedMetrics: ["heart_rate", "respiratory_rate", "body_temperature", "activity_score", "device_battery_level", "device_signal_strength", "device_online"],
+    supportedAlerts: ["fever", "tachycardia", "battery_low", "device_offline"],
+  });
+
+  for (let i = 0; i < cowIds.length; i++) {
+    if (i % 3 === 0) {
+      makeDevice({
+        adapterType: "CowManagerAdapter",
+        brand: "CowManager",
+        model: "Ear Tag",
+        category: "ear_tag",
+        connectivityType: "gateway",
+        subjectId: cowIds[i],
+        supportedMetrics: ["ear_temperature", "movement_activity", "inactivity_duration", "rumination_duration", "estrus_probability", "insemination_window_score", "device_battery_level", "device_signal_strength", "device_online"],
+        supportedAlerts: ["estrus_detected", "rumination_drop", "fever", "device_offline", "battery_low"],
+      });
+    } else {
+      makeDevice({
+        adapterType: "SmaxtecAdapter",
+        brand: "Smaxtec",
+        model: "Bolus",
+        category: "bolus",
+        connectivityType: "gateway",
+        subjectId: cowIds[i],
+        supportedMetrics: ["inner_body_temperature", "rumination_score", "movement_activity", "illness_risk_score", "ph_value", "device_battery_level", "device_signal_strength", "device_online"],
+        supportedAlerts: ["illness_risk", "fever", "device_offline"],
+      });
+    }
+  }
+
+  for (let i = 0; i < horseIds.length; i++) {
+    makeDevice({
+      adapterType: "GenericGpsCollarAdapter",
+      brand: "Generic",
+      model: "GPS Collar",
+      category: "gps_tracker",
+      connectivityType: "lte",
+      subjectId: horseIds[i],
+      supportedMetrics: ["location_lat", "location_lng", "speed", "geofence_status", "device_battery_level", "device_signal_strength", "device_online"],
+      supportedAlerts: ["geofence_breach", "battery_low", "device_offline"],
+    });
+  }
+
+  for (let i = 0; i < sheepIds.length; i++) {
+    if (i % 2 === 0) {
+      makeDevice({
+        adapterType: "ManualFarmSensorAdapter",
+        brand: "Manual",
+        model: "Farm Intake",
+        category: "clip",
+        connectivityType: "gateway",
+        subjectId: sheepIds[i],
+        supportedMetrics: ["body_temperature", "movement_activity", "inactivity_duration", "eating_duration", "drinking_duration", "water_intake", "device_battery_level", "device_signal_strength", "device_online"],
+        supportedAlerts: ["manual_flag"],
+      });
+    } else {
+      makeDevice({
+        adapterType: "GenericBluetoothHealthTagAdapter",
+        brand: "Generic",
+        model: "BLE Health Tag",
+        category: "biometric_sensor",
+        connectivityType: "bluetooth",
+        subjectId: sheepIds[i],
+        supportedMetrics: ["heart_rate", "respiratory_rate", "body_temperature", "activity_score", "device_battery_level", "device_signal_strength", "device_online"],
+        supportedAlerts: ["fever", "tachycardia", "battery_low", "device_offline"],
+      });
+    }
+  }
+
+  for (let i = 0; i < goatIds.length; i++) {
+    makeDevice({
+      adapterType: "GenericGpsCollarAdapter",
+      brand: "Generic",
+      model: "GPS Tag",
+      category: "gps_tracker",
+      connectivityType: "lte",
+      subjectId: goatIds[i],
+      supportedMetrics: ["location_lat", "location_lng", "speed", "geofence_status", "activity_score", "device_battery_level", "device_signal_strength", "device_online"],
+      supportedAlerts: ["geofence_breach", "battery_low", "device_offline"],
+    });
+  }
+
+  for (let i = 0; i < pigIds.length; i++) {
+    makeDevice({
+      adapterType: "ManualFarmSensorAdapter",
+      brand: "Manual",
+      model: "Farm Health",
+      category: "clip",
+      connectivityType: "gateway",
+      subjectId: pigIds[i],
+      supportedMetrics: ["body_temperature", "movement_activity", "inactivity_duration", "water_intake", "ambient_temperature", "ambient_humidity", "device_battery_level", "device_signal_strength", "device_online"],
+      supportedAlerts: ["manual_flag"],
+    });
+  }
+
+  const rules: Array<{ docId: string; doc: Record<string, unknown> }> = [
+    {
+      docId: msCol(uid, "msRules").doc().id,
+      doc: {
+        type: "threshold",
+        enabled: true,
+        scope: "type",
+        subjectType: "pet",
+        metricType: "respiratory_rate",
+        operator: ">=",
+        threshold: 40,
+        windowMinutes: 10,
+        severity: "warning",
+        category: "health",
+        title: "Respirazione alta",
+        description: "La frequenza respiratoria è sopra soglia.",
+        recommendedActions: ["Riduci attività", "Controlla temperatura", "Se persiste contatta il veterinario"],
+        createdAt: now - 60 * 60 * 1000,
+      },
+    },
+    {
+      docId: msCol(uid, "msRules").doc().id,
+      doc: {
+        type: "threshold",
+        enabled: true,
+        scope: "type",
+        subjectType: "pet",
+        metricType: "geofence_status",
+        operator: "==",
+        threshold: "breach",
+        windowMinutes: 5,
+        severity: "critical",
+        category: "safety",
+        title: "Uscita geofence",
+        description: "Possibile fuga: geofence violato.",
+        recommendedActions: ["Apri mappa", "Attiva modalità ricerca", "Contatta familiari"],
+        createdAt: now - 60 * 60 * 1000,
+      },
+    },
+    {
+      docId: msCol(uid, "msRules").doc().id,
+      doc: {
+        type: "threshold",
+        enabled: true,
+        scope: "type",
+        subjectType: "livestock",
+        metricType: "geofence_status",
+        operator: "==",
+        threshold: "outside",
+        windowMinutes: 5,
+        severity: "critical",
+        category: "safety",
+        title: "Recinto digitale: uscita",
+        description: "Animale fuori area consentita (recinto digitale).",
+        recommendedActions: ["Verifica posizione", "Controlla recinzioni/gateway", "Ispeziona eventuale fuga"],
+        createdAt: now - 60 * 60 * 1000,
+      },
+    },
+    {
+      docId: msCol(uid, "msRules").doc().id,
+      doc: {
+        type: "threshold",
+        enabled: true,
+        scope: "type",
+        subjectType: "livestock",
+        metricType: "inner_body_temperature",
+        operator: ">=",
+        threshold: 39.6,
+        windowMinutes: 30,
+        severity: "critical",
+        category: "health",
+        title: "Febbre sospetta",
+        description: "Temperatura interna elevata.",
+        recommendedActions: ["Controllo clinico", "Valuta isolamento", "Valuta terapia"],
+        createdAt: now - 60 * 60 * 1000,
+      },
+    },
+    {
+      docId: msCol(uid, "msRules").doc().id,
+      doc: {
+        type: "threshold",
+        enabled: true,
+        scope: "type",
+        subjectType: "livestock",
+        metricType: "rumination_duration",
+        operator: "<",
+        threshold: 240,
+        windowMinutes: 60,
+        severity: "warning",
+        category: "farm",
+        title: "Calo ruminazione",
+        description: "Ruminazione bassa nell'ultima ora.",
+        recommendedActions: ["Verifica alimentazione", "Controlla eventuale stress", "Valuta visita"],
+        createdAt: now - 60 * 60 * 1000,
+      },
+    },
+    {
+      docId: msCol(uid, "msRules").doc().id,
+      doc: {
+        type: "anomaly",
+        enabled: true,
+        scope: "type",
+        subjectType: "livestock",
+        metricType: "movement_activity",
+        windowMinutes: 120,
+        severity: "warning",
+        category: "farm",
+        title: "Attività anomala",
+        description: "Attività diversa dal baseline recente.",
+        recommendedActions: ["Verifica comportamento", "Controlla alimentazione/ruminazione"],
+        createdAt: now - 60 * 60 * 1000,
+      },
+    },
+    {
+      docId: msCol(uid, "msRules").doc().id,
+      doc: {
+        type: "trend",
+        enabled: true,
+        scope: "type",
+        subjectType: "livestock",
+        metricType: "inner_body_temperature",
+        operator: ">=",
+        threshold: 0.6,
+        windowMinutes: 180,
+        severity: "warning",
+        category: "health",
+        title: "Temperatura in aumento",
+        description: "Trend di aumento temperatura nelle ultime 3 ore.",
+        recommendedActions: ["Controllo clinico", "Valuta contesto caldo/stress", "Monitora ruminazione"],
+        createdAt: now - 60 * 60 * 1000,
+      },
+    },
+  ];
+  for (const r of rules) {
+    batch.set(msCol(uid, "msRules").doc(r.docId), { id: r.docId, ...r.doc }, { merge: true });
+  }
+
+  batch.set(msUserRef(uid), { msSeededAt: now, updatedAt: now }, { merge: true });
+  await batch.commit();
+  return { seeded: true };
+}
+
+async function msSimTickInternal(uid: string, intensityRaw: unknown) {
+  const intensity = msClamp(msNum(intensityRaw) ?? 0.35, 0.05, 1);
+  const now = Date.now();
+
+  const [subjectsSnap, devicesSnap, bindingsSnap, rulesSnap] = await Promise.all([
+    msCol(uid, "msSubjects").limit(200).get(),
+    msCol(uid, "msDevices").limit(300).get(),
+    msCol(uid, "msBindings").limit(600).get(),
+    msCol(uid, "msRules").limit(300).get(),
+  ]);
+
+  const subjects = subjectsSnap.docs.map((d) => ({ id: d.id, doc: d.data() as MsSubjectDoc }));
+  const devices = devicesSnap.docs.map((d) => ({ id: d.id, doc: d.data() as MsDeviceDoc }));
+  const bindings = bindingsSnap.docs.map((d) => ({ id: d.id, doc: d.data() as MsBindingDoc }));
+  const rules = rulesSnap.docs.map((d) => ({ id: d.id, doc: d.data() as MsRuleDoc }));
+
+  const subjectById = new Map(subjects.map((s) => [s.id, s.doc] as const));
+  const subjectIdByDeviceId = new Map<string, string>();
+  for (const b of bindings) {
+    if (typeof b.doc.unboundAt === "number") continue;
+    const deviceId = msStr(b.doc.deviceId);
+    const subjectId = msStr(b.doc.subjectId);
+    if (!deviceId || !subjectId) continue;
+    subjectIdByDeviceId.set(deviceId, subjectId);
+  }
+
+  const batch = db.batch();
+
+  for (const d of devices) {
+    const deviceId = d.id;
+    const dev = d.doc;
+    const subjectId = subjectIdByDeviceId.get(deviceId);
+    if (!subjectId) continue;
+    const subj = subjectById.get(subjectId);
+    if (!subj) continue;
+
+    const type = msStr(subj.type);
+    const species = msStr(subj.species);
+    const basePet = {
+      hr: species === "cat" ? 140 : 96,
+      rr: species === "cat" ? 28 : 22,
+      temp: species === "cat" ? 38.6 : 38.4,
+      activity: species === "cat" ? 48 : 55,
+    };
+    const baseCow = {
+      earTemp: 38.2,
+      innerTemp: 38.6,
+      rumMin: 320,
+      rumScore: 62,
+      activity: 44,
+      inactiveMin: 18,
+      estrusP: 0.08,
+      insemination: 0.05,
+      illness: 0.12,
+      ph: 6.5,
+    };
+
+    const batteryPrev = msNum(dev.batteryLevel) ?? 70;
+    const signalPrev = msNum(dev.signalStrength) ?? 60;
+    const onlinePrev = msBool(dev.isOnline);
+
+    const battery = msClamp(batteryPrev - (Math.random() * 0.08) * (intensity * 4), 3, 100);
+    const signal = msClamp(signalPrev + msGaussian() * 1.5, 5, 100);
+    const online = msChance(0.01 * intensity) ? false : onlinePrev !== null ? onlinePrev : true;
+
+    const spike = msChance(0.02 * intensity);
+    const fever = msChance(0.008 * intensity);
+    const rumDrop = type !== "pet" && msChance(0.02 * intensity);
+    const geofenceBreach = type === "pet" && msChance(0.01 * intensity);
+    const estrus = type !== "pet" && msChance(0.015 * intensity);
+
+    const payload: Record<string, unknown> = {
+      ts: now,
+      battery,
+      signal,
+      online,
+    };
+
+    if (type === "pet") {
+      payload.hr = msClamp(basePet.hr + msGaussian() * 6 + (spike ? 28 : 0), 40, 220);
+      payload.rr = msClamp(basePet.rr + msGaussian() * 3 + (spike ? 18 : 0), 8, 90);
+      payload.temp = msClamp(basePet.temp + msGaussian() * 0.15 + (fever ? 1.0 : 0), 36.5, 41.8);
+      payload.activity = msClamp(basePet.activity + msGaussian() * 8 + (spike ? 25 : 0), 0, 100);
+      payload.sleepMin = msClamp(60 + Math.random() * 240, 0, 600);
+
+      const centerLat = 45.4642;
+      const centerLng = 9.19;
+      const drift = 0.0012;
+      payload.lat = centerLat + msGaussian() * drift + (geofenceBreach ? 0.008 : 0);
+      payload.lng = centerLng + msGaussian() * drift + (geofenceBreach ? 0.008 : 0);
+      payload.speed = msClamp(Math.random() * 2.2 + (spike ? 3.2 : 0), 0, 10);
+      payload.geofence = geofenceBreach ? "breach" : "ok";
+      payload.steps = Math.round(msClamp(Math.random() * 230 + (spike ? 420 : 0), 0, 2000));
+    } else {
+      payload.earTemp = msClamp(baseCow.earTemp + msGaussian() * 0.18 + (fever ? 0.8 : 0), 36.5, 41.8);
+      payload.innerTemp = msClamp(baseCow.innerTemp + msGaussian() * 0.15 + (fever ? 1.0 : 0), 36.5, 42.2);
+      payload.rumMin = msClamp(baseCow.rumMin + msGaussian() * 35 + (rumDrop ? -190 : 0), 40, 520);
+      payload.rumScore = msClamp(baseCow.rumScore + msGaussian() * 8 + (rumDrop ? -18 : 0), 0, 100);
+      payload.activity = msClamp(baseCow.activity + msGaussian() * 9 + (estrus ? 30 : 0), 0, 100);
+      payload.inactiveMin = msClamp(baseCow.inactiveMin + msGaussian() * 6 + (rumDrop ? 28 : 0), 0, 240);
+      payload.estrusP = msClamp(baseCow.estrusP + (estrus ? 0.75 : 0) + msGaussian() * 0.06, 0, 1);
+      payload.insemination = msClamp(baseCow.insemination + (estrus ? 0.65 : 0) + msGaussian() * 0.05, 0, 1);
+      payload.illness = msClamp(baseCow.illness + (rumDrop || fever ? 0.5 : 0) + msGaussian() * 0.05, 0, 1);
+      payload.ph = msClamp(baseCow.ph + msGaussian() * 0.08, 5.5, 7.4);
+    }
+
+    const supportedMetrics = Array.isArray(dev.supportedMetrics) ? dev.supportedMetrics.map((x) => String(x)) : [];
+    const adapterType = msStr(dev.adapterType);
+    const deviceMappings = msReadIntegrationMappings((dev as { adapterConfig?: unknown }).adapterConfig);
+    const integrationSnap = adapterType ? await msCol(uid, "msIntegrations").doc(adapterType).get() : null;
+    const integrationMappings = integrationSnap && integrationSnap.exists ? msReadIntegrationMappings(integrationSnap.data()) : [];
+
+    const normalized = msNormalizeSamples({ uid, subjectId, deviceId, receivedAt: now, payload, supportedMetrics, adapterType, integrationMappings, deviceMappings });
+
+    for (const s of normalized.samples) {
+      batch.set(msTelemetrySamplesCol(uid, subjectId).doc(s.id), s.doc, { merge: true });
+    }
+
+    batch.set(
+      msCol(uid, "msDevices").doc(deviceId),
+      {
+        batteryLevel: normalized.devicePatch.batteryLevel ?? null,
+        signalStrength: normalized.devicePatch.signalStrength ?? null,
+        isOnline: normalized.devicePatch.isOnline ?? null,
+        lastSeenAt: normalized.devicePatch.lastSeenAt ?? null,
+        status: normalized.devicePatch.status ?? null,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  }
+
+  await batch.commit();
+  await msEvaluateAndPersist({ uid, now, subjects, devices: (await msCol(uid, "msDevices").limit(300).get()).docs.map((d) => ({ id: d.id, doc: d.data() as MsDeviceDoc })), bindings, rules });
+  return { ok: true };
+}
+
+export const msEnsureSeed = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  return msEnsureSeedInternal(uid);
+});
+
+export const msSimTick = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  await msEnsureSeedInternal(uid);
+  return msSimTickInternal(uid, req.data?.intensity);
+});
+
+export const msUpdateDevice = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const deviceId = msStr(req.data?.deviceId);
+  const patch = (req.data?.patch ?? {}) as Record<string, unknown>;
+  if (!deviceId) throw new HttpsError("invalid-argument", "deviceId required");
+
+  const externalDeviceId = msStr(patch.externalDeviceId);
+  const adapterConfig = typeof patch.adapterConfig === "object" && patch.adapterConfig ? (patch.adapterConfig as Record<string, unknown>) : null;
+
+  const next: Record<string, unknown> = { updatedAt: Date.now() };
+  if (externalDeviceId != null) {
+    if (externalDeviceId.length > 120) throw new HttpsError("invalid-argument", "externalDeviceId too long");
+    next.externalDeviceId = externalDeviceId;
+  }
+  if (adapterConfig != null) next.adapterConfig = adapterConfig;
+
+  await msCol(uid, "msDevices").doc(deviceId).set(next, { merge: true });
+  await msAudit(uid, "device.update", { deviceId, patch: next });
+  return { ok: true };
+});
+
+export const msUpsertFarm = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const id = msStr(req.data?.id);
+  const name = msStr(req.data?.name);
+  if (!name) throw new HttpsError("invalid-argument", "name required");
+  const now = Date.now();
+
+  if (id) {
+    await msCol(uid, "msFarms").doc(id).set({ name, updatedAt: now }, { merge: true });
+    await msAudit(uid, "farm.update", { farmId: id, name });
+    return { id };
+  }
+  const ref = msCol(uid, "msFarms").doc();
+  await ref.set({ id: ref.id, name, createdAt: now, updatedAt: now }, { merge: true });
+  await msAudit(uid, "farm.create", { farmId: ref.id, name });
+  return { id: ref.id };
+});
+
+export const msUpsertHerd = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const id = msStr(req.data?.id);
+  const farmId = msStr(req.data?.farmId);
+  const name = msStr(req.data?.name);
+  if (!farmId || !name) throw new HttpsError("invalid-argument", "farmId and name required");
+  const now = Date.now();
+
+  if (id) {
+    await msCol(uid, "msHerds").doc(id).set({ farmId, name, updatedAt: now }, { merge: true });
+    await msAudit(uid, "herd.update", { herdId: id, farmId, name });
+    return { id };
+  }
+  const ref = msCol(uid, "msHerds").doc();
+  await ref.set({ id: ref.id, farmId, name, createdAt: now, updatedAt: now }, { merge: true });
+  await msAudit(uid, "herd.create", { herdId: ref.id, farmId, name });
+  return { id: ref.id };
+});
+
+export const msSetSubjectHerd = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const subjectId = msStr(req.data?.subjectId);
+  const herdId = msStr(req.data?.herdId);
+  if (!subjectId) throw new HttpsError("invalid-argument", "subjectId required");
+  await msCol(uid, "msSubjects").doc(subjectId).set({ herdId: herdId ?? null, updatedAt: Date.now() }, { merge: true });
+  await msAudit(uid, "subject.setHerd", { subjectId, herdId: herdId ?? null });
+  return { ok: true };
+});
+
+export const msUpsertGeofence = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const id = msStr(req.data?.id);
+  const farmId = msStr(req.data?.farmId);
+  const herdId = msStr(req.data?.herdId);
+  const name = msStr(req.data?.name);
+  const shape = msStr(req.data?.shape);
+  const center = (req.data?.center ?? null) as unknown;
+  const radiusM = msNum(req.data?.radiusM);
+
+  if (!farmId || !name) throw new HttpsError("invalid-argument", "farmId and name required");
+  if (shape !== "circle") throw new HttpsError("invalid-argument", "only circle supported");
+  if (!center || typeof center !== "object") throw new HttpsError("invalid-argument", "center required");
+  const lat = msNum((center as Record<string, unknown>).lat);
+  const lng = msNum((center as Record<string, unknown>).lng);
+  if (lat === null || lng === null) throw new HttpsError("invalid-argument", "invalid center");
+  if (radiusM === null || radiusM <= 10 || radiusM > 200_000) throw new HttpsError("invalid-argument", "invalid radiusM");
+
+  const now = Date.now();
+  const ref = id ? msCol(uid, "msGeofences").doc(id) : msCol(uid, "msGeofences").doc();
+  await ref.set(
+    {
+      id: ref.id,
+      farmId,
+      herdId: herdId || null,
+      name,
+      shape: "circle",
+      center: { lat, lng },
+      radiusM,
+      createdAt: id ? undefined : now,
+      updatedAt: now,
+    },
+    { merge: true }
+  );
+  await msAudit(uid, id ? "geofence.update" : "geofence.create", { geofenceId: ref.id, farmId, herdId: herdId || null, name, radiusM });
+  return { id: ref.id };
+});
+
+export const msDeleteGeofence = onCall({ maxInstances: 1 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+  const geofenceId = msStr(req.data?.geofenceId);
+  if (!geofenceId) throw new HttpsError("invalid-argument", "geofenceId required");
+  await msCol(uid, "msGeofences").doc(geofenceId).delete();
+  await msAudit(uid, "geofence.delete", { geofenceId });
+  return { ok: true };
+});
+
+export const msEnqueueIngest = onCall({ maxInstances: 10 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const payload = (req.data?.payload ?? null) as unknown;
+  if (!payload || typeof payload !== "object") throw new HttpsError("invalid-argument", "payload required");
+
+  const item = {
+    deviceId: msStr(req.data?.deviceId),
+    subjectId: msStr(req.data?.subjectId),
+    adapterType: msStr(req.data?.adapterType),
+    externalDeviceId: msStr(req.data?.externalDeviceId),
+    payload: payload as Record<string, unknown>,
+    receivedAt: typeof req.data?.receivedAt === "number" ? req.data.receivedAt : Date.now(),
+    createdAt: Date.now(),
+    attempts: 0,
+    status: "pending",
+    source: msStr(req.data?.source) || "queue",
+  };
+  const ref = await msCol(uid, "msIngestQueue").add(item);
+  await msAudit(uid, "ingest.enqueue", { queueId: ref.id, adapterType: item.adapterType, externalDeviceId: item.externalDeviceId });
+  return { id: ref.id };
+});
+
+export const msImportTelemetryBatch = onCall({ maxInstances: 2 }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required");
+
+  const rows = req.data?.rows;
+  if (!Array.isArray(rows)) throw new HttpsError("invalid-argument", "rows required");
+  const limited = rows.slice(0, 500) as Array<Record<string, unknown>>;
+  const now = Date.now();
+
+  let count = 0;
+  for (let i = 0; i < limited.length; i += 400) {
+    const slice = limited.slice(i, i + 400);
+    const batch = db.batch();
+    for (const r of slice) {
+      const payload = (r.payload ?? null) as unknown;
+      if (!payload || typeof payload !== "object") continue;
+      const ref = msCol(uid, "msIngestQueue").doc();
+      batch.set(ref, {
+        createdAt: now,
+        attempts: 0,
+        status: "pending",
+        source: "csv",
+        adapterType: msStr(r.adapterType),
+        deviceId: msStr(r.deviceId),
+        subjectId: msStr(r.subjectId),
+        externalDeviceId: msStr(r.externalDeviceId),
+        payload: payload as Record<string, unknown>,
+        receivedAt: typeof r.receivedAt === "number" ? r.receivedAt : now,
+      });
+      count += 1;
+    }
+    await batch.commit();
+  }
+  await msAudit(uid, "csv.import", { enqueued: count });
+  await msWriteSyncLog(uid, { kind: "csv_import", ok: true, enqueued: count });
+  return { enqueued: count };
+});
+
+export const msProcessIngestQueue = onSchedule("every 1 minutes", async () => {
+  const snap = await db.collectionGroup("msIngestQueue").where("status", "==", "pending").limit(30).get();
+  await Promise.all(
+    snap.docs.map(async (d) => {
+      const uid = d.ref.parent.parent?.id;
+      if (!uid) return;
+
+      const data = d.data() as Record<string, unknown>;
+      const attempts = typeof data.attempts === "number" ? data.attempts : 0;
+      const deviceIdInput = msStr(data.deviceId);
+      const subjectIdInput = msStr(data.subjectId);
+      const adapterTypeInput = msStr(data.adapterType);
+      const externalDeviceIdInput = msStr(data.externalDeviceId);
+      const payload = (data.payload ?? {}) as Record<string, unknown>;
+      const receivedAt = typeof data.receivedAt === "number" ? data.receivedAt : Date.now();
+      const source: "queue" | "polling" | "csv" = msStr(data.source) === "polling" ? "polling" : msStr(data.source) === "csv" ? "csv" : "queue";
+
+      try {
+        await d.ref.set({ status: "processing", startedAt: Date.now() }, { merge: true });
+        const resolved = await msResolveTarget({ uid, deviceIdInput, subjectIdInput, adapterTypeInput, externalDeviceIdInput });
+        if (!resolved.ok) throw new Error(resolved.error);
+        const result = await msIngestResolved({ uid, deviceId: resolved.deviceId, subjectId: resolved.subjectId, dev: resolved.dev, payload, receivedAt, source });
+        await d.ref.set({ status: "done", doneAt: Date.now(), inserted: result.inserted }, { merge: true });
+      } catch (e) {
+        const nextAttempts = attempts + 1;
+        const msg = e instanceof Error ? e.message : "error";
+        if (nextAttempts >= 5) {
+          await msWriteDeadLetter(uid, { kind: "ingest_queue", error: msg, queueId: d.id, payload: data });
+          await d.ref.set({ status: "dead", doneAt: Date.now(), attempts: nextAttempts, lastError: msg }, { merge: true });
+        } else {
+          await d.ref.set({ status: "pending", attempts: nextAttempts, lastError: msg, updatedAt: Date.now() }, { merge: true });
+        }
+        await msWriteSyncLog(uid, { kind: "queue", ok: false, error: msg, queueId: d.id, attempts: nextAttempts });
+      }
+    })
+  );
+});
+
+const MS_WEBHOOK_SECRET = defineSecret("MS_WEBHOOK_SECRET");
+
+export const msIngestWebhook = onRequest({ secrets: [MS_WEBHOOK_SECRET] }, async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, X-MS-Secret");
+  res.set("Cache-Control", "no-store");
+
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+  if (req.method !== "POST") {
+    res.status(405).send("Method not allowed");
+    return;
+  }
+
+  const secret = String(req.headers["x-ms-secret"] ?? "");
+  if (!secret || secret !== MS_WEBHOOK_SECRET.value()) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const uid = msStr(body.uid);
+  const deviceIdInput = msStr(body.deviceId);
+  const subjectIdInput = msStr(body.subjectId);
+  const adapterTypeInput = msStr(body.adapterType);
+  const externalDeviceIdInput = msStr(body.externalDeviceId);
+  const payload = (body.payload ?? {}) as Record<string, unknown>;
+  const receivedAt = typeof body.receivedAt === "number" ? body.receivedAt : Date.now();
+  if (!uid) {
+    res.status(400).json({ error: "missing_uid" });
+    return;
+  }
+  if (!payload || typeof payload !== "object") {
+    res.status(400).json({ error: "missing_payload" });
+    return;
+  }
+
+  try {
+    const resolved = await msResolveTarget({ uid, deviceIdInput, subjectIdInput, adapterTypeInput, externalDeviceIdInput });
+    if (!resolved.ok) {
+      const status = resolved.error === "device_not_found" ? 404 : 400;
+      res.status(status).json({ error: resolved.error });
+      return;
+    }
+    const result = await msIngestResolved({
+      uid,
+      deviceId: resolved.deviceId,
+      subjectId: resolved.subjectId,
+      dev: resolved.dev,
+      payload,
+      receivedAt,
+      source: "webhook",
+    });
+    await msAudit(uid, "ingest.webhook", { deviceId: resolved.deviceId, subjectId: resolved.subjectId, inserted: result.inserted });
+    res.json({ ok: true, uid, deviceId: resolved.deviceId, subjectId: resolved.subjectId, inserted: result.inserted });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "error";
+    await msWriteDeadLetter(uid, {
+      kind: "webhook",
+      error: msg,
+      adapterType: adapterTypeInput,
+      deviceId: deviceIdInput,
+      externalDeviceId: externalDeviceIdInput,
+      subjectId: subjectIdInput,
+      payload,
+    });
+    await msWriteSyncLog(uid, { kind: "webhook", ok: false, error: msg });
+    res.status(500).json({ error: "ingest_failed" });
+  }
+});
+
+export const msMockPollingSweep = onSchedule("every 5 minutes", async () => {
+  if (!MS_ENABLE_SIMULATION) return;
+  const now = Date.now();
+  const usersSnap = await db.collection("users").where("msSeededAt", ">", 0).limit(50).get();
+  await Promise.all(
+    usersSnap.docs.map(async (u) => {
+      const uid = u.id;
+      const integrationsSnap = await msCol(uid, "msIntegrations").doc("mock").get();
+      const enabled = integrationsSnap.exists ? (integrationsSnap.data() as { enabled?: unknown }).enabled === true : false;
+      if (!enabled) return;
+      await msSimTickInternal(uid, 0.3);
+      await msCol(uid, "msSyncLogs").add({ id: db.collection("_ids").doc().id, uid, kind: "mock_poll", ok: true, createdAt: now });
+    })
+  );
+});
+
+export const msPollingSweep = onSchedule("every 10 minutes", async () => {
+  if (!MS_ENABLE_SIMULATION) return;
+  const now = Date.now();
+  const usersSnap = await db.collection("users").where("msSeededAt", ">", 0).limit(50).get();
+  await Promise.all(
+    usersSnap.docs.map(async (u) => {
+      const uid = u.id;
+      const integrationsSnap = await msCol(uid, "msIntegrations").limit(50).get();
+      for (const doc of integrationsSnap.docs) {
+        const adapterType = doc.id;
+        const data = doc.data() as Record<string, unknown>;
+        const pollingEnabled = (data.pollingEnabled ?? false) === true;
+        if (!pollingEnabled) continue;
+        const ids = Array.isArray(data.pollingExternalDeviceIds) ? data.pollingExternalDeviceIds.map((x) => String(x)).filter(Boolean).slice(0, 10) : [];
+        if (ids.length === 0) continue;
+
+        for (const externalDeviceId of ids) {
+          const payload: Record<string, unknown> = { ts: now, online: true, battery: 60 + Math.round(Math.random() * 30), signal: 55 + Math.round(Math.random() * 35) };
+          if (adapterType === "TractiveAdapter") {
+            payload.lat = 45.4642 + (Math.random() - 0.5) * 0.01;
+            payload.lng = 9.19 + (Math.random() - 0.5) * 0.01;
+            payload.speed = Math.random() * 2.2;
+          } else if (adapterType === "PetPaceAdapter") {
+            payload.hr = 90 + Math.round(Math.random() * 30);
+            payload.rr = 18 + Math.round(Math.random() * 10);
+            payload.tempC = 38.2 + Math.random() * 0.6;
+          } else if (adapterType === "CowManagerAdapter") {
+            payload.ear_temperature = 38.4 + Math.random() * 0.9;
+            payload.rumination_duration = 300 + Math.round(Math.random() * 120);
+            payload.estrus_probability = Math.random();
+          }
+
+          await msCol(uid, "msIngestQueue").add({
+            createdAt: now,
+            attempts: 0,
+            status: "pending",
+            source: "polling",
+            adapterType,
+            externalDeviceId,
+            payload,
+            receivedAt: now,
+          });
+        }
+        await msWriteSyncLog(uid, { kind: "polling_sweep", ok: true, adapterType, createdAt: now, enqueued: ids.length });
+      }
     })
   );
 });

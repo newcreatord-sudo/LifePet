@@ -14,7 +14,9 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { getFirebase } from "@/lib/firebase";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import { useAuthStore } from "@/stores/authStore";
+import { useToastStore } from "@/stores/toastStore";
 import type { CommunityPost } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -27,6 +29,7 @@ type BanDoc = { uid: string; untilMs: number; reason?: string; createdAt: number
 
 export default function Moderation() {
   const user = useAuthStore((s) => s.user);
+  const pushToast = useToastStore((s) => s.push);
   const [role, setRole] = useState<string | null>(null);
   const [isModeratorDoc, setIsModeratorDoc] = useState(false);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -46,6 +49,21 @@ export default function Moderation() {
   const [banReason, setBanReason] = useState("");
   const [savingBan, setSavingBan] = useState(false);
   const [bans, setBans] = useState<BanDoc[]>([]);
+
+  const [busyActionKey, setBusyActionKey] = useState<string | null>(null);
+
+  async function runAction(key: string, action: () => Promise<void>, okMessage: string) {
+    if (busyActionKey) return;
+    setBusyActionKey(key);
+    try {
+      await action();
+      pushToast({ type: "success", title: "Moderazione", message: okMessage });
+    } catch (e) {
+      pushToast({ type: "error", title: "Moderazione", message: e instanceof Error ? e.message : "Operazione fallita" });
+    } finally {
+      setBusyActionKey(null);
+    }
+  }
 
   useEffect(() => {
     if (!user || user.isDemo) {
@@ -83,20 +101,34 @@ export default function Moderation() {
     if (!isModerator) return;
     const { db } = getFirebase();
     const q = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(200));
-    return onSnapshot(q, (snap) => {
-      const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CommunityPost, "id">) }));
-      setPosts(items);
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CommunityPost, "id">) }));
+        setPosts(items);
+      },
+      (err) => {
+        reportFirestoreError(err, "moderation:posts");
+        setPosts([]);
+      }
+    );
   }, [isModerator]);
 
   useEffect(() => {
     if (!isModerator || !openPostId) return;
     const { db } = getFirebase();
     const q = query(collection(db, "posts", openPostId, "reports"), orderBy("createdAt", "desc"), limit(50));
-    return onSnapshot(q, (snap) => {
-      const items = snap.docs.map((d) => ({ ...(d.data() as PostReport) }));
-      setReports((prev) => ({ ...prev, [openPostId]: items }));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items = snap.docs.map((d) => ({ ...(d.data() as PostReport) }));
+        setReports((prev) => ({ ...prev, [openPostId]: items }));
+      },
+      (err) => {
+        reportFirestoreError(err, "moderation:postReports");
+        setReports((prev) => ({ ...prev, [openPostId]: [] }));
+      }
+    );
   }, [isModerator, openPostId]);
 
   const queue = useMemo(() => {
@@ -110,27 +142,34 @@ export default function Moderation() {
     if (!isModerator) return;
     const { db } = getFirebase();
     const q = query(collectionGroup(db, "messages"), orderBy("createdAt", "desc"), limit(200));
-    return onSnapshot(q, (snap) => {
-      const items: GroupMessage[] = [];
-      for (const d of snap.docs) {
-        const p = d.ref.path;
-        if (!p.startsWith("groups/") || !p.includes("/messages/")) continue;
-        const parts = p.split("/");
-        const groupId = parts[1] ?? "";
-        const msgId = d.id;
-        const data = d.data() as Record<string, unknown>;
-        items.push({
-          id: msgId,
-          groupId,
-          authorId: String(data.authorId ?? ""),
-          createdAt: Number(data.createdAt ?? 0),
-          text: String(data.text ?? ""),
-          status: typeof data.status === "string" ? data.status : undefined,
-          reportCount: typeof data.reportCount === "number" ? data.reportCount : undefined,
-        });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items: GroupMessage[] = [];
+        for (const d of snap.docs) {
+          const p = d.ref.path;
+          if (!p.startsWith("groups/") || !p.includes("/messages/")) continue;
+          const parts = p.split("/");
+          const groupId = parts[1] ?? "";
+          const msgId = d.id;
+          const data = d.data() as Record<string, unknown>;
+          items.push({
+            id: msgId,
+            groupId,
+            authorId: String(data.authorId ?? ""),
+            createdAt: Number(data.createdAt ?? 0),
+            text: String(data.text ?? ""),
+            status: typeof data.status === "string" ? data.status : undefined,
+            reportCount: typeof data.reportCount === "number" ? data.reportCount : undefined,
+          });
+        }
+        setGroupMessages(items);
+      },
+      (err) => {
+        reportFirestoreError(err, "moderation:groupMessages");
+        setGroupMessages([]);
       }
-      setGroupMessages(items);
-    });
+    );
   }, [isModerator]);
 
   useEffect(() => {
@@ -139,10 +178,17 @@ export default function Moderation() {
     if (!groupId || !messageId) return;
     const { db } = getFirebase();
     const q = query(collection(db, "groups", groupId, "messages", messageId, "reports"), orderBy("createdAt", "desc"), limit(50));
-    return onSnapshot(q, (snap) => {
-      const items = snap.docs.map((d) => ({ ...(d.data() as PostReport) }));
-      setMsgReports((prev) => ({ ...prev, [openMsgKey]: items }));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items = snap.docs.map((d) => ({ ...(d.data() as PostReport) }));
+        setMsgReports((prev) => ({ ...prev, [openMsgKey]: items }));
+      },
+      (err) => {
+        reportFirestoreError(err, "moderation:messageReports");
+        setMsgReports((prev) => ({ ...prev, [openMsgKey]: [] }));
+      }
+    );
   }, [isModerator, openMsgKey]);
 
   const groupQueue = useMemo(() => {
@@ -156,26 +202,33 @@ export default function Moderation() {
     if (!isModerator) return;
     const { db } = getFirebase();
     const q = query(collectionGroup(db, "comments"), orderBy("createdAt", "desc"), limit(200));
-    return onSnapshot(q, (snap) => {
-      const items: CommentItem[] = [];
-      for (const d of snap.docs) {
-        const p = d.ref.path;
-        if (!p.startsWith("posts/") || !p.includes("/comments/")) continue;
-        const parts = p.split("/");
-        const postId = parts[1] ?? "";
-        const data = d.data() as Record<string, unknown>;
-        items.push({
-          id: d.id,
-          postId,
-          authorId: String(data.authorId ?? ""),
-          createdAt: Number(data.createdAt ?? 0),
-          text: String(data.text ?? ""),
-          status: typeof data.status === "string" ? data.status : undefined,
-          reportCount: typeof data.reportCount === "number" ? data.reportCount : undefined,
-        });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items: CommentItem[] = [];
+        for (const d of snap.docs) {
+          const p = d.ref.path;
+          if (!p.startsWith("posts/") || !p.includes("/comments/")) continue;
+          const parts = p.split("/");
+          const postId = parts[1] ?? "";
+          const data = d.data() as Record<string, unknown>;
+          items.push({
+            id: d.id,
+            postId,
+            authorId: String(data.authorId ?? ""),
+            createdAt: Number(data.createdAt ?? 0),
+            text: String(data.text ?? ""),
+            status: typeof data.status === "string" ? data.status : undefined,
+            reportCount: typeof data.reportCount === "number" ? data.reportCount : undefined,
+          });
+        }
+        setComments(items);
+      },
+      (err) => {
+        reportFirestoreError(err, "moderation:comments");
+        setComments([]);
       }
-      setComments(items);
-    });
+    );
   }, [isModerator]);
 
   useEffect(() => {
@@ -184,10 +237,17 @@ export default function Moderation() {
     if (!postId || !commentId) return;
     const { db } = getFirebase();
     const q = query(collection(db, "posts", postId, "comments", commentId, "reports"), orderBy("createdAt", "desc"), limit(50));
-    return onSnapshot(q, (snap) => {
-      const items = snap.docs.map((d) => ({ ...(d.data() as PostReport) }));
-      setCommentReports((prev) => ({ ...prev, [openCommentKey]: items }));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items = snap.docs.map((d) => ({ ...(d.data() as PostReport) }));
+        setCommentReports((prev) => ({ ...prev, [openCommentKey]: items }));
+      },
+      (err) => {
+        reportFirestoreError(err, "moderation:commentReports");
+        setCommentReports((prev) => ({ ...prev, [openCommentKey]: [] }));
+      }
+    );
   }, [isModerator, openCommentKey]);
 
   const commentQueue = useMemo(() => {
@@ -214,7 +274,12 @@ export default function Moderation() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Moderazione" description="Gestisci segnalazioni e contenuti nascosti." />
+      <PageHeader
+        title="Moderazione"
+        description="Gestisci segnalazioni e contenuti nascosti."
+        imagePrompt="minimal clean illustration, shield check and moderation queue cards, airy background, accent color, premium, no text, no watermark"
+        imageAlt="Moderazione"
+      />
 
       <Card>
         <CardHeader>
@@ -266,31 +331,52 @@ export default function Moderation() {
                         <button
                           className="lp-btn-secondary"
                           type="button"
-                          onClick={async () => {
-                            const { db } = getFirebase();
-                            await updateDoc(doc(db, "posts", p.id), { status: "active" });
-                          }}
+                          onClick={() =>
+                            void runAction(
+                              `post:${p.id}:active`,
+                              async () => {
+                                const { db } = getFirebase();
+                                await updateDoc(doc(db, "posts", p.id), { status: "active" });
+                              },
+                              "Post ripristinato."
+                            )
+                          }
+                          disabled={busyActionKey?.startsWith(`post:${p.id}:`) ?? false}
                         >
                           Ripristina
                         </button>
                         <button
                           className="lp-btn-secondary"
                           type="button"
-                          onClick={async () => {
-                            const { db } = getFirebase();
-                            await updateDoc(doc(db, "posts", p.id), { status: "hidden" });
-                          }}
+                          onClick={() =>
+                            void runAction(
+                              `post:${p.id}:hidden`,
+                              async () => {
+                                const { db } = getFirebase();
+                                await updateDoc(doc(db, "posts", p.id), { status: "hidden" });
+                              },
+                              "Post nascosto."
+                            )
+                          }
+                          disabled={busyActionKey?.startsWith(`post:${p.id}:`) ?? false}
                         >
                           Nascondi
                         </button>
                         <button
                           className="lp-btn-secondary"
                           type="button"
-                          onClick={async () => {
+                          onClick={() => {
                             if (!confirm("Rimuovere il post?")) return;
-                            const { db } = getFirebase();
-                            await updateDoc(doc(db, "posts", p.id), { status: "removed" });
+                            void runAction(
+                              `post:${p.id}:removed`,
+                              async () => {
+                                const { db } = getFirebase();
+                                await updateDoc(doc(db, "posts", p.id), { status: "removed" });
+                              },
+                              "Post rimosso."
+                            );
                           }}
+                          disabled={busyActionKey?.startsWith(`post:${p.id}:`) ?? false}
                         >
                           Rimuovi
                         </button>
@@ -353,20 +439,34 @@ export default function Moderation() {
                           <button
                             className="lp-btn-secondary"
                             type="button"
-                            onClick={async () => {
-                              const { db } = getFirebase();
-                              await updateDoc(doc(db, "posts", c.postId, "comments", c.id), { status: "active" });
-                            }}
+                            onClick={() =>
+                              void runAction(
+                                `comment:${key}:active`,
+                                async () => {
+                                  const { db } = getFirebase();
+                                  await updateDoc(doc(db, "posts", c.postId, "comments", c.id), { status: "active" });
+                                },
+                                "Commento ripristinato."
+                              )
+                            }
+                            disabled={busyActionKey?.startsWith(`comment:${key}:`) ?? false}
                           >
                             Ripristina
                           </button>
                           <button
                             className="lp-btn-secondary"
                             type="button"
-                            onClick={async () => {
-                              const { db } = getFirebase();
-                              await updateDoc(doc(db, "posts", c.postId, "comments", c.id), { status: "hidden" });
-                            }}
+                            onClick={() =>
+                              void runAction(
+                                `comment:${key}:hidden`,
+                                async () => {
+                                  const { db } = getFirebase();
+                                  await updateDoc(doc(db, "posts", c.postId, "comments", c.id), { status: "hidden" });
+                                },
+                                "Commento nascosto."
+                              )
+                            }
+                            disabled={busyActionKey?.startsWith(`comment:${key}:`) ?? false}
                           >
                             Nascondi
                           </button>
@@ -418,6 +518,9 @@ export default function Moderation() {
                   setBanUid("");
                   setBanReason("");
                   setBanHours("24");
+                  pushToast({ type: "success", title: "Moderazione", message: "Ban impostato." });
+                } catch (e) {
+                  pushToast({ type: "error", title: "Moderazione", message: e instanceof Error ? e.message : "Ban fallito" });
                 } finally {
                   setSavingBan(false);
                 }
@@ -448,10 +551,17 @@ export default function Moderation() {
                           <button
                             type="button"
                             className="lp-btn-secondary"
-                            onClick={async () => {
-                              const { db } = getFirebase();
-                              await deleteDoc(doc(db, "bans", b.uid));
-                            }}
+                            onClick={() =>
+                              void runAction(
+                                `ban:${b.uid}:delete`,
+                                async () => {
+                                  const { db } = getFirebase();
+                                  await deleteDoc(doc(db, "bans", b.uid));
+                                },
+                                "Ban rimosso."
+                              )
+                            }
+                            disabled={busyActionKey?.startsWith(`ban:${b.uid}:`) ?? false}
                           >
                             Sblocca
                           </button>
@@ -514,20 +624,34 @@ export default function Moderation() {
                           <button
                             className="lp-btn-secondary"
                             type="button"
-                            onClick={async () => {
-                              const { db } = getFirebase();
-                              await updateDoc(doc(db, "groups", m.groupId, "messages", m.id), { status: "active" });
-                            }}
+                            onClick={() =>
+                              void runAction(
+                                `group:${key}:active`,
+                                async () => {
+                                  const { db } = getFirebase();
+                                  await updateDoc(doc(db, "groups", m.groupId, "messages", m.id), { status: "active" });
+                                },
+                                "Messaggio ripristinato."
+                              )
+                            }
+                            disabled={busyActionKey?.startsWith(`group:${key}:`) ?? false}
                           >
                             Ripristina
                           </button>
                           <button
                             className="lp-btn-secondary"
                             type="button"
-                            onClick={async () => {
-                              const { db } = getFirebase();
-                              await updateDoc(doc(db, "groups", m.groupId, "messages", m.id), { status: "hidden" });
-                            }}
+                            onClick={() =>
+                              void runAction(
+                                `group:${key}:hidden`,
+                                async () => {
+                                  const { db } = getFirebase();
+                                  await updateDoc(doc(db, "groups", m.groupId, "messages", m.id), { status: "hidden" });
+                                },
+                                "Messaggio nascosto."
+                              )
+                            }
+                            disabled={busyActionKey?.startsWith(`group:${key}:`) ?? false}
                           >
                             Nascondi
                           </button>

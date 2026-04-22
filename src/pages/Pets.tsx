@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { usePetStore } from "@/stores/petStore";
+import { usePetCreateStore } from "@/stores/petCreateStore";
 import { useAuthStore } from "@/stores/authStore";
 import { deletePetCascade, updatePet } from "@/data/pets";
 import { createLog, deleteLog, subscribeLogsRange } from "@/data/logs";
@@ -16,10 +17,21 @@ import type { HealthEvent, Pet, PetDocument, PetLog, PetTask, PetVaccine } from 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ExternalLink, FileText, LineChart, PhoneCall, Save, ShieldPlus, Trash2 } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
+import { FileText, LineChart, Save, ShieldPlus, Sparkles, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { useToastStore } from "@/stores/toastStore";
+import { useAiPanelStore } from "@/stores/aiPanelStore";
+import { ConfirmStyles, useConfirmDialog } from "@/components/confirm";
+import { PetBasicsCard } from "@/components/pets/PetBasicsCard";
+import { PetFoodCard } from "@/components/pets/PetFoodCard";
+import { PetHealthProfileCard } from "@/components/pets/PetHealthProfileCard";
+import { PetVetCard } from "@/components/pets/PetVetCard";
+import { PetWalkCard } from "@/components/pets/PetWalkCard";
+import { PetProtectionCard } from "@/components/pets/PetProtectionCard";
+import { syncPetCardFromPet } from "@/data/petCards";
+import { PetKeyDataCard } from "@/components/pets/PetKeyDataCard";
 
 export default function Pets() {
   const pets = usePetStore((s) => s.pets);
@@ -28,9 +40,13 @@ export default function Pets() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const pushToast = useToastStore((s) => s.push);
+  const openWithDraft = useAiPanelStore((s) => s.openWithDraft);
+  const confirmDialog = useConfirmDialog();
+  const openCreatePet = usePetCreateStore((s) => s.openDialog);
 
   const activePet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [activePetId, pets]);
   const [name, setName] = useState(activePet?.name ?? "");
+  const [species, setSpecies] = useState(activePet?.species ?? "dog");
   const [breed, setBreed] = useState(activePet?.breed ?? "");
   const [dob, setDob] = useState(activePet?.dob ?? "");
   const [weightKg, setWeightKg] = useState(activePet?.weightKg?.toString() ?? "");
@@ -40,6 +56,8 @@ export default function Pets() {
   const [bodyConditionScore, setBodyConditionScore] = useState(activePet?.bodyConditionScore?.toString() ?? "");
   const [heightCm, setHeightCm] = useState(activePet?.heightCm?.toString() ?? "");
   const [temperamentTags, setTemperamentTags] = useState((activePet?.temperamentTags ?? []).join(", "));
+  const [walkBadge, setWalkBadge] = useState<NonNullable<Pet["walkBadge"]>>(activePet?.walkBadge ?? "green");
+  const [walkVisible, setWalkVisible] = useState(Boolean(activePet?.walkVisible));
   const [allergies, setAllergies] = useState((activePet?.healthProfile?.allergies ?? []).join(", "));
   const [conditions, setConditions] = useState((activePet?.healthProfile?.conditions ?? []).join(", "));
   const [medications, setMedications] = useState((activePet?.healthProfile?.medications ?? []).join(", "));
@@ -58,6 +76,7 @@ export default function Pets() {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [docs, setDocs] = useState<PetDocument[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
   const [weightLogs, setWeightLogs] = useState<{ at: number; kg: number }[]>([]);
   const [weightLogIds, setWeightLogIds] = useState<{ id: string; at: number; kg: number }[]>([]);
   const [logs30d, setLogs30d] = useState<PetLog[]>([]);
@@ -66,6 +85,7 @@ export default function Pets() {
   const [vaccines, setVaccines] = useState<PetVaccine[]>([]);
   const [newWeight, setNewWeight] = useState("");
   const [addingWeight, setAddingWeight] = useState(false);
+  const [wow, setWow] = useState<{ petId: string; at: number } | null>(null);
 
   function parseNumber(v: string) {
     const n = Number(String(v).trim().replace(",", "."));
@@ -79,6 +99,7 @@ export default function Pets() {
 
   useEffect(() => {
     setName(activePet?.name ?? "");
+    setSpecies(activePet?.species ?? "dog");
     setBreed(activePet?.breed ?? "");
     setDob(activePet?.dob ?? "");
     setWeightKg(activePet?.weightKg?.toString() ?? "");
@@ -88,6 +109,8 @@ export default function Pets() {
     setBodyConditionScore(activePet?.bodyConditionScore?.toString() ?? "");
     setHeightCm(activePet?.heightCm?.toString() ?? "");
     setTemperamentTags((activePet?.temperamentTags ?? []).join(", "));
+    setWalkBadge(activePet?.walkBadge ?? "green");
+    setWalkVisible(Boolean(activePet?.walkVisible));
     setAllergies((activePet?.healthProfile?.allergies ?? []).join(", "));
     setConditions((activePet?.healthProfile?.conditions ?? []).join(", "));
     setMedications((activePet?.healthProfile?.medications ?? []).join(", "));
@@ -102,6 +125,7 @@ export default function Pets() {
     setFoodLabel(activePet?.currentFood?.label ?? "");
     setFoodKcalPerG(activePet?.currentFood?.kcalPerG?.toString() ?? "");
     setFoodNotes(activePet?.currentFood?.notes ?? "");
+    setInlineError(null);
   }, [
     activePet?.breed,
     activePet?.bodyConditionScore,
@@ -112,10 +136,13 @@ export default function Pets() {
     activePet?.identification,
     activePet?.microchipId,
     activePet?.name,
+    activePet?.species,
     activePet?.neutered,
     activePet?.sex,
     activePet?.weightKg,
     activePet?.temperamentTags,
+    activePet?.walkBadge,
+    activePet?.walkVisible,
     activePet?.healthProfile,
     activePet?.vetContact,
     activePet?.currentFood,
@@ -128,10 +155,34 @@ export default function Pets() {
   }, [activePetId]);
 
   useEffect(() => {
-    if (!activePetId) return;
+    if (!activePetId) {
+      setWow(null);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem("lifepet:wowPetCreated");
+      if (!raw) {
+        setWow(null);
+        return;
+      }
+      const j = JSON.parse(raw) as { petId?: unknown; at?: unknown };
+      const petId = typeof j.petId === "string" ? j.petId : "";
+      const at = typeof j.at === "number" && Number.isFinite(j.at) ? j.at : 0;
+      if (!petId || petId !== activePetId) {
+        setWow(null);
+        return;
+      }
+      setWow({ petId, at });
+    } catch {
+      setWow(null);
+    }
+  }, [activePetId]);
+
+  useEffect(() => {
+    if (!activePetId || !user) return;
     const toMs = Date.now();
     const fromMs = toMs - 365 * 24 * 60 * 60 * 1000;
-    const unsub = subscribeLogsRange(activePetId, fromMs, toMs, (all) => {
+    const unsub = subscribeLogsRange(activePetId, user.uid, fromMs, toMs, (all) => {
       const recent30d = all.filter((l) => l.occurredAt >= toMs - 30 * 24 * 60 * 60 * 1000);
       setLogs30d(recent30d);
       const points = all
@@ -150,19 +201,19 @@ export default function Pets() {
       setWeightLogIds(withIds);
     });
     return () => unsub();
-  }, [activePetId]);
+  }, [activePetId, user]);
 
   useEffect(() => {
-    if (!activePetId) return;
-    const unsub = subscribeTasks(activePetId, setTasks);
+    if (!activePetId || !user) return;
+    const unsub = subscribeTasks(activePetId, user.uid, setTasks);
     return () => unsub();
-  }, [activePetId]);
+  }, [activePetId, user]);
 
   useEffect(() => {
-    if (!activePetId) return;
-    const unsub = subscribeRecentHealthEvents(activePetId, 30, setHealthEvents);
+    if (!activePetId || !user) return;
+    const unsub = subscribeRecentHealthEvents(activePetId, user.uid, 30, setHealthEvents);
     return () => unsub();
-  }, [activePetId]);
+  }, [activePetId, user]);
 
   useEffect(() => {
     if (!activePetId) return;
@@ -180,6 +231,23 @@ export default function Pets() {
       nowMs: Date.now(),
     });
   }, [activePet, healthEvents, logs30d, tasks, vaccines]);
+
+  const profileCompletion = useMemo(() => {
+    const items = [
+      { done: Boolean(activePet?.photoPath), label: "Foto profilo" },
+      { done: Boolean((dob || "").trim()), label: "Data di nascita" },
+      { done: Boolean((microchipId || "").trim()), label: "Microchip" },
+      { done: Boolean((vetClinicName || "").trim() || (vetPhone || "").trim() || (vetEmergencyPhone || "").trim()), label: "Contatto veterinario" },
+      { done: Boolean((foodLabel || "").trim() || (dietNotes || "").trim()), label: "Alimentazione" },
+      { done: docs.length > 0, label: "1 documento" },
+      { done: vaccines.length > 0, label: "1 vaccino" },
+    ];
+    const total = items.length;
+    const doneCount = items.filter((i) => i.done).length;
+    const percent = Math.round((doneCount / total) * 100);
+    const missing = items.filter((i) => !i.done).map((i) => i.label);
+    return { percent, missing, doneCount, total };
+  }, [activePet?.photoPath, dietNotes, dob, docs.length, foodLabel, microchipId, vaccines.length, vetClinicName, vetEmergencyPhone, vetPhone]);
 
   const weightSpark = useMemo(() => {
     if (weightLogs.length < 2) return null;
@@ -209,6 +277,7 @@ export default function Pets() {
       return;
     }
     setAddingWeight(true);
+    setInlineError(null);
     try {
       await createLog(activePetId, {
         petId: activePetId,
@@ -222,6 +291,7 @@ export default function Pets() {
       setNewWeight("");
       pushToast({ type: "success", title: "Peso salvato", message: "Registrazione aggiunta." });
     } catch (err) {
+      setInlineError(err instanceof Error ? err.message : "Salvataggio peso fallito");
       pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio peso fallito" });
     } finally {
       setAddingWeight(false);
@@ -230,11 +300,19 @@ export default function Pets() {
 
   async function removeWeightLog(logId: string) {
     if (!activePetId) return;
-    if (!confirm("Eliminare questa registrazione peso?")) return;
+    const ok = await confirmDialog({
+      title: "Elimina peso",
+      description: "Vuoi eliminare questa registrazione peso?",
+      confirmLabel: "Elimina",
+      variant: "danger",
+    });
+    if (!ok) return;
+    setInlineError(null);
     try {
       await deleteLog(activePetId, logId);
       pushToast({ type: "success", title: "Peso eliminato", message: "Registrazione rimossa." });
     } catch (err) {
+      setInlineError(err instanceof Error ? err.message : "Eliminazione fallita");
       pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Eliminazione fallita" });
     }
   }
@@ -242,11 +320,13 @@ export default function Pets() {
   async function onSave() {
     if (!activePetId) return;
     const n = name.trim();
+    const sp = String(species || "").trim() || "dog";
     if (!n) {
       pushToast({ type: "error", title: "Nome obbligatorio", message: "Inserisci il nome del pet." });
       return;
     }
     setSaving(true);
+    setInlineError(null);
     try {
       const weight = Number(weightKg);
       const bcs = Number(bodyConditionScore);
@@ -285,6 +365,7 @@ export default function Pets() {
 
       await updatePet(activePetId, {
         name: n,
+        species: sp,
         breed: breed.trim() ? breed.trim() : deleteField(),
         dob: dob.trim() ? dob.trim() : deleteField(),
         weightKg: Number.isFinite(weight) && weight > 0 ? weight : deleteField(),
@@ -294,6 +375,8 @@ export default function Pets() {
         bodyConditionScore: Number.isFinite(bcs) && bcs >= 1 && bcs <= 9 ? bcs : deleteField(),
         heightCm: Number.isFinite(height) && height > 0 ? height : deleteField(),
         temperamentTags: toList(temperamentTags),
+        walkBadge,
+        walkVisible,
         identification: identification ?? deleteField(),
         currentFood: currentFood ?? deleteField(),
         healthProfile: healthProfile ?? deleteField(),
@@ -301,8 +384,17 @@ export default function Pets() {
         microchipId: microchipId.trim() ? microchipId.trim() : deleteField(),
         dietNotes: dietNotes.trim() ? dietNotes.trim() : deleteField(),
       });
+
+      if (activePet?.petProtection?.enabled) {
+        await syncPetCardFromPet({
+          ...activePet,
+          name: n,
+          species: sp,
+        });
+      }
       pushToast({ type: "success", title: "Salvato", message: "Profilo aggiornato." });
     } catch (err) {
+      setInlineError(err instanceof Error ? err.message : "Salvataggio fallito");
       pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Salvataggio fallito" });
     } finally {
       setSaving(false);
@@ -311,13 +403,21 @@ export default function Pets() {
 
   async function onDeletePet() {
     if (!activePetId || !activePet) return;
-    if (!confirm(`Eliminare definitivamente ${activePet.name}? Questa azione cancella anche dati e documenti.`)) return;
+    const ok = await confirmDialog({
+      title: "Elimina pet",
+      description: `Eliminare definitivamente ${activePet.name}? Questa azione cancella anche dati e documenti.`,
+      confirmLabel: "Elimina",
+      variant: "danger",
+    });
+    if (!ok) return;
+    setInlineError(null);
     try {
       await deletePetCascade(activePetId);
       setActivePetId(null);
       navigate("/app/dashboard", { replace: true });
       pushToast({ type: "success", title: "Pet eliminato", message: "Dati rimossi." });
     } catch {
+      setInlineError("Eliminazione fallita");
       pushToast({ type: "error", title: "Errore", message: "Eliminazione fallita" });
     }
   }
@@ -337,11 +437,19 @@ export default function Pets() {
       return;
     }
     setPhotoBusy(true);
+    setInlineError(null);
     try {
-      await uploadPetPhoto(activePetId, file);
+      const res = await uploadPetPhoto(activePetId, file);
+      if (activePet?.petProtection?.enabled) {
+        await syncPetCardFromPet({
+          ...activePet,
+          photoPath: res.photoPath,
+        });
+      }
       e.target.value = "";
       pushToast({ type: "success", title: "Foto", message: "Foto aggiornata." });
     } catch (err) {
+      setInlineError(err instanceof Error ? err.message : "Upload foto fallito");
       pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Upload foto fallito" });
     } finally {
       setPhotoBusy(false);
@@ -351,10 +459,18 @@ export default function Pets() {
   async function onRemovePhoto() {
     if (!activePetId || !activePet?.photoPath) return;
     setPhotoBusy(true);
+    setInlineError(null);
     try {
       await deletePetPhoto(activePetId, activePet.photoPath);
+      if (activePet?.petProtection?.enabled) {
+        await syncPetCardFromPet({
+          ...activePet,
+          photoPath: undefined,
+        });
+      }
       pushToast({ type: "success", title: "Foto", message: "Foto rimossa." });
     } catch (err) {
+      setInlineError(err instanceof Error ? err.message : "Rimozione foto fallita");
       pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Rimozione foto fallita" });
     } finally {
       setPhotoBusy(false);
@@ -371,11 +487,13 @@ export default function Pets() {
       return;
     }
     setUploading(true);
+    setInlineError(null);
     try {
       await uploadPetDocument(activePetId, user.uid, file);
       e.target.value = "";
       pushToast({ type: "success", title: "Documento", message: "Caricato." });
     } catch (err) {
+      setInlineError(err instanceof Error ? err.message : "Upload documento fallito");
       pushToast({ type: "error", title: "Errore", message: err instanceof Error ? err.message : "Upload documento fallito" });
     } finally {
       setUploading(false);
@@ -386,12 +504,17 @@ export default function Pets() {
     if (activePetId) {
       return (
         <div className="space-y-6">
-          <PageHeader title="Profilo Pet" description="Caricamento profilo…" />
+          <PageHeader
+            title="Profilo Pet"
+            description="Caricamento profilo…"
+            imagePrompt="minimal clean illustration, pet profile card with paw icon, airy background, accent color, premium, no text, no watermark"
+            imageAlt="Profilo pet"
+          />
           <Card>
             <CardContent>
               <div className="py-10">
-                <div className="h-4 w-40 bg-slate-200/70 rounded animate-pulse" />
-                <div className="mt-3 h-3 w-64 bg-slate-200/60 rounded animate-pulse" />
+                <div className="h-4 w-40 lp-skeleton" />
+                <div className="mt-3 h-3 w-64 lp-skeleton" />
               </div>
             </CardContent>
           </Card>
@@ -402,14 +525,11 @@ export default function Pets() {
       <EmptyState
         icon={ShieldPlus}
         title="Crea o seleziona un pet"
-        description="Aggiungi il primo profilo dal Dashboard, poi torna qui per completare i dettagli."
+        description="Crea il tuo primo profilo: sblocchi subito Salute, Planner, Agenda e Documenti."
         action={
-          <Link
-            to="/app/dashboard#create-pet"
-            className="lp-btn-primary inline-flex items-center justify-center"
-          >
-            Vai al Dashboard
-          </Link>
+          <button type="button" onClick={openCreatePet} className="lp-btn-primary inline-flex items-center justify-center">
+            Crea pet
+          </button>
         }
       />
     );
@@ -420,275 +540,241 @@ export default function Pets() {
       <PageHeader
         title="Profilo Pet"
         description="Dettagli, salute, contatti veterinario, foto e documenti."
+        imagePrompt="minimal clean illustration, dog and cat portrait with profile card UI, airy background, accent color, premium, no text, no watermark"
+        imageAlt="Profilo pet"
         actions={
-          <Link to="/app/status" className="lp-btn-secondary">
-            <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${statusClass(petStatus.overall)}`}>
-              <span>{statusEmoji(petStatus.overall)}</span>
-              {statusLabel(petStatus.overall)}
-            </span>
-          </Link>
+          <>
+            <button
+              type="button"
+              className="lp-btn-secondary inline-flex items-center gap-2"
+              onClick={() => {
+                openWithDraft(
+                  `Aiutami a completare e rendere coerente il profilo di ${name || activePet.name}. Dimmi quali campi compilare per primi (salute, contatti vet, dieta) e cosa chiedere al veterinario. Se utile, proponi una checklist in 10 punti.`
+                );
+              }}
+            >
+              <Sparkles className="w-4 h-4" />
+              AI profilo
+            </button>
+            <Link to="/app/status" className="lp-btn-secondary">
+              <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${statusClass(petStatus.overall)}`}>
+                <span>{statusEmoji(petStatus.overall)}</span>
+                {statusLabel(petStatus.overall)}
+              </span>
+            </Link>
+          </>
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <Card className="lg:col-span-7">
+      {activePet ? <PetKeyDataCard pet={activePet} docsCount={docs.length} vaccinesCount={vaccines.length} /> : null}
+
+      {wow && wow.petId === activePet.id ? (
+        <Card className="border border-emerald-200/70 bg-emerald-50/70">
           <CardHeader>
-            <CardTitle>Dettagli</CardTitle>
-            <CardDescription>Informazioni principali del tuo animale.</CardDescription>
+            <CardTitle>Da ora non dimenticherai più nulla</CardTitle>
+            <CardDescription>Hai creato il profilo: aggiungi un primo dato (vaccino, promemoria o documento) per attivare il monitoraggio.</CardDescription>
           </CardHeader>
           <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Nome</div>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="lp-input"
-              />
-            </label>
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Razza</div>
-              <input
-                value={breed}
-                onChange={(e) => setBreed(e.target.value)}
-                className="lp-input"
-              />
-            </label>
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Data di nascita</div>
-              <input
-                value={dob}
-                onChange={(e) => setDob(e.target.value)}
-                placeholder="AAAA-MM-GG"
-                className="lp-input"
-              />
-            </label>
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Peso (kg)</div>
-              <input
-                value={weightKg}
-                onChange={(e) => setWeightKg(e.target.value)}
-                inputMode="decimal"
-                className="lp-input"
-              />
-            </label>
-
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Sesso</div>
-              <select value={sex} onChange={(e) => setSex(e.target.value as Pet["sex"])} className="lp-select">
-                <option value="unknown">Non specificato</option>
-                <option value="male">Maschio</option>
-                <option value="female">Femmina</option>
-              </select>
-            </label>
-
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Attività</div>
-              <select value={activityLevel} onChange={(e) => setActivityLevel(e.target.value as Pet["activityLevel"])} className="lp-select">
-                <option value="low">Bassa</option>
-                <option value="medium">Media</option>
-                <option value="high">Alta</option>
-              </select>
-            </label>
-
-            <label className="inline-flex items-center gap-2 text-sm md:col-span-2">
-              <input type="checkbox" checked={neutered} onChange={(e) => setNeutered(e.target.checked)} />
-              Sterilizzato/a
-            </label>
-
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">BCS (1–9)</div>
-              <input value={bodyConditionScore} onChange={(e) => setBodyConditionScore(e.target.value)} inputMode="numeric" className="lp-input" />
-            </label>
-
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Altezza (cm)</div>
-              <input value={heightCm} onChange={(e) => setHeightCm(e.target.value)} inputMode="decimal" className="lp-input" />
-            </label>
-
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Microchip</div>
-              <input
-                value={microchipId}
-                onChange={(e) => setMicrochipId(e.target.value)}
-                className="lp-input"
-              />
-            </label>
-
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Passaporto (opz.)</div>
-              <input value={passportId} onChange={(e) => setPassportId(e.target.value)} className="lp-input" />
-            </label>
-
-            <label className="block md:col-span-2">
-              <div className="text-xs text-slate-600 mb-1">Registro / Identificazione (opz.)</div>
-              <input value={registry} onChange={(e) => setRegistry(e.target.value)} className="lp-input" />
-            </label>
-
-            <label className="block md:col-span-2">
-              <div className="text-xs text-slate-600 mb-1">Carattere (tag separati da virgola)</div>
-              <input
-                value={temperamentTags}
-                onChange={(e) => setTemperamentTags(e.target.value)}
-                placeholder="socievole, ansioso, energico"
-                className="lp-input"
-              />
-            </label>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3">
-            <div className="font-semibold">Alimentazione attuale</div>
-            <div className="text-xs text-slate-600 mt-1">Serve anche per stimare quantità e reminder pasti.</div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Cibo (nome)</div>
-                <input value={foodLabel} onChange={(e) => setFoodLabel(e.target.value)} className="lp-input" />
-              </label>
-              <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Kcal per grammo</div>
-                <input value={foodKcalPerG} onChange={(e) => setFoodKcalPerG(e.target.value)} inputMode="decimal" className="lp-input" />
-              </label>
-              <label className="block md:col-span-2">
-                <div className="text-xs text-slate-600 mb-1">Note cibo</div>
-                <input value={foodNotes} onChange={(e) => setFoodNotes(e.target.value)} className="lp-input" />
-              </label>
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Allergie (separate da virgola)</div>
-              <input
-                value={allergies}
-                onChange={(e) => setAllergies(e.target.value)}
-                placeholder="pollo, polline"
-                className="lp-input"
-              />
-            </label>
-            <label className="block">
-              <div className="text-xs text-slate-600 mb-1">Condizioni (separate da virgola)</div>
-              <input
-                value={conditions}
-                onChange={(e) => setConditions(e.target.value)}
-                placeholder="artrite, dermatite"
-                className="lp-input"
-              />
-            </label>
-            <label className="block md:col-span-2">
-              <div className="text-xs text-slate-600 mb-1">Farmaci (separati da virgola)</div>
-              <input
-                value={medications}
-                onChange={(e) => setMedications(e.target.value)}
-                placeholder="nome farmaco, dosaggio"
-                className="lp-input"
-              />
-            </label>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/70 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-semibold">Contatti veterinario</div>
-                <div className="text-xs text-slate-600 mt-1">Utili anche in emergenza.</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="lp-panel p-3">
+                <div className="text-xs lp-muted">Esempio timeline</div>
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center justify-between gap-2 lp-panel px-3 py-2">
+                    <div className="text-sm">Vaccino (esempio)</div>
+                    <div className="text-xs lp-muted">oggi</div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 lp-panel px-3 py-2">
+                    <div className="text-sm">Visita veterinaria (esempio)</div>
+                    <div className="text-xs lp-muted">settimana</div>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {vetPhone.trim() ? (
-                  <a
-                    href={`tel:${vetPhone.trim()}`}
-                    className="lp-btn-icon inline-flex items-center gap-2"
+              <div className="lp-panel p-3">
+                <div className="text-xs lp-muted">Prossima azione</div>
+                <div className="mt-2 text-sm font-semibold" style={{ color: "rgb(var(--lp-ink))" }}>Completa il setup in 30 secondi</div>
+                <div className="mt-1 text-xs" style={{ color: "rgb(var(--lp-muted))" }}>Scegli un’azione: puoi farle anche tutte più tardi.</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" className="lp-btn-primary" onClick={() => navigate("/app/vaccines")}>Aggiungi vaccino</button>
+                  <button type="button" className="lp-btn-secondary" onClick={() => navigate("/app/planner")}>Crea promemoria</button>
+                  <button type="button" className="lp-btn-secondary" onClick={() => navigate("/app/documents")}>Aggiungi documento</button>
+                  <button
+                    type="button"
+                    className="lp-btn-secondary"
+                    onClick={() => {
+                      try {
+                        localStorage.removeItem("lifepet:wowPetCreated");
+                      } catch {
+                        void 0;
+                      }
+                      setWow(null);
+                    }}
                   >
-                    <PhoneCall className="w-4 h-4" />
-                    Chiama
-                  </a>
-                ) : null}
-                {vetEmergencyPhone.trim() ? (
-                  <a
-                    href={`tel:${vetEmergencyPhone.trim()}`}
-                    className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-medium hover:bg-rose-400 inline-flex items-center gap-2"
-                  >
-                    <PhoneCall className="w-4 h-4" />
-                    Emergenza
-                  </a>
-                ) : null}
+                    Ok
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Clinica</div>
-                <input
-                  value={vetClinicName}
-                  onChange={(e) => setVetClinicName(e.target.value)}
-                  className="lp-input"
-                />
-              </label>
-              <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Telefono</div>
-                <input
-                  value={vetPhone}
-                  onChange={(e) => setVetPhone(e.target.value)}
-                  placeholder="+39..."
-                  className="lp-input"
-                />
-              </label>
-              <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Telefono emergenza</div>
-                <input
-                  value={vetEmergencyPhone}
-                  onChange={(e) => setVetEmergencyPhone(e.target.value)}
-                  placeholder="+39..."
-                  className="lp-input"
-                />
-              </label>
-              <label className="block">
-                <div className="text-xs text-slate-600 mb-1">Indirizzo</div>
-                <input
-                  value={vetAddress}
-                  onChange={(e) => setVetAddress(e.target.value)}
-                  className="lp-input"
-                />
-              </label>
-            </div>
-            {vetAddress.trim() ? (
-              <div className="mt-3">
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(vetAddress.trim())}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="lp-btn-icon inline-flex items-center gap-2"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Apri su Maps
-                </a>
-              </div>
-            ) : null}
-          </div>
-          <label className="block mt-3">
-            <div className="text-xs text-slate-600 mb-1">Note alimentazione</div>
-            <textarea
-              value={dietNotes}
-              onChange={(e) => setDietNotes(e.target.value)}
-              rows={4}
-              className="lp-textarea"
-            />
-          </label>
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="mt-4 lp-btn-primary"
-          >
-            <span className="inline-flex items-center gap-2">
-              <Save className="w-4 h-4" />
-              {saving ? "Salvataggio…" : "Salva"}
-            </span>
-          </button>
-
-          <div className="mt-3">
-            <button onClick={onDeletePet} type="button" className="rounded-xl bg-rose-500 text-white px-4 py-2 text-sm font-medium hover:bg-rose-400">
-              Elimina pet
-            </button>
-          </div>
           </CardContent>
         </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Completezza profilo</CardTitle>
+          <CardDescription>Più dati = più sicurezza e più utilità ogni giorno.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold" style={{ color: "rgb(var(--lp-ink))" }}>{profileCompletion.percent}%</div>
+            <div className="text-xs lp-muted">{profileCompletion.doneCount}/{profileCompletion.total} completati</div>
+          </div>
+          <div className="mt-2 h-2 rounded-full bg-slate-200/60 overflow-hidden">
+            <div className="h-full bg-sky-500" style={{ width: `${profileCompletion.percent}%` }} />
+          </div>
+          {profileCompletion.missing.length ? (
+            <div className="mt-3">
+              <div className="text-sm" style={{ color: "rgb(var(--lp-ink))" }}>
+                Prossimi passi: <span className="lp-muted">{profileCompletion.missing.slice(0, 3).join(" · ")}</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {docs.length === 0 ? (
+                  <button type="button" className="lp-btn-primary" onClick={() => navigate("/app/documents")}>Aggiungi documento</button>
+                ) : null}
+                {vaccines.length === 0 ? (
+                  <button type="button" className="lp-btn-secondary" onClick={() => navigate("/app/vaccines")}>Aggiungi vaccino</button>
+                ) : null}
+                <button type="button" className="lp-btn-secondary" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+                  Completa dati
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 text-sm" style={{ color: "rgb(var(--lp-ink))" }}>Ottimo: profilo completo.</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-7 space-y-6">
+          {inlineError ? (
+            <Alert variant="danger" title="Errore">
+              {inlineError}
+            </Alert>
+          ) : null}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="lp-panel p-3">
+              <div className="text-xs lp-muted">Status</div>
+              <div className="mt-1">
+                <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${statusClass(petStatus.overall)}`}>
+                  <span>{statusEmoji(petStatus.overall)}</span>
+                  {statusLabel(petStatus.overall)}
+                </span>
+              </div>
+              <div className="text-[11px] mt-2" style={{ color: "rgb(var(--lp-muted))" }}>
+                Vaccini, eventi e task recenti.
+              </div>
+            </div>
+            <div className="lp-panel p-3">
+              <div className="text-xs lp-muted">Peso attuale</div>
+              <div className="mt-1 text-lg font-semibold" style={{ color: "rgb(var(--lp-ink))" }}>{activePet.weightKg ? `${activePet.weightKg} kg` : "—"}</div>
+              <div className="text-[11px] mt-1" style={{ color: "rgb(var(--lp-muted))" }}>Condizione corporea: {activePet.bodyConditionScore ?? "—"} / 9</div>
+            </div>
+            <div className="lp-panel p-3">
+              <div className="text-xs lp-muted">Azioni rapide</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Link to={{ pathname: "/app/health", search: `?petId=${encodeURIComponent(activePetId)}` }} className="lp-btn-icon">Salute</Link>
+                <Link to={{ pathname: "/app/planner", search: `?petId=${encodeURIComponent(activePetId)}` }} className="lp-btn-icon">Planner</Link>
+                <Link to={{ pathname: "/app/documents", search: `?petId=${encodeURIComponent(activePetId)}` }} className="lp-btn-icon">Documenti</Link>
+              </div>
+              <div className="text-[11px] mt-2" style={{ color: "rgb(var(--lp-muted))" }}>Tutto resta collegato allo stesso pet.</div>
+            </div>
+          </div>
+
+          <PetBasicsCard
+            name={name}
+            setName={setName}
+            species={species}
+            setSpecies={setSpecies}
+            breed={breed}
+            setBreed={setBreed}
+            dob={dob}
+            setDob={setDob}
+            weightKg={weightKg}
+            setWeightKg={setWeightKg}
+            sex={sex as Pet["sex"]}
+            setSex={setSex}
+            neutered={neutered}
+            setNeutered={setNeutered}
+            activityLevel={activityLevel as Pet["activityLevel"]}
+            setActivityLevel={setActivityLevel}
+            bodyConditionScore={bodyConditionScore}
+            setBodyConditionScore={setBodyConditionScore}
+            heightCm={heightCm}
+            setHeightCm={setHeightCm}
+            temperamentTags={temperamentTags}
+            setTemperamentTags={setTemperamentTags}
+            microchipId={microchipId}
+            setMicrochipId={setMicrochipId}
+            passportId={passportId}
+            setPassportId={setPassportId}
+            registry={registry}
+            setRegistry={setRegistry}
+          />
+
+          {activePet ? <PetProtectionCard pet={activePet} /> : null}
+
+          <PetWalkCard walkBadge={walkBadge} setWalkBadge={setWalkBadge} walkVisible={walkVisible} setWalkVisible={setWalkVisible} />
+
+          <PetFoodCard
+            foodLabel={foodLabel}
+            setFoodLabel={setFoodLabel}
+            foodKcalPerG={foodKcalPerG}
+            setFoodKcalPerG={setFoodKcalPerG}
+            foodNotes={foodNotes}
+            setFoodNotes={setFoodNotes}
+            dietNotes={dietNotes}
+            setDietNotes={setDietNotes}
+          />
+
+          <PetHealthProfileCard allergies={allergies} setAllergies={setAllergies} conditions={conditions} setConditions={setConditions} medications={medications} setMedications={setMedications} />
+
+          <PetVetCard
+            vetClinicName={vetClinicName}
+            setVetClinicName={setVetClinicName}
+            vetPhone={vetPhone}
+            setVetPhone={setVetPhone}
+            vetEmergencyPhone={vetEmergencyPhone}
+            setVetEmergencyPhone={setVetEmergencyPhone}
+            vetAddress={vetAddress}
+            setVetAddress={setVetAddress}
+          />
+
+          <div className="lg:sticky lg:bottom-6">
+            <Card className="relative overflow-hidden">
+              <div className="lp-card-accent" aria-hidden="true" />
+              <CardContent>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold" style={{ color: "rgb(var(--lp-ink))" }}>Salva e sincronizza</div>
+                    <div className="text-xs" style={{ color: "rgb(var(--lp-muted))" }}>Le modifiche si riflettono in Salute, Planner e Documenti.</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={onSave} disabled={saving} className="lp-btn-primary">
+                      <span className="inline-flex items-center gap-2">
+                        <Save className="w-4 h-4" />
+                        {saving ? "Salvataggio…" : "Salva"}
+                      </span>
+                    </button>
+                    <button onClick={onDeletePet} type="button" className="lp-btn-primary" style={ConfirmStyles.dangerButtonStyle}>
+                      Elimina
+                    </button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
         <section className="lg:col-span-5 space-y-6">
           <Card>
@@ -701,28 +787,28 @@ export default function Pets() {
                 <div className="lp-panel p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-xs text-slate-600">Peso attuale (profilo)</div>
+                      <div className="text-xs lp-muted">Peso attuale (profilo)</div>
                       <div className="text-lg font-semibold">{activePet.weightKg ? `${activePet.weightKg} kg` : "—"}</div>
-                      <div className="text-xs text-slate-600">BCS: {activePet.bodyConditionScore ?? "—"} / 9</div>
+                      <div className="text-xs lp-muted">BCS: {activePet.bodyConditionScore ?? "—"} / 9</div>
                     </div>
-                    <LineChart className="w-5 h-5 text-sky-700" />
+                    <LineChart className="w-5 h-5 lp-icon-primary" />
                   </div>
 
                   {weightSpark ? (
                     <div className="mt-3">
                       <svg width={weightSpark.w} height={weightSpark.h} className="w-full">
-                        <path d={weightSpark.d} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-600" />
+                        <path d={weightSpark.d} fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "rgb(var(--lp-primary))" }} />
                       </svg>
-                      <div className="mt-1 text-[11px] text-slate-600">Range: {weightSpark.min.toFixed(1)}–{weightSpark.max.toFixed(1)} kg</div>
+                      <div className="mt-1 text-[11px] lp-muted">Range: {weightSpark.min.toFixed(1)}–{weightSpark.max.toFixed(1)} kg</div>
                     </div>
                   ) : (
-                    <div className="mt-3 text-sm text-slate-600">Aggiungi 2+ pesate per vedere il grafico.</div>
+                    <div className="mt-3 text-sm lp-muted">Aggiungi 2+ pesate per vedere il grafico.</div>
                   )}
                 </div>
 
                 <div className="flex items-end gap-2">
                   <label className="block flex-1">
-                    <div className="text-xs text-slate-600 mb-1">Aggiungi peso (kg)</div>
+                    <div className="text-xs lp-muted mb-1">Aggiungi peso (kg)</div>
                     <input value={newWeight} onChange={(e) => setNewWeight(e.target.value)} inputMode="decimal" className="lp-input" />
                   </label>
                   <button onClick={addWeightLog} disabled={addingWeight || !user} className="lp-btn-primary">
@@ -732,13 +818,13 @@ export default function Pets() {
 
                 {weightLogIds.length > 0 ? (
                   <div className="lp-panel p-3">
-                    <div className="text-xs text-slate-600">Ultime pesate</div>
+                    <div className="text-xs lp-muted">Ultime pesate</div>
                     <div className="mt-2 space-y-2">
                       {weightLogIds.map((w) => (
                         <div key={w.id} className="flex items-center justify-between gap-3">
                           <div className="text-sm">
                             <span className="font-medium">{w.kg.toFixed(1)} kg</span>
-                            <span className="text-xs text-slate-600"> · {new Date(w.at).toLocaleString()}</span>
+                            <span className="text-xs lp-muted"> · {new Date(w.at).toLocaleString()}</span>
                           </div>
                           <button
                             onClick={() => removeWeightLog(w.id)}
@@ -754,7 +840,7 @@ export default function Pets() {
                   </div>
                 ) : null}
 
-                <div className="text-xs text-slate-600">Consiglio: una pesata ogni 2–4 settimane rende l’indice longevità più accurato.</div>
+                <div className="text-xs lp-muted">Consiglio: una pesata ogni 2–4 settimane rende l’indice longevità più accurato.</div>
               </div>
             </CardContent>
           </Card>
@@ -773,7 +859,7 @@ export default function Pets() {
                   accept="image/*"
                   onChange={onUploadPhoto}
                   disabled={photoBusy}
-                  className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-sky-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-sky-500"
+                  className="lp-file-input"
                 />
                 <div className="mt-2 flex items-center gap-2">
                   <button
@@ -783,7 +869,7 @@ export default function Pets() {
                   >
                     Rimuovi
                   </button>
-                  <div className="text-xs text-slate-600">Salvata su Firebase Storage.</div>
+                  <div className="text-xs lp-muted">Salvata su Firebase Storage.</div>
                 </div>
               </div>
             </div>
@@ -807,7 +893,7 @@ export default function Pets() {
             type="file"
             onChange={onUpload}
             disabled={uploading}
-            className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-sky-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-sky-500"
+            className="lp-file-input"
           />
           <div className="mt-3 space-y-2">
             {docs.length === 0 ? (
@@ -818,7 +904,7 @@ export default function Pets() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium truncate">{d.name}</div>
-                      <div className="text-xs text-slate-600">Caricato: {new Date(d.createdAt).toLocaleString()}</div>
+                          <div className="text-xs lp-muted">Caricato: {new Date(d.createdAt).toLocaleString()}</div>
                     </div>
                     <button
                       onClick={async () => {
@@ -826,7 +912,7 @@ export default function Pets() {
                           const url = await getPetDocumentDownloadUrl(d.storagePath);
                           window.open(url, "_blank", "noopener,noreferrer");
                         } catch {
-                          return;
+                              pushToast({ type: "error", title: "Documento", message: "Impossibile aprire il documento." });
                         }
                       }}
                       className="lp-btn-icon"
@@ -838,7 +924,7 @@ export default function Pets() {
               ))
             )}
           </div>
-          <div className="mt-3 text-xs text-slate-600">File su Storage, metadati su Firestore.</div>
+          <div className="mt-3 text-xs lp-muted">File su Storage, metadati su Firestore.</div>
             </CardContent>
           </Card>
         </section>

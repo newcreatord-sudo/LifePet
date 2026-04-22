@@ -23,13 +23,21 @@ export async function deletePushToken(userId: string, token: string) {
 }
 
 export function subscribePushTokens(userId: string, onTokens: (tokens: string[]) => void) {
+  if (!userId) {
+    onTokens([]);
+    return () => {};
+  }
   if (shouldUseDemoData()) {
     onTokens([]);
     return () => {};
   }
   const { db } = getFirebase();
   const col = collection(db, "users", userId, "pushTokens");
-  return onSnapshot(col, (snap) => {
-    onTokens(snap.docs.map((d) => d.id));
-  });
+  return onSnapshot(
+    col,
+    (snap) => {
+      onTokens(snap.docs.map((d) => d.id));
+    },
+    () => onTokens([])
+  );
 }

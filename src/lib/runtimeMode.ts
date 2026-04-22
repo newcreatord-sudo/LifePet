@@ -17,6 +17,14 @@ export function setDemoModeEnabled(enabled: boolean) {
   } catch {
     return;
   }
+
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("lifepet:demoMode"));
+    }
+  } catch {
+    return;
+  }
 }
 
 export function canUseFirebase() {
@@ -24,8 +32,5 @@ export function canUseFirebase() {
 }
 
 export function shouldUseDemoData() {
-  const configError = getFirebaseConfigError();
-  if (!configError) return false;
-  return isDemoModeEnabled();
+  return isDemoModeEnabled() || !canUseFirebase();
 }
-

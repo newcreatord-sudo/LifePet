@@ -2,7 +2,54 @@ import { addDoc, collection, deleteDoc, doc, getDoc, limit, onSnapshot, orderBy,
 import { getFirebase } from "@/lib/firebase";
 import { demoId, demoSubscribe, demoUpdate } from "@/lib/demoDb";
 import { shouldUseDemoData } from "@/lib/runtimeMode";
+import { reportFirestoreError } from "@/lib/firestoreFallback";
 import type { Expense, ExpenseSeries } from "@/types";
+
+function requireUid() {
+  const uid = getFirebase().auth.currentUser?.uid;
+  if (!uid) throw new Error("Devi effettuare l'accesso");
+  return uid;
+}
+
+function normalizeExpenseSeriesInput(petId: string, input: Omit<ExpenseSeries, "id">) {
+  const uid = requireUid();
+  const amount = Number(input.amount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Importo non valido");
+  const rounded = Math.round(amount * 100) / 100;
+  const currency = String(input.currency || "EUR").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Valuta non valida");
+  const note = typeof input.note === "string" ? input.note.trim().slice(0, 300) : undefined;
+  const next: Omit<ExpenseSeries, "id"> = {
+    ...input,
+    petId,
+    createdBy: input.createdBy || uid,
+    amount: rounded,
+    currency,
+    note: note || undefined,
+  };
+  if (next.createdBy !== uid) throw new Error("createdBy non valido");
+  return next;
+}
+
+function normalizeExpenseInput(petId: string, input: Omit<Expense, "id">) {
+  const uid = requireUid();
+  const amount = Number(input.amount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Importo non valido");
+  const rounded = Math.round(amount * 100) / 100;
+  const currency = String(input.currency || "EUR").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Valuta non valida");
+  const note = typeof input.note === "string" ? input.note.trim().slice(0, 300) : undefined;
+  const next: Omit<Expense, "id"> = {
+    ...input,
+    petId,
+    createdBy: input.createdBy || uid,
+    amount: rounded,
+    currency,
+    note: note || undefined,
+  };
+  if (next.createdBy !== uid) throw new Error("createdBy non valido");
+  return next;
+}
 
 function demoKey(petId: string) {
   return `lifepet:demo:pet:${petId}:expenses`;
@@ -30,10 +77,17 @@ export function subscribeExpenseSeries(petId: string, onData: (items: ExpenseSer
     });
   }
   const q = query(expenseSeriesCol(petId), orderBy("createdAt", "desc"), limit(50));
-  return onSnapshot(q, (snap) => {
-    const items: ExpenseSeries[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ExpenseSeries, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: ExpenseSeries[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ExpenseSeries, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "spese:serie");
+      onData([]);
+    }
+  );
 }
 
 export async function createExpenseSeries(petId: string, input: Omit<ExpenseSeries, "id">) {
@@ -43,7 +97,7 @@ export async function createExpenseSeries(petId: string, input: Omit<ExpenseSeri
     demoUpdate<ExpenseSeries[]>(demoSeriesKey(petId), [], (prev) => [next, ...prev]);
     return id;
   }
-  const ref = await addDoc(expenseSeriesCol(petId), input);
+  const ref = await addDoc(expenseSeriesCol(petId), normalizeExpenseSeriesInput(petId, input));
   return ref.id;
 }
 
@@ -73,10 +127,17 @@ export function subscribeRecentExpenses(petId: string, limitCount: number, onDat
     });
   }
   const q = query(expensesCol(petId), orderBy("occurredAt", "desc"), limit(limitCount));
-  return onSnapshot(q, (snap) => {
-    const items: Expense[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Expense, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: Expense[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Expense, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "spese:recenti");
+      onData([]);
+    }
+  );
 }
 
 export function subscribeExpensesRange(petId: string, fromMs: number, toMs: number, onData: (items: Expense[]) => void) {
@@ -95,10 +156,17 @@ export function subscribeExpensesRange(petId: string, fromMs: number, toMs: numb
     where("occurredAt", "<=", toMs),
     orderBy("occurredAt", "desc")
   );
-  return onSnapshot(q, (snap) => {
-    const items: Expense[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Expense, "id">) }));
-    onData(items);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items: Expense[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Expense, "id">) }));
+      onData(items);
+    },
+    (err) => {
+      reportFirestoreError(err, "spese:intervallo");
+      onData([]);
+    }
+  );
 }
 
 export async function createExpense(petId: string, input: Omit<Expense, "id">) {
@@ -108,7 +176,7 @@ export async function createExpense(petId: string, input: Omit<Expense, "id">) {
     demoUpdate<Expense[]>(demoKey(petId), [], (prev) => [next, ...prev]);
     return id;
   }
-  const ref = await addDoc(expensesCol(petId), input);
+  const ref = await addDoc(expensesCol(petId), normalizeExpenseInput(petId, input));
   return ref.id;
 }
 
@@ -124,7 +192,7 @@ async function ensureExpenseExists(petId: string, expenseId: string, input: Omit
   const ref = doc(db, "pets", petId, "expenses", expenseId);
   const snap = await getDoc(ref);
   if (snap.exists()) return;
-  await setDoc(ref, input);
+  await setDoc(ref, normalizeExpenseInput(petId, input));
 }
 
 function todayKey() {
